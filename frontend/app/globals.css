@@ -30,3 +30,12 @@
 .text-link:hover svg{transform:translateX(4px)}
 .site-header.is-scrolled{background:#ffffffe6;backdrop-filter:blur(12px);box-shadow:0 1px 12px #0b292614}
 @media(max-width:800px){.bubble-layer{display:none}}
+
+/* --- Motion: reduced-motion guards --- */
+@media (prefers-reduced-motion: reduce){
+.bubble-layer,.hero-rays{display:none}
+.scroll-cue span,.cart-button span{animation:none}
+.category-card,.product-card,.category-card img,.product-card img,.value-item,.value-icon,.button-primary,.button-ghost,.signup-link,.text-link svg{transition:none}
+.category-card:hover,.product-card:hover{transform:none}
+.category-card:hover img,.product-card:hover img{transform:none}
+}
