@@ -18,14 +18,15 @@ livestock : null
         gourami : fish
         betta : fish
         cichlid : fish
-        catfish : fish
-        corydoras : fish
         barb : fish
+        corydoras : fish
+        catfish : fish
         rainbowfish : fish
+        angelfish: fish
+        killifish : fish
         badis : fish
         goby : fish
         rasbora : fish
-        killifish : fish
         pleco : fish
         danio : fish
         other: fish
