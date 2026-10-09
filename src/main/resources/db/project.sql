@@ -189,7 +189,7 @@ CREATE TABLE IF NOT EXISTS media (
     updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE IF NOT EXISTS variant_values (
+CREATE TABLE IF NOT EXISTS variant_attribute_values (
     id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     variant_value_id    VARCHAR(255) NOT NULL,
     variant_id          VARCHAR(255) NOT NULL,
@@ -198,6 +198,17 @@ CREATE TABLE IF NOT EXISTS variant_values (
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS product_attribute_values (
+    id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    product_value_id    VARCHAR(255) NOT NULL,
+    product_id          VARCHAR(255) NOT NULL,
+    attribute_id        VARCHAR(255) NOT NULL,
+    attribute_value_id  VARCHAR(255) NOT NULL,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 
 -- ---------- CART & ORDER ----------
 
