@@ -1,8 +1,9 @@
 Project: Enterprise Headless E-Commerce Platform with Touchless Fulfillment and PIM
 
 ## Tech stack:
-    - Frontend: Next.js
+    - Frontend: Next.js 
     - Backend: Spring Boot(Spring Security, Spring Data JPA), Mapstruct, Refresh + Access token, PostgreSQL / Supabase, Redis, RabbitMQ
+    
     - Testing: JUnit, Mockito, Spring Test, Cypress
     - Media: Cloudinary
     - Architecture: headless MVC

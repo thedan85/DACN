@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: dacn
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/ecom}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: false
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+
+server:
+  port: 8080
+
+cloudinary:
+  cloud-name: ${CLOUDINARY_CLOUD_NAME:}
+  api-key: ${CLOUDINARY_API_KEY:}
+  api-secret: ${CLOUDINARY_API_SECRET:}
+
+payment:
+  momo:
+    partner-code: ${MOMO_PARTNER_CODE:}
+    access-key: ${MOMO_ACCESS_KEY:}
+    secret-key: ${MOMO_SECRET_KEY:}
+    endpoint: ${MOMO_ENDPOINT:https://test-payment.momo.vn/v2/gateway/api/create}
+    redirect-url: ${MOMO_REDIRECT_URL:http://localhost:8080/api/webhooks/momo/return}
+    ipn-url: ${MOMO_IPN_URL:http://localhost:8080/api/webhooks/momo}
+
+shipping:
+  ghtk:
+    base-url: ${GHTK_BASE_URL:}
+    token: ${GHTK_TOKEN:}
+  ghn:
+    base-url: ${GHN_BASE_URL:https://online-gateway.ghn.vn/shiip/public-api}
+    token: ${GHN_TOKEN:}
+    shop-id: ${GHN_SHOP_ID:}
