@@ -1,4 +1,6 @@
 HELP.md
+docs/superpowers/
+
 target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
