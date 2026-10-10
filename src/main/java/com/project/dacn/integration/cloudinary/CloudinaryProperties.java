@@ -11,4 +11,5 @@ public class CloudinaryProperties {
     private String cloudName;
     private String apiKey;
     private String apiSecret;
+    private boolean secure = true;
 }

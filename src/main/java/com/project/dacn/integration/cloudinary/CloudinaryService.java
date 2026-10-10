@@ -1,18 +1,48 @@
 package com.project.dacn.integration.cloudinary;
 
+import com.cloudinary.Cloudinary;
+import com.cloudinary.utils.ObjectUtils;
 import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.Map;
 
 @Service
 public class CloudinaryService {
 
-    private final CloudinaryProperties properties;
+    private final Cloudinary cloudinary;
 
-    public CloudinaryService(CloudinaryProperties properties) {
-        this.properties = properties;
+    public CloudinaryService(Cloudinary cloudinary) {
+        this.cloudinary = cloudinary;
     }
 
-    public String upload(byte[] bytes, String folder) {
-        // TODO: implement upload via Cloudinary client
-        throw new UnsupportedOperationException("Not implemented yet");
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> upload(byte[] bytes, String folder) {
+        try {
+            return (Map<String, Object>) cloudinary.uploader().upload(
+                    bytes,
+                    ObjectUtils.asMap(
+                            "folder", folder,
+                            "resource_type", "auto"));
+        } catch (IOException e) {
+            throw new CloudinaryException("Cloudinary upload failed", e);
+        }
+    }
+
+    public String uploadAndGetUrl(byte[] bytes, String folder) {
+        Map<String, Object> result = upload(bytes, folder);
+        Object url = result.get("secure_url");
+        return url != null ? url.toString() : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> delete(String publicId) {
+        try {
+            return (Map<String, Object>) cloudinary.uploader().destroy(
+                    publicId,
+                    ObjectUtils.asMap("resource_type", "image"));
+        } catch (IOException e) {
+            throw new CloudinaryException("Cloudinary delete failed: " + publicId, e);
+        }
     }
 }
