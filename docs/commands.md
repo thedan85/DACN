@@ -1,1 +1,1 @@
-Run backend: ./mvnw spring-boot:run -Dspring-boot.run.profiles=dev
+Run backend: ./mvnw spring-boot:run "-Dspring-boot.run.profiles=dev"
