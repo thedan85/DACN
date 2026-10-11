@@ -1,0 +1,73 @@
+package com.project.dacn.modules.auth;
+
+import com.project.dacn.modules.auth.entity.Role;
+import com.project.dacn.modules.auth.entity.User;
+import com.project.dacn.modules.auth.repository.RoleRepository;
+import com.project.dacn.modules.auth.repository.UserRepository;
+import com.project.dacn.modules.common.enums.UserStatus;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.context.ActiveProfiles;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+@DataJpaTest
+@ActiveProfiles("test")
+class AuthPersistenceTest {
+
+    @Autowired
+    RoleRepository roleRepository;
+
+    @Autowired
+    UserRepository userRepository;
+
+    @Test
+    void persistRoleAndUserThroughBusinessKeyFk() {
+        Role role = Role.builder()
+                .code("customer")
+                .name("Customer")
+                .system(true)
+                .build();
+        role = roleRepository.save(role);
+        assertThat(role.getId()).isNotNull();
+        assertThat(role.getRoleId()).isNotNull();
+
+        User user = User.builder()
+                .email("a@example.com")
+                .passwordHash("hash")
+                .status(UserStatus.ACTIVE)
+                .role(role)
+                .build();
+        user = userRepository.save(user);
+        assertThat(user.getId()).isNotNull();
+        assertThat(user.getUserId()).isNotNull();
+
+        User found = userRepository.findByUserId(user.getUserId()).orElseThrow();
+        assertThat(found.getRole().getRoleId()).isEqualTo(role.getRoleId());
+    }
+
+    @Test
+    void duplicateEmailRejected() {
+        Role role = roleRepository.save(Role.builder().code("c1").name("C1").build());
+        userRepository.save(User.builder().email("dup@example.com").passwordHash("h").role(role).build());
+
+        assertThatThrownBy(() -> userRepository.saveAndFlush(
+                User.builder().email("dup@example.com").passwordHash("h2").role(role).build()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void softDeletedUserHiddenByDefault() {
+        Role role = roleRepository.save(Role.builder().code("c2").name("C2").build());
+        User user = userRepository.save(User.builder().email("del@example.com")
+                .passwordHash("h").role(role).build());
+        user.setStatus(UserStatus.DELETED);
+        userRepository.save(user);
+
+        assertThat(userRepository.findByUserId(user.getUserId())).isEmpty();
+        assertThat(userRepository.findByStatusNot(UserStatus.DELETED)).isEmpty();
+    }
+}
