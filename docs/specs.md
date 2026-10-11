@@ -20,23 +20,19 @@ Out of scope: services, controllers, security config wiring, Flyway SQL rewrite 
 
 ## 2. Architecture
 
-### 2.1 Package layout — modules per domain
-
-Base package `com.project.dacn.modules`:
+### 2.1 Package layout — flat (team convention, no `modules/` folder)
 
 ```
-modules/common/entity/BaseEntity.java
-modules/common/enums/*.java            (UserStatus, ProductStatus, OrderStatus, PaymentMethod, PaymentStatus, NotificationType, NotificationStatus, AdminStatus, EmployeeStatus)
-modules/auth/entity/      dto/request/      dto/response/      mapper/      repository/
-  User, RefreshToken, Role, Permission, RolePermission
-modules/identity/entity/  ... (Admin, Customer, Employee)
-modules/catalog/entity/   ... (Category, Product, Attribute, AttributeValue, Variant, Media, VariantAttributeValue, ProductAttributeValue)
-modules/cart/entity/      ... (Cart, CartItem)
-modules/order/entity/     ... (Order, OrderItem, Payment)
-modules/engagement/entity/... (Review, Notification)
+entity/BaseEntity.java
+entity/<auth|identity|catalog|cart|order|engagement>/*.java   (23 entities)
+dto/request/<domain>/*CreateRequest.java, *UpdateRequest.java
+dto/response/<domain>/*Response.java
+mapper/<domain>/*.java                                        (10 mappers)
+repository/<domain>/*Repository.java                          (23 repositories)
+common/constant/*.java              (UserStatus, ProductStatus, OrderStatus, PaymentMethod, PaymentStatus, NotificationType, NotificationStatus, AdminStatus, EmployeeStatus)
 ```
 
-Rationale: matches `docs/Overview.md` bounded contexts (PIM/catalog, accounts, orders/fulfillment, notifications); keeps each module independently testable. Flat `domain.*` package was rejected — 23 aggregates in one package become unnavigable.
+Rationale: team agreed on the existing `entity/dto/repository/mapper` folders, organized by domain subpackage (auth, identity, catalog, cart, order, engagement) mirroring the spec's bounded contexts. `BaseEntity` stays at `entity/` root; enums in `common/constant/`.
 
 ### 2.2 Base mapping rules
 
@@ -91,8 +87,8 @@ Price/stock live ONLY on `Variant` (per SQL header), never on `Product`.
 - `AttributeValue`: `attributeValueId`, `ManyToOne Attribute RESTRICT`, `value` (`attribute_value`, non-blank), uniques `(attribute_id, attribute_value)` + `(attribute_id, attribute_value_id)` + single-column `attribute_value_id` (FK target — see §2.4.7).
 - `Variant`: `variantId`, `sku` (`variant_sku` unique), `price` + `stock` (`>= 0`), `ManyToOne Product CASCADE`, `isDeleted`. Hard-delete allowed only when no `cart_items`/`order_items` reference it (`RESTRICT`); otherwise soft-delete.
 - `Media`: `mediaId`, `url` (`media_url`), nullable `ManyToOne Product CASCADE` + nullable `ManyToOne Variant CASCADE`, `isDeleted`. Exactly-one-target enforced in DB CHECK + Java (see §2.4.4).
-- `VariantAttributeValue`: `variantValueId`, `ManyToOne Variant CASCADE`, `ManyToOne Attribute` (writes `attribute_id`) + `ManyToOne AttributeValue` via composite `@JoinColumns` with `attribute_id` `insertable=false, updatable=false` (read-only duplicate — avoids Hibernate repeated-column error while preserving the SQL composite FK `(attribute_id, attribute_value_id) → attribute_values RESTRICT`, which prevents pairing `Color` with `Size-L`), unique `(variant_id, attribute_id)` (one `Color` per variant). Composite mapping must be proven by an integration test early (first `@DataJpaTest` batch), not left to the end.
-- `ProductAttributeValue`: same composite pattern for product-level specs: `productValueId`, `ManyToOne Product CASCADE`, attribute (writes `attribute_id`) + attributeValue (composite read-only on `attribute_id`) pair `RESTRICT`, unique `(product_id, attribute_id)`.
+- `VariantAttributeValue`: `variantValueId`, `ManyToOne Variant CASCADE`, `ManyToOne Attribute` (writes `attribute_id`) + writable scalar `attributeValueId` (`@Column(name="attribute_value_id")`, synced from the association via setter + `@PrePersist/@PreUpdate` backstop) + fully read-only composite `@JoinColumns` (`attribute_id` + `attribute_value_id`, both `insertable=false, updatable=false`) to `AttributeValue` preserving the SQL composite FK `(attribute_id, attribute_value_id) → attribute_values RESTRICT` (prevents pairing `Color` with `Size-L`), unique `(variant_id, attribute_id)` (one `Color` per variant). Single-property mix of writable + read-only columns is rejected by Hibernate (`Column mappings for property mix insertable with insertable=false`) — hence the scalar-carries-write split. Composite mapping proven by `CatalogPersistenceTest.persistCatalogChainThroughBusinessKeys` (first `@DataJpaTest` batch), not left to the end.
+- `ProductAttributeValue`: same composite pattern for product-level specs: `productValueId`, `ManyToOne Product CASCADE`, attribute (writes `attribute_id`) + scalar `attributeValueId` (writes `attribute_value_id`) + fully read-only composite association pair `RESTRICT`, unique `(product_id, attribute_id)`.
 
 ### 3.4 `cart` — Cart, CartItem
 
