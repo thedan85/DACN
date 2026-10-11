@@ -20,23 +20,18 @@ Out of scope: services, controllers, security config wiring, Flyway SQL rewrite 
 
 ## 2. Architecture
 
-### 2.1 Package layout — modules per domain
-
-Base package `com.project.dacn.modules`:
+### 2.1 Package layout — flat (team convention, no `modules/` folder)
 
 ```
-modules/common/entity/BaseEntity.java
-modules/common/enums/*.java            (UserStatus, ProductStatus, OrderStatus, PaymentMethod, PaymentStatus, NotificationType, NotificationStatus, AdminStatus, EmployeeStatus)
-modules/auth/entity/      dto/request/      dto/response/      mapper/      repository/
-  User, RefreshToken, Role, Permission, RolePermission
-modules/identity/entity/  ... (Admin, Customer, Employee)
-modules/catalog/entity/   ... (Category, Product, Attribute, AttributeValue, Variant, Media, VariantAttributeValue, ProductAttributeValue)
-modules/cart/entity/      ... (Cart, CartItem)
-modules/order/entity/     ... (Order, OrderItem, Payment)
-modules/engagement/entity/... (Review, Notification)
+entity/BaseEntity.java, entity/User.java, entity/Role.java, ... (23 entities)
+dto/request/*CreateRequest.java, *UpdateRequest.java
+dto/response/*Response.java
+mapper/RoleMapper.java, mapper/UserMapper.java, mapper/CatalogMapper.java, ... (10 mappers)
+repository/*Repository.java (23 repositories)
+common/constant/*.java              (UserStatus, ProductStatus, OrderStatus, PaymentMethod, PaymentStatus, NotificationType, NotificationStatus, AdminStatus, EmployeeStatus)
 ```
 
-Rationale: matches `docs/Overview.md` bounded contexts (PIM/catalog, accounts, orders/fulfillment, notifications); keeps each module independently testable. Flat `domain.*` package was rejected — 23 aggregates in one package become unnavigable.
+Rationale: team agreed on the existing flat `entity/dto/repository/mapper` folders. Domain grouping is by class-name prefix (e.g. `Order*`, `Product*`), not by package.
 
 ### 2.2 Base mapping rules
 
