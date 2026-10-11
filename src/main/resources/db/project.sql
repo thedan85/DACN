@@ -2,7 +2,7 @@
 -- Schema: E-commerce
 -- Engine: InnoDB
 -- Charset: utf8mb4 (utf8mb4_0900_ai_ci = case-insensitive UNIQUE chong Red/red)
--- PK: business id VARCHAR(255), khong dung INT surrogate
+-- PK: surrogate BIGINT id; business id VARCHAR(255) is UNIQUE and used by FKs
 -- Copy: PART 1 tables (columns + PK, khong FK/UNIQUE/CHECK) -> PART 2 ALTER -> PART 3 indexes
 -- Time: created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 --       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -15,7 +15,7 @@
 --   Tuong tu: variant nam trong cart_items/order_items (RESTRICT) -> product/variant chi soft-delete.
 --   Xoa cung product chi thanh cong khi moi variant khong con trong gio/don.
 -- Cascade: user -> refresh_tokens/admins/customers/employees/notifications
---          product -> variants -> media/variant_values/reviews
+--          product -> variants -> media/variant_attribute_values/reviews
 --          order -> order_items/payments
 -- Status: ENUM (order: PENDING,CONFIRMED,SHIPPING,COMPLETED,CANCELLED, khong dung cash)
 -- =========================================================
@@ -297,6 +297,11 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 -- users.user_email UNIQUE: chong trung email dang nhap
 ALTER TABLE users ADD CONSTRAINT uq_users_email UNIQUE (user_email);
+-- users.user_id UNIQUE: business key used by FKs
+ALTER TABLE users ADD CONSTRAINT uq_users_user_id UNIQUE (user_id);
+
+-- refresh_tokens.token_id UNIQUE: business key convention
+ALTER TABLE refresh_tokens ADD CONSTRAINT uq_refresh_tokens_id UNIQUE (token_id);
 
 -- roles.role_id UNIQUE: can cho FK (users/role_permissions) tham chieu business id
 ALTER TABLE roles ADD CONSTRAINT uq_roles_id UNIQUE (role_id);
@@ -318,6 +323,8 @@ ALTER TABLE roles ADD CONSTRAINT uq_roles_code UNIQUE (role_code);
 
 -- permissions.permission_code UNIQUE: ma quyen 'product:create' khong duoc trung
 ALTER TABLE permissions ADD CONSTRAINT uq_permissions_code UNIQUE (permission_code);
+-- permissions.permission_id UNIQUE: business key used by FKs
+ALTER TABLE permissions ADD CONSTRAINT uq_permissions_id UNIQUE (permission_id);
 
 -- role_permissions (role_id, permission_id) UNIQUE: chong gan trung quyen cho role
 ALTER TABLE role_permissions ADD CONSTRAINT uq_role_permission UNIQUE (role_id, permission_id);
@@ -332,6 +339,8 @@ ALTER TABLE role_permissions ADD CONSTRAINT fk_role_permissions_permission
 
 -- admins.user_id UNIQUE: moi user chi co 1 profile admin (1-1)
 ALTER TABLE admins ADD CONSTRAINT uq_admins_user UNIQUE (user_id);
+-- admins.admin_id UNIQUE: business key convention
+ALTER TABLE admins ADD CONSTRAINT uq_admins_id UNIQUE (admin_id);
 -- FK admins.user_id -> users: xoa user thi xoa profile admin
 ALTER TABLE admins ADD CONSTRAINT fk_admins_user
     FOREIGN KEY (user_id) REFERENCES users(user_id)
@@ -339,6 +348,8 @@ ALTER TABLE admins ADD CONSTRAINT fk_admins_user
 
 -- customers.user_id UNIQUE: moi user chi co 1 profile customer (1-1)
 ALTER TABLE customers ADD CONSTRAINT uq_customers_user UNIQUE (user_id);
+-- customers.customer_id UNIQUE: business key used by FKs
+ALTER TABLE customers ADD CONSTRAINT uq_customers_id UNIQUE (customer_id);
 -- FK customers.user_id -> users: xoa user thi xoa profile customer
 ALTER TABLE customers ADD CONSTRAINT fk_customers_user
     FOREIGN KEY (user_id) REFERENCES users(user_id)
@@ -346,6 +357,8 @@ ALTER TABLE customers ADD CONSTRAINT fk_customers_user
 
 -- employees.user_id UNIQUE: moi user chi co 1 profile employee (1-1)
 ALTER TABLE employees ADD CONSTRAINT uq_employees_user UNIQUE (user_id);
+-- employees.employee_id UNIQUE: business key convention
+ALTER TABLE employees ADD CONSTRAINT uq_employees_id UNIQUE (employee_id);
 -- FK employees.user_id -> users: xoa user thi xoa profile employee
 ALTER TABLE employees ADD CONSTRAINT fk_employees_user
     FOREIGN KEY (user_id) REFERENCES users(user_id)
@@ -353,6 +366,8 @@ ALTER TABLE employees ADD CONSTRAINT fk_employees_user
 
 -- categories.category_slug UNIQUE: slug dung cho URL nen khong duoc trung
 ALTER TABLE categories ADD CONSTRAINT uq_categories_slug UNIQUE (category_slug);
+-- categories.category_id UNIQUE: business key used by FKs
+ALTER TABLE categories ADD CONSTRAINT uq_categories_id UNIQUE (category_id);
 -- FK categories.parent -> categories SET NULL: xoa cha thi con thanh goc, khong mat hang
 ALTER TABLE categories ADD CONSTRAINT fk_categories_parent
     FOREIGN KEY (parent_category_id) REFERENCES categories(category_id)
@@ -363,14 +378,21 @@ ALTER TABLE products ADD CONSTRAINT fk_products_category
     FOREIGN KEY (category_id) REFERENCES categories(category_id)
     ON DELETE SET NULL ON UPDATE CASCADE;
 
+-- products.product_id UNIQUE: business key used by FKs
+ALTER TABLE products ADD CONSTRAINT uq_products_id UNIQUE (product_id);
+
 -- attributes.attribute_name UNIQUE: ten thuoc tinh 'Color' khong duoc trung (ai_ci chong Red/red)
 ALTER TABLE attributes ADD CONSTRAINT uq_attributes_name UNIQUE (attribute_name);
+-- attributes.attribute_id UNIQUE: business key used by FKs
+ALTER TABLE attributes ADD CONSTRAINT uq_attributes_id UNIQUE (attribute_id);
 
 -- attribute_values (attribute_id, value) UNIQUE: 'Color-Red' chi co 1 dong chuan
 ALTER TABLE attribute_values ADD CONSTRAINT uq_attribute_value UNIQUE (attribute_id, attribute_value);
 
 ALTER TABLE attribute_values
 ADD CONSTRAINT uq_attribute_value_id UNIQUE (attribute_id, attribute_value_id);
+-- attribute_values.attribute_value_id UNIQUE: business key convention
+ALTER TABLE attribute_values ADD CONSTRAINT uq_attribute_values_id UNIQUE (attribute_value_id);
 -- CHECK attribute_value khong rong: chong luu gia tri trang
 ALTER TABLE attribute_values ADD CONSTRAINT chk_attribute_value_nonblank CHECK (LENGTH(TRIM(attribute_value)) > 0);
 -- FK attribute_values.attribute_id -> attributes RESTRICT: dang co gia tri thi khong cho xoa thuoc tinh
@@ -380,6 +402,8 @@ ALTER TABLE attribute_values ADD CONSTRAINT fk_attribute_values_attribute
 
 -- variants.variant_sku UNIQUE: ma SKU dung tru kho nen bat buoc duy nhat
 ALTER TABLE variants ADD CONSTRAINT uq_variants_sku UNIQUE (variant_sku);
+-- variants.variant_id UNIQUE: business key used by FKs
+ALTER TABLE variants ADD CONSTRAINT uq_variants_id UNIQUE (variant_id);
 -- CHECK variant_price >= 0: chong gia am
 ALTER TABLE variants ADD CONSTRAINT chk_variants_price CHECK (variant_price >= 0);
 -- CHECK variant_stock >= 0: chong ton kho am
@@ -398,20 +422,35 @@ ALTER TABLE media ADD CONSTRAINT fk_media_product
 ALTER TABLE media ADD CONSTRAINT fk_media_variant
     FOREIGN KEY (variant_id) REFERENCES variants(variant_id)
     ON DELETE CASCADE ON UPDATE CASCADE;
+-- media.media_id UNIQUE: business key convention
+ALTER TABLE media ADD CONSTRAINT uq_media_id UNIQUE (media_id);
 
--- variant_values (variant_id, attribute_id) UNIQUE: 1 variant chi co 1 'Color'
-ALTER TABLE variant_values ADD CONSTRAINT uq_variant_attribute UNIQUE (variant_id, attribute_id);
--- FK variant_values.variant_id -> variants: xoa variant thi xoa het gia tri
-ALTER TABLE variant_values ADD CONSTRAINT fk_variant_values_variant
+-- variant_attribute_values (variant_id, attribute_id) UNIQUE: 1 variant chi co 1 'Color'
+ALTER TABLE variant_attribute_values ADD CONSTRAINT uq_variant_attribute UNIQUE (variant_id, attribute_id);
+-- FK variant_attribute_values.variant_id -> variants: xoa variant thi xoa het gia tri
+ALTER TABLE variant_attribute_values ADD CONSTRAINT fk_variant_attribute_values_variant
     FOREIGN KEY (variant_id) REFERENCES variants(variant_id)
     ON DELETE CASCADE ON UPDATE CASCADE;
 -- FK composite (attribute_id, attribute_value_id) -> attribute_values: chan ghep sai cap (Color + Size-L)
-ALTER TABLE variant_values ADD CONSTRAINT fk_variant_values_attr_pair
+ALTER TABLE variant_attribute_values ADD CONSTRAINT fk_variant_attribute_values_attr_pair
+    FOREIGN KEY (attribute_id, attribute_value_id) REFERENCES attribute_values(attribute_id, attribute_value_id)
+    ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- product_attribute_values (product_id, attribute_id) UNIQUE: 1 product chi co 1 gia tri cho moi attribute
+ALTER TABLE product_attribute_values ADD CONSTRAINT uq_product_attribute UNIQUE (product_id, attribute_id);
+-- FK product_attribute_values.product_id -> products: xoa product thi xoa het gia tri
+ALTER TABLE product_attribute_values ADD CONSTRAINT fk_product_values_product
+    FOREIGN KEY (product_id) REFERENCES products(product_id)
+    ON DELETE CASCADE ON UPDATE CASCADE;
+-- FK composite (attribute_id, attribute_value_id) -> attribute_values: chan ghep sai cap
+ALTER TABLE product_attribute_values ADD CONSTRAINT fk_product_values_attr_pair
     FOREIGN KEY (attribute_id, attribute_value_id) REFERENCES attribute_values(attribute_id, attribute_value_id)
     ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- carts.customer_id UNIQUE: moi customer chi co 1 gio (them khi can multi-cart/wishlist)
 ALTER TABLE carts ADD CONSTRAINT uq_carts_customer UNIQUE (customer_id);
+-- carts.cart_id UNIQUE: business key used by FKs
+ALTER TABLE carts ADD CONSTRAINT uq_carts_id UNIQUE (cart_id);
 -- FK carts.customer_id -> customers: xoa customer thi xoa gio
 ALTER TABLE carts ADD CONSTRAINT fk_carts_customer
     FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
@@ -432,6 +471,8 @@ ALTER TABLE cart_items ADD CONSTRAINT fk_cart_items_variant
 
 -- CHECK order_total >= 0: tong don khong am
 ALTER TABLE orders ADD CONSTRAINT chk_orders_total CHECK (order_total >= 0);
+-- orders.order_id UNIQUE: business key used by FKs
+ALTER TABLE orders ADD CONSTRAINT uq_orders_id UNIQUE (order_id);
 -- FK orders.customer_id -> customers RESTRICT: giu lich su don, khong cho xoa customer con don
 ALTER TABLE orders ADD CONSTRAINT fk_orders_customer
     FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
@@ -441,6 +482,8 @@ ALTER TABLE orders ADD CONSTRAINT fk_orders_customer
 ALTER TABLE order_items ADD CONSTRAINT chk_order_items_qty CHECK (quantity > 0);
 -- CHECK unit_price >= 0: don gia tai thoi diem ban khong am
 ALTER TABLE order_items ADD CONSTRAINT chk_order_items_price CHECK (unit_price >= 0);
+-- order_items.order_item_id UNIQUE: business key used by FKs
+ALTER TABLE order_items ADD CONSTRAINT uq_order_items_id UNIQUE (order_item_id);
 -- FK order_items.order_id -> orders: xoa order thi xoa het dong hang
 ALTER TABLE order_items ADD CONSTRAINT fk_order_items_order
     FOREIGN KEY (order_id) REFERENCES orders(order_id)
