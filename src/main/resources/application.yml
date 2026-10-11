@@ -6,6 +6,12 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 10000
+      idle-timeout: 300000
+      max-lifetime: 600000
   jpa:
     hibernate:
       ddl-auto: validate
@@ -15,6 +21,8 @@ spring:
         format_sql: true
   flyway:
     enabled: false
+    baseline-on-migrate: true
+    baseline-version: 0
   mail:
     host: ${MAIL_HOST:localhost}
     port: ${MAIL_PORT:1025}

@@ -217,6 +217,13 @@
 			<artifactId>dotenv-java</artifactId>
 			<version>3.0.0</version>
 		</dependency>
+		<!-- Source: https://mvnrepository.com/artifact/com.ainrif.apiator/jakson-plugin-core-json-renderer -->
+		<dependency>
+			<groupId>com.ainrif.apiator</groupId>
+			<artifactId>jakson-plugin-core-json-renderer</artifactId>
+			<version>0.15.1</version>
+			<scope>compile</scope>
+		</dependency>
 	</dependencies>
 
 	<build>
