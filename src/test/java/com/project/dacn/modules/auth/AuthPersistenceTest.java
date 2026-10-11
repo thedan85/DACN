@@ -1,7 +1,13 @@
 package com.project.dacn.modules.auth;
 
+import com.project.dacn.modules.auth.entity.Permission;
+import com.project.dacn.modules.auth.entity.RefreshToken;
 import com.project.dacn.modules.auth.entity.Role;
+import com.project.dacn.modules.auth.entity.RolePermission;
 import com.project.dacn.modules.auth.entity.User;
+import com.project.dacn.modules.auth.repository.PermissionRepository;
+import com.project.dacn.modules.auth.repository.RefreshTokenRepository;
+import com.project.dacn.modules.auth.repository.RolePermissionRepository;
 import com.project.dacn.modules.auth.repository.RoleRepository;
 import com.project.dacn.modules.auth.repository.UserRepository;
 import com.project.dacn.modules.common.enums.UserStatus;
@@ -23,6 +29,15 @@ class AuthPersistenceTest {
 
     @Autowired
     UserRepository userRepository;
+
+    @Autowired
+    RefreshTokenRepository refreshTokenRepository;
+
+    @Autowired
+    PermissionRepository permissionRepository;
+
+    @Autowired
+    RolePermissionRepository rolePermissionRepository;
 
     @Test
     void persistRoleAndUserThroughBusinessKeyFk() {
@@ -56,6 +71,30 @@ class AuthPersistenceTest {
 
         assertThatThrownBy(() -> userRepository.saveAndFlush(
                 User.builder().email("dup@example.com").passwordHash("h2").role(role).build()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void persistRefreshTokenPermissionAndGrant() {
+        Role role = roleRepository.save(Role.builder().code("admin").name("Admin").build());
+        User user = userRepository.save(User.builder().email("t@example.com")
+                .passwordHash("h").role(role).build());
+        RefreshToken token = refreshTokenRepository.save(RefreshToken.builder()
+                .user(user).tokenHash("thash")
+                .expiresAt(java.time.Instant.now().plusSeconds(3600)).build());
+        assertThat(token.getTokenId()).isNotNull();
+
+        Permission perm = permissionRepository.save(Permission.builder()
+                .code("product:create").name("Create product")
+                .resource("product").action("create").build());
+        assertThat(perm.getPermissionId()).isNotNull();
+
+        RolePermission grant = rolePermissionRepository.save(
+                RolePermission.builder().role(role).permission(perm).build());
+        assertThat(grant.getRolePermissionId()).isNotNull();
+
+        assertThatThrownBy(() -> rolePermissionRepository.saveAndFlush(
+                RolePermission.builder().role(role).permission(perm).build()))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
