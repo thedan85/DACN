@@ -1,5 +1,7 @@
 Project: Enterprise Headless E-Commerce Platform with Touchless Fulfillment and PIM
 
+## This is the backend of the project, which is a headless e-commerce platform that supports touchless fulfillment and product information management (PIM). 
+
 ## Tech stack:
     - Frontend: Next.js 
     - Backend: Spring Boot(Spring Security, Spring Data JPA), Mapstruct, Refresh + Access token, PostgreSQL / Supabase, Redis, RabbitMQ
