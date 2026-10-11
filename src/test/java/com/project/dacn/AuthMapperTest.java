@@ -1,15 +1,15 @@
 package com.project.dacn;
 
-import com.project.dacn.dto.request.RoleCreateRequest;
-import com.project.dacn.dto.request.RoleUpdateRequest;
-import com.project.dacn.dto.request.UserCreateRequest;
-import com.project.dacn.dto.request.UserUpdateRequest;
-import com.project.dacn.dto.response.RoleResponse;
-import com.project.dacn.dto.response.UserResponse;
-import com.project.dacn.entity.Role;
-import com.project.dacn.entity.User;
-import com.project.dacn.mapper.RoleMapper;
-import com.project.dacn.mapper.UserMapper;
+import com.project.dacn.dto.request.auth.RoleCreateRequest;
+import com.project.dacn.dto.request.auth.RoleUpdateRequest;
+import com.project.dacn.dto.request.auth.UserCreateRequest;
+import com.project.dacn.dto.request.auth.UserUpdateRequest;
+import com.project.dacn.dto.response.auth.RoleResponse;
+import com.project.dacn.dto.response.auth.UserResponse;
+import com.project.dacn.entity.auth.Role;
+import com.project.dacn.entity.auth.User;
+import com.project.dacn.mapper.auth.RoleMapper;
+import com.project.dacn.mapper.auth.UserMapper;
 import com.project.dacn.common.constant.UserStatus;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;

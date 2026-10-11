@@ -1,15 +1,15 @@
 package com.project.dacn;
 
-import com.project.dacn.entity.Role;
-import com.project.dacn.entity.User;
-import com.project.dacn.repository.RoleRepository;
-import com.project.dacn.repository.UserRepository;
-import com.project.dacn.entity.Admin;
-import com.project.dacn.entity.Customer;
-import com.project.dacn.entity.Employee;
-import com.project.dacn.repository.AdminRepository;
-import com.project.dacn.repository.CustomerRepository;
-import com.project.dacn.repository.EmployeeRepository;
+import com.project.dacn.entity.auth.Role;
+import com.project.dacn.entity.auth.User;
+import com.project.dacn.repository.auth.RoleRepository;
+import com.project.dacn.repository.auth.UserRepository;
+import com.project.dacn.entity.identity.Admin;
+import com.project.dacn.entity.identity.Customer;
+import com.project.dacn.entity.identity.Employee;
+import com.project.dacn.repository.identity.AdminRepository;
+import com.project.dacn.repository.identity.CustomerRepository;
+import com.project.dacn.repository.identity.EmployeeRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;

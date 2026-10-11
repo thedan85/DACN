@@ -1,14 +1,14 @@
 package com.project.dacn;
 
-import com.project.dacn.dto.request.CartItemCreateRequest;
-import com.project.dacn.entity.CartItem;
-import com.project.dacn.mapper.CartMapper;
-import com.project.dacn.dto.request.ReviewCreateRequest;
-import com.project.dacn.entity.Review;
-import com.project.dacn.mapper.EngagementMapper;
-import com.project.dacn.dto.request.OrderCreateRequest;
-import com.project.dacn.entity.Order;
-import com.project.dacn.mapper.OrderMapper;
+import com.project.dacn.dto.request.cart.CartItemCreateRequest;
+import com.project.dacn.entity.cart.CartItem;
+import com.project.dacn.mapper.cart.CartMapper;
+import com.project.dacn.dto.request.engagement.ReviewCreateRequest;
+import com.project.dacn.entity.engagement.Review;
+import com.project.dacn.mapper.engagement.EngagementMapper;
+import com.project.dacn.dto.request.order.OrderCreateRequest;
+import com.project.dacn.entity.order.Order;
+import com.project.dacn.mapper.order.OrderMapper;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 

@@ -1,15 +1,15 @@
 package com.project.dacn;
 
-import com.project.dacn.entity.Permission;
-import com.project.dacn.entity.RefreshToken;
-import com.project.dacn.entity.Role;
-import com.project.dacn.entity.RolePermission;
-import com.project.dacn.entity.User;
-import com.project.dacn.repository.PermissionRepository;
-import com.project.dacn.repository.RefreshTokenRepository;
-import com.project.dacn.repository.RolePermissionRepository;
-import com.project.dacn.repository.RoleRepository;
-import com.project.dacn.repository.UserRepository;
+import com.project.dacn.entity.auth.Permission;
+import com.project.dacn.entity.auth.RefreshToken;
+import com.project.dacn.entity.auth.Role;
+import com.project.dacn.entity.auth.RolePermission;
+import com.project.dacn.entity.auth.User;
+import com.project.dacn.repository.auth.PermissionRepository;
+import com.project.dacn.repository.auth.RefreshTokenRepository;
+import com.project.dacn.repository.auth.RolePermissionRepository;
+import com.project.dacn.repository.auth.RoleRepository;
+import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.common.constant.UserStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

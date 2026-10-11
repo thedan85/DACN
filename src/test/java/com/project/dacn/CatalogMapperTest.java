@@ -1,10 +1,10 @@
 package com.project.dacn;
 
-import com.project.dacn.dto.request.AttributeValueCreateRequest;
-import com.project.dacn.dto.request.MediaCreateRequest;
-import com.project.dacn.dto.request.ProductCreateRequest;
-import com.project.dacn.entity.Media;
-import com.project.dacn.mapper.CatalogMapper;
+import com.project.dacn.dto.request.catalog.AttributeValueCreateRequest;
+import com.project.dacn.dto.request.catalog.MediaCreateRequest;
+import com.project.dacn.dto.request.catalog.ProductCreateRequest;
+import com.project.dacn.entity.catalog.Media;
+import com.project.dacn.mapper.catalog.CatalogMapper;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
