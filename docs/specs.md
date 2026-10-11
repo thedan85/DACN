@@ -23,15 +23,16 @@ Out of scope: services, controllers, security config wiring, Flyway SQL rewrite 
 ### 2.1 Package layout — flat (team convention, no `modules/` folder)
 
 ```
-entity/BaseEntity.java, entity/User.java, entity/Role.java, ... (23 entities)
-dto/request/*CreateRequest.java, *UpdateRequest.java
-dto/response/*Response.java
-mapper/RoleMapper.java, mapper/UserMapper.java, mapper/CatalogMapper.java, ... (10 mappers)
-repository/*Repository.java (23 repositories)
+entity/BaseEntity.java
+entity/<auth|identity|catalog|cart|order|engagement>/*.java   (23 entities)
+dto/request/<domain>/*CreateRequest.java, *UpdateRequest.java
+dto/response/<domain>/*Response.java
+mapper/<domain>/*.java                                        (10 mappers)
+repository/<domain>/*Repository.java                          (23 repositories)
 common/constant/*.java              (UserStatus, ProductStatus, OrderStatus, PaymentMethod, PaymentStatus, NotificationType, NotificationStatus, AdminStatus, EmployeeStatus)
 ```
 
-Rationale: team agreed on the existing flat `entity/dto/repository/mapper` folders. Domain grouping is by class-name prefix (e.g. `Order*`, `Product*`), not by package.
+Rationale: team agreed on the existing `entity/dto/repository/mapper` folders, organized by domain subpackage (auth, identity, catalog, cart, order, engagement) mirroring the spec's bounded contexts. `BaseEntity` stays at `entity/` root; enums in `common/constant/`.
 
 ### 2.2 Base mapping rules
 
