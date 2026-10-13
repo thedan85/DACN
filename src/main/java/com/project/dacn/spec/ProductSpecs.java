@@ -1,9 +1,10 @@
-package com.project.dacn.service.catalog;
+package com.project.dacn.spec;
 
 import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.entity.catalog.Category_;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.entity.catalog.Product_;
+import com.project.dacn.service.catalog.ProductFilter;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
