@@ -1,0 +1,46 @@
+package com.project.dacn.controller.catalog;
+
+import com.project.dacn.common.response.ApiResponse;
+import com.project.dacn.common.response.PageResponse;
+import com.project.dacn.dto.request.catalog.VariantAttributeValueCreateRequest;
+import com.project.dacn.dto.response.catalog.VariantAttributeValueResponse;
+import com.project.dacn.service.catalog.VariantAttributeService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequiredArgsConstructor
+public class VariantAttributeController {
+
+    private final VariantAttributeService service;
+
+    @GetMapping("/api/variants/{variantId}/attributes")
+    public ApiResponse<PageResponse<VariantAttributeValueResponse>> listByVariant(
+            @PathVariable String variantId, Pageable pageable) {
+        return ApiResponse.ok(service.listByVariant(variantId, pageable));
+    }
+
+    @GetMapping("/api/variant-attributes/{variantValueId}")
+    public ApiResponse<VariantAttributeValueResponse> get(@PathVariable String variantValueId) {
+        return ApiResponse.ok(service.get(variantValueId));
+    }
+
+    @PostMapping("/api/variant-attributes")
+    public ApiResponse<VariantAttributeValueResponse> create(
+            @Valid @RequestBody VariantAttributeValueCreateRequest request) {
+        return ApiResponse.ok(service.create(request));
+    }
+
+    @DeleteMapping("/api/variant-attributes/{variantValueId}")
+    public ApiResponse<Void> delete(@PathVariable String variantValueId) {
+        service.delete(variantValueId);
+        return ApiResponse.ok(null);
+    }
+}
