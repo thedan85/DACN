@@ -17,7 +17,8 @@ class CatalogMapperTest {
 
     @Test
     void productCreateIgnoresBusinessIdAndCategory() {
-        assertThat(mapper.toProduct(new ProductCreateRequest("P", "d", null, "cat-1")).getProductId())
+        assertThat(mapper.toProduct(
+                new ProductCreateRequest("P", "d", "detail", null, "cat-1")).getProductId())
                 .isNull();
     }
 

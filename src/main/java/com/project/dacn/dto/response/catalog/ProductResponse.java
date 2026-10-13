@@ -8,6 +8,7 @@ public record ProductResponse(
         String productId,
         String name,
         String description,
+        String detailDescription,
         String thumbnail,
         ProductStatus status,
         String categoryId,

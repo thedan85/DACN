@@ -37,6 +37,9 @@ public class Product extends BaseEntity {
     @Column(name = "product_description", nullable = false, columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "product_detail_description", columnDefinition = "TEXT")
+    private String detailDescription;
+
     @Column(name = "product_thumbnail", length = 500)
     private String thumbnail;
 
