@@ -1,0 +1,25 @@
+package com.project.dacn.controller;
+
+import java.util.Map;
+
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/health")
+public class HealthController {
+
+    private final StringRedisTemplate redisTemplate;
+
+    public HealthController(StringRedisTemplate redisTemplate) {
+        this.redisTemplate = redisTemplate;
+    }
+
+    @GetMapping("/redis")
+    public Map<String, String> redis() {
+        redisTemplate.opsForValue().set("health:ping", "pong");
+        return Map.of("redis", String.valueOf(redisTemplate.opsForValue().get("health:ping")));
+    }
+}
