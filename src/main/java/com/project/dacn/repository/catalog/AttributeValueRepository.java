@@ -1,6 +1,8 @@
 package com.project.dacn.repository.catalog;
 
 import com.project.dacn.entity.catalog.AttributeValue;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -10,4 +12,6 @@ public interface AttributeValueRepository extends JpaRepository<AttributeValue, 
     Optional<AttributeValue> findByAttributeValueId(String attributeValueId);
 
     List<AttributeValue> findByAttribute_AttributeId(String attributeId);
+
+    Page<AttributeValue> findByAttribute_AttributeId(String attributeId, Pageable pageable);
 }
