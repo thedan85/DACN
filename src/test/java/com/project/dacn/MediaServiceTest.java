@@ -66,4 +66,20 @@ class MediaServiceTest {
         service.delete("m");
         assertThat(m.getDeleted()).isTrue();
     }
+
+    @Test
+    void listByProductMissingParentThrowsNotFound() {
+        when(productRepo.findByProductId("nope")).thenReturn(Optional.empty());
+        assertThatThrownBy(
+                () -> service.listByProduct("nope", org.springframework.data.domain.Pageable.unpaged()))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void listByVariantMissingParentThrowsNotFound() {
+        when(variantRepo.findByVariantId("nope")).thenReturn(Optional.empty());
+        assertThatThrownBy(
+                () -> service.listByVariant("nope", org.springframework.data.domain.Pageable.unpaged()))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
 }

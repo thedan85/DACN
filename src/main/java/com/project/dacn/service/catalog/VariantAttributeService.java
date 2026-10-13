@@ -31,6 +31,9 @@ public class VariantAttributeService {
     private final CatalogMapper mapper;
 
     public PageResponse<VariantAttributeValueResponse> listByVariant(String variantId, Pageable pageable) {
+        if (variantRepo.findByVariantId(variantId).isEmpty()) {
+            throw new ResourceNotFoundException("variant not found: " + variantId);
+        }
         Page<VariantAttributeValue> page = repo.findByVariant_VariantId(variantId, pageable);
         return PageResponse.from(page, page.map(mapper::toVariantAttributeValueResponse).getContent());
     }

@@ -50,7 +50,7 @@ class CategoryServiceTest {
     void selfParentRejected() {
         Category c = Category.builder().categoryId("a").name("A").slug("a").build();
         when(repo.findByCategoryId("a")).thenReturn(Optional.of(c));
-        assertThatThrownBy(() -> service.update("a", new CategoryUpdateRequest(null, null, "a", null)))
+        assertThatThrownBy(() -> service.update("a", new CategoryUpdateRequest(null, null, "a")))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

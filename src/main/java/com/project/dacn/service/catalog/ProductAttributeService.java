@@ -31,6 +31,9 @@ public class ProductAttributeService {
     private final CatalogMapper mapper;
 
     public PageResponse<ProductAttributeValueResponse> listByProduct(String productId, Pageable pageable) {
+        if (productRepo.findByProductId(productId).isEmpty()) {
+            throw new ResourceNotFoundException("product not found: " + productId);
+        }
         Page<ProductAttributeValue> page = repo.findByProduct_ProductId(productId, pageable);
         return PageResponse.from(page, page.map(mapper::toProductAttributeValueResponse).getContent());
     }

@@ -29,11 +29,12 @@ class CatalogExceptionHandlerTest {
     }
 
     @Test
-    void conflictMapsTo409Envelope() {
+    void conflictReturnsGenericMessage() {
         ResponseEntity<ApiResponse<?>> response =
-                handler.handleConflict(new DataIntegrityViolationException("duplicate"));
+                handler.handleConflict(new DataIntegrityViolationException(
+                        "ERROR: duplicate key value violates unique constraint \"uq_categories_slug\""));
         assertThat(response.getStatusCode().value()).isEqualTo(409);
-        assertThat(response.getBody().getCode()).isEqualTo(409);
+        assertThat(response.getBody().getMessage()).doesNotContain("uq_categories_slug");
     }
 
     @Test
@@ -67,10 +68,28 @@ class CatalogExceptionHandlerTest {
     }
 
     @Test
-    void genericExceptionMapsTo500Envelope() {
+    void genericExceptionReturnsGenericMessage() {
         ResponseEntity<ApiResponse<?>> response =
                 handler.handleGeneric(new RuntimeException("boom"));
         assertThat(response.getStatusCode().value()).isEqualTo(500);
         assertThat(response.getBody().getCode()).isEqualTo(500);
+        assertThat(response.getBody().getMessage()).doesNotContain("boom");
+    }
+
+    @Test
+    void unknownRouteMapsTo404Envelope() {
+        ResponseEntity<ApiResponse<?>> response = handler.handleNoResource(
+                new org.springframework.web.servlet.resource.NoResourceFoundException(
+                        org.springframework.http.HttpMethod.GET, "/api/nope", "/api/nope"));
+        assertThat(response.getStatusCode().value()).isEqualTo(404);
+        assertThat(response.getBody().getCode()).isEqualTo(404);
+    }
+
+    @Test
+    void malformedJsonMapsTo400Envelope() {
+        ResponseEntity<ApiResponse<?>> response = handler.handleNotReadable(
+                new org.springframework.http.converter.HttpMessageNotReadableException("bad json", null, null));
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(response.getBody().getCode()).isEqualTo(400);
     }
 }

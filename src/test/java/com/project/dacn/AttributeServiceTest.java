@@ -73,6 +73,8 @@ class AttributeServiceTest {
     void listByAttributePaginated() {
         AttributeValue v = AttributeValue.builder().attributeValueId("v").value("Red").build();
         Page<AttributeValue> page = new PageImpl<>(List.of(v), Pageable.unpaged(), 1);
+        when(attributeRepo.findByAttributeId("color"))
+                .thenReturn(Optional.of(Attribute.builder().attributeId("color").name("Color").build()));
         when(valueRepo.findByAttribute_AttributeId("color", Pageable.unpaged())).thenReturn(page);
         when(mapper.toAttributeValueResponse(v)).thenReturn(
                 new AttributeValueResponse("v", "color", "Color", "Red", null, null));
@@ -80,5 +82,12 @@ class AttributeServiceTest {
                 valueService.listByAttribute("color", Pageable.unpaged());
         assertThat(result.getContent()).hasSize(1);
         verify(valueRepo).findByAttribute_AttributeId("color", Pageable.unpaged());
+    }
+
+    @Test
+    void listByAttributeMissingParentThrowsNotFound() {
+        when(attributeRepo.findByAttributeId("nope")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> valueService.listByAttribute("nope", Pageable.unpaged()))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 }

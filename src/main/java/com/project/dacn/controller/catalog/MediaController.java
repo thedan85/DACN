@@ -15,45 +15,56 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/media")
 @RequiredArgsConstructor
 public class MediaController {
 
     private final MediaService service;
 
-    @GetMapping
+    @GetMapping("/api/media")
     public ApiResponse<PageResponse<MediaResponse>> list(Pageable pageable) {
         return ApiResponse.ok(service.list(pageable));
     }
 
-    @GetMapping("/{mediaId}")
+    @GetMapping("/api/media/{mediaId}")
     public ApiResponse<MediaResponse> get(@PathVariable String mediaId) {
         return ApiResponse.ok(service.get(mediaId));
     }
 
-    @PostMapping
+    @GetMapping("/api/products/{productId}/media")
+    public ApiResponse<PageResponse<MediaResponse>> listByProduct(@PathVariable String productId,
+            Pageable pageable) {
+        return ApiResponse.ok(service.listByProduct(productId, pageable));
+    }
+
+    @GetMapping("/api/variants/{variantId}/media")
+    public ApiResponse<PageResponse<MediaResponse>> listByVariant(@PathVariable String variantId,
+            Pageable pageable) {
+        return ApiResponse.ok(service.listByVariant(variantId, pageable));
+    }
+
+    @PostMapping("/api/media")
     public ApiResponse<MediaResponse> create(@Valid @RequestBody MediaCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
-    @PutMapping("/{mediaId}")
+    @PutMapping("/api/media/{mediaId}")
     public ApiResponse<MediaResponse> replace(@PathVariable String mediaId,
             @Valid @RequestBody MediaUpdateRequest request) {
         return ApiResponse.ok(service.update(mediaId, request));
     }
 
-    @PatchMapping("/{mediaId}")
+    @PatchMapping("/api/media/{mediaId}")
     public ApiResponse<MediaResponse> patch(@PathVariable String mediaId,
             @Valid @RequestBody MediaUpdateRequest request) {
         return ApiResponse.ok(service.update(mediaId, request));
     }
 
-    @DeleteMapping("/{mediaId}")
+    @DeleteMapping("/api/media/{mediaId}")
     public ApiResponse<Void> delete(@PathVariable String mediaId) {
         service.delete(mediaId);
         return ApiResponse.ok(null);

@@ -32,11 +32,13 @@ public class MediaService {
     }
 
     public PageResponse<MediaResponse> listByProduct(String productId, Pageable pageable) {
+        requireProduct(productId);
         Page<Media> page = repo.findByProduct_ProductId(productId, pageable);
         return PageResponse.from(page, page.map(mapper::toMediaResponse).getContent());
     }
 
     public PageResponse<MediaResponse> listByVariant(String variantId, Pageable pageable) {
+        requireVariant(variantId);
         Page<Media> page = repo.findByVariant_VariantId(variantId, pageable);
         return PageResponse.from(page, page.map(mapper::toMediaResponse).getContent());
     }
@@ -46,6 +48,11 @@ public class MediaService {
     }
 
     public MediaResponse create(MediaCreateRequest request) {
+        boolean hasProduct = request.productId() != null;
+        boolean hasVariant = request.variantId() != null;
+        if (hasProduct == hasVariant) {
+            throw new IllegalArgumentException("media must reference exactly one of product or variant");
+        }
         Media entity = mapper.toMedia(request);
         if (request.productId() != null) {
             entity.setProduct(productRepo.findByProductId(request.productId())
@@ -74,5 +81,17 @@ public class MediaService {
     private Media require(String mediaId) {
         return repo.findByMediaId(mediaId)
                 .orElseThrow(() -> new ResourceNotFoundException("media not found: " + mediaId));
+    }
+
+    private void requireProduct(String productId) {
+        if (productRepo.findByProductId(productId).isEmpty()) {
+            throw new ResourceNotFoundException("product not found: " + productId);
+        }
+    }
+
+    private void requireVariant(String variantId) {
+        if (variantRepo.findByVariantId(variantId).isEmpty()) {
+            throw new ResourceNotFoundException("variant not found: " + variantId);
+        }
     }
 }

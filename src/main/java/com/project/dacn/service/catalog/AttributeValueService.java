@@ -30,6 +30,9 @@ public class AttributeValueService {
     }
 
     public PageResponse<AttributeValueResponse> listByAttribute(String attributeId, Pageable pageable) {
+        if (attributeRepo.findByAttributeId(attributeId).isEmpty()) {
+            throw new ResourceNotFoundException("attribute not found: " + attributeId);
+        }
         Page<AttributeValue> page = repo.findByAttribute_AttributeId(attributeId, pageable);
         return PageResponse.from(page, page.map(mapper::toAttributeValueResponse).getContent());
     }

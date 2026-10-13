@@ -20,6 +20,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 
 import java.util.Arrays;
 import java.util.Optional;
@@ -95,5 +96,19 @@ class JunctionServiceTest {
         when(variantLinkRepo.findByVariantValueId("vv")).thenReturn(Optional.of(link));
         variantService.delete("vv");
         org.mockito.Mockito.verify(variantLinkRepo).delete(link);
+    }
+
+    @Test
+    void listByVariantMissingParentThrowsNotFound() {
+        when(variantRepo.findByVariantId("nope")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> variantService.listByVariant("nope", Pageable.unpaged()))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void listByProductMissingParentThrowsNotFound() {
+        when(productRepo.findByProductId("nope")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> productService.listByProduct("nope", Pageable.unpaged()))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 }

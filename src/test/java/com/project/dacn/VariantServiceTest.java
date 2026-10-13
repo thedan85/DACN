@@ -55,6 +55,9 @@ class VariantServiceTest {
     void listByProductDelegatesToFinder() {
         Variant v = Variant.builder().variantId("v").sku("SKU-1").build();
         Page<Variant> page = new PageImpl<>(List.of(v), Pageable.unpaged(), 1);
+        when(productRepo.findByProductId("p-1"))
+                .thenReturn(Optional.of(com.project.dacn.entity.catalog.Product.builder()
+                        .productId("p-1").name("P").description("d").build()));
         when(repo.findByProduct_ProductId("p-1", Pageable.unpaged())).thenReturn(page);
         when(mapper.toVariantResponse(v)).thenReturn(
                 new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P", false, null, null));
@@ -76,5 +79,12 @@ class VariantServiceTest {
     void getMissingThrowsNotFound() {
         when(repo.findByVariantId("nope")).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.get("nope")).isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void listByProductMissingParentThrowsNotFound() {
+        when(productRepo.findByProductId("nope")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.listByProduct("nope", Pageable.unpaged()))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 }
