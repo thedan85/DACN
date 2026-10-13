@@ -10,6 +10,7 @@ import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.mapper.catalog.CatalogMapper;
 import com.project.dacn.repository.catalog.CategoryRepository;
 import com.project.dacn.repository.catalog.ProductRepository;
+import com.project.dacn.spec.ProductFilter;
 import com.project.dacn.spec.ProductSpecs;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;

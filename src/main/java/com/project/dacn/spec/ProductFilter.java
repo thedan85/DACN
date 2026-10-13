@@ -1,4 +1,4 @@
-package com.project.dacn.service.catalog;
+package com.project.dacn.spec;
 
 import com.project.dacn.common.constant.ProductStatus;
 
