@@ -5,6 +5,8 @@ import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.catalog.ProductCreateRequest;
 import com.project.dacn.dto.request.catalog.ProductUpdateRequest;
 import com.project.dacn.dto.response.catalog.ProductResponse;
+import com.project.dacn.common.constant.ProductStatus;
+import com.project.dacn.service.catalog.ProductFilter;
 import com.project.dacn.service.catalog.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -29,6 +32,15 @@ public class ProductController {
     @GetMapping
     public ApiResponse<PageResponse<ProductResponse>> list(Pageable pageable) {
         return ApiResponse.ok(service.list(pageable));
+    }
+
+    @GetMapping("/search")
+    public ApiResponse<PageResponse<ProductResponse>> search(
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) ProductStatus status,
+            @RequestParam(required = false) String categoryId,
+            Pageable pageable) {
+        return ApiResponse.ok(service.search(new ProductFilter(name, status, categoryId), pageable));
     }
 
     @GetMapping("/{productId}")

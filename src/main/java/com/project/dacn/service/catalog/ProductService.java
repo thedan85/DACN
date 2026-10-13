@@ -30,6 +30,11 @@ public class ProductService {
         return PageResponse.from(page, page.map(mapper::toProductResponse).getContent());
     }
 
+    public PageResponse<ProductResponse> search(ProductFilter filter, Pageable pageable) {
+        Page<Product> page = repo.findAll(ProductSpecs.filter(filter), pageable);
+        return PageResponse.from(page, page.map(mapper::toProductResponse).getContent());
+    }
+
     public ProductResponse get(String productId) {
         return mapper.toProductResponse(require(productId));
     }
