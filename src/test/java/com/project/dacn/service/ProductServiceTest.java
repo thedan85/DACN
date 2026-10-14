@@ -1,4 +1,4 @@
-package com.project.dacn;
+package com.project.dacn.service;
 
 import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.common.exception.ResourceNotFoundException;

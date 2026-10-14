@@ -1,4 +1,4 @@
-package com.project.dacn;
+package com.project.dacn.common;
 
 import com.project.dacn.common.exception.GlobalExceptionHandler;
 import com.project.dacn.common.exception.ResourceNotFoundException;
