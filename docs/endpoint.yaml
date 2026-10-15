@@ -1,0 +1,1245 @@
+openapi: 3.0.3
+
+info:
+  title: E-commerce Core API
+  version: 1.0.0
+  description: |
+    Tài liệu thiết kế các endpoint API cốt lõi: Giỏ hàng, CRUD Sản phẩm đa biến thể, Thông báo.
+
+    **Quy ước chung**
+    - Prefix: `/api/v1`.
+    - Dữ liệu gửi và nhận là JSON (`Content-Type: application/json`).
+    - Xác thực bằng JWT access token: `Authorization: Bearer <access_token>` (lấy từ `POST /api/v1/auth/login`).
+    - Phân quyền theo RBAC: mỗi endpoint cần quyền ghi ở `x-required-permission` (ví dụ `product:create`).
+    - Mọi id là chuỗi business id (VARCHAR), ví dụ `P001`, `V001`.
+    - Mã lỗi đồng nhất dạng `{ "code": "...", "message": "..." }`.
+    - Xóa mềm: product dùng `product_status = DELETED`, variant và notification dùng `is_deleted = true`.
+
+servers:
+  - url: http://localhost:8080
+    description: Local
+
+tags:
+  - name: Cart
+    description: Giỏ hàng của khách hàng (mỗi customer có đúng 1 giỏ)
+  - name: Product
+    description: CRUD sản phẩm, mỗi sản phẩm có nhiều biến thể (variant)
+  - name: Notification
+    description: Thông báo gửi tới người dùng
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ===================================================================
+  # CART
+  # ===================================================================
+  /api/v1/cart:
+    get:
+      tags: [Cart]
+      operationId: getCart
+      summary: Xem giỏ hàng của tôi
+      description: >-
+        Trả về giỏ hàng của customer đang đăng nhập kèm giá và tồn kho hiện tại của từng variant.
+        Nếu chưa có giỏ thì hệ thống tạo giỏ rỗng.
+      x-required-role: CUSTOMER
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Giỏ hàng hiện tại
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags: [Cart]
+      operationId: clearCart
+      summary: Xóa toàn bộ sản phẩm trong giỏ
+      description: Xóa hết `cart_items` của giỏ, giữ lại giỏ rỗng.
+      x-required-role: CUSTOMER
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: Đã xóa hết, không có body
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/cart/items:
+    post:
+      tags: [Cart]
+      operationId: addCartItem
+      summary: Thêm variant vào giỏ
+      description: >-
+        Nếu variant đã có trong giỏ thì cộng dồn số lượng (không tạo thêm dòng), trả 200.
+        Nếu chưa có thì tạo dòng mới, trả 201. Tổng số lượng sau khi cộng không được vượt `variant_stock`.
+      x-required-role: CUSTOMER
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddCartItemRequest"
+            example:
+              variant_id: V001
+              quantity: 2
+      responses:
+        "200":
+          description: Variant đã có trong giỏ, số lượng được cộng dồn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "201":
+          description: Đã thêm dòng mới vào giỏ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Không đủ tồn kho
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: INSUFFICIENT_STOCK
+                message: "Chỉ còn 3 sản phẩm trong kho"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/cart/items/{cart_item_id}:
+    parameters:
+      - $ref: "#/components/parameters/CartItemId"
+    patch:
+      tags: [Cart]
+      operationId: updateCartItem
+      summary: Cập nhật số lượng một dòng trong giỏ
+      description: Đặt lại số lượng (không cộng dồn). Số lượng phải từ 1 đến `variant_stock`. Muốn bỏ dòng thì dùng DELETE.
+      x-required-role: CUSTOMER
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCartItemRequest"
+            example:
+              quantity: 3
+      responses:
+        "200":
+          description: Giỏ hàng sau khi cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Cart"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Không đủ tồn kho
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: INSUFFICIENT_STOCK
+                message: "Chỉ còn 3 sản phẩm trong kho"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags: [Cart]
+      operationId: removeCartItem
+      summary: Xóa một dòng khỏi giỏ
+      x-required-role: CUSTOMER
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: Đã xóa, không có body
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ===================================================================
+  # PRODUCT (multi-variant)
+  # ===================================================================
+  /api/v1/products:
+    get:
+      tags: [Product]
+      operationId: listProducts
+      summary: Danh sách sản phẩm
+      description: >-
+        Công khai, không cần token. Chỉ trả sản phẩm `ACTIVE`.
+        Nếu gửi kèm token có quyền `product:create` thì được lọc thêm theo `status` (DRAFT, INACTIVE...).
+        Sản phẩm `DELETED` không bao giờ xuất hiện.
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - name: keyword
+          in: query
+          required: false
+          description: Tìm theo tên sản phẩm
+          schema:
+            type: string
+            maxLength: 255
+        - name: category_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: min_price
+          in: query
+          required: false
+          description: Lọc theo giá variant thấp nhất, lớn hơn hoặc bằng giá trị này
+          schema:
+            type: number
+            minimum: 0
+        - name: max_price
+          in: query
+          required: false
+          description: Lọc theo giá variant thấp nhất, nhỏ hơn hoặc bằng giá trị này
+          schema:
+            type: number
+            minimum: 0
+        - name: status
+          in: query
+          required: false
+          description: Chỉ có tác dụng với token có quyền `product:create`. Mặc định `ACTIVE`.
+          schema:
+            type: string
+            enum: [DRAFT, ACTIVE, INACTIVE]
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [newest, price_asc, price_desc]
+            default: newest
+      responses:
+        "200":
+          description: Danh sách sản phẩm có phân trang
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Product]
+      operationId: createProduct
+      summary: Tạo sản phẩm kèm các biến thể
+      description: >-
+        Tạo `products`, `variants`, `variant_values`, `media` trong một giao dịch (tất cả hoặc không có gì).
+        Nếu không gửi `product_slug` thì hệ thống tự sinh từ `product_name`.
+        Mỗi variant chỉ được có tối đa 1 giá trị cho mỗi attribute, và cặp (attribute_id, attribute_value_id) phải tồn tại.
+      x-required-permission: "product:create"
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductCreateRequest"
+            example:
+              product_name: Áo thun basic
+              product_description: Áo thun cotton 100%
+              product_thumbnail: https://cdn.example.com/p/ao-thun.jpg
+              product_status: ACTIVE
+              category_id: CAT01
+              variants:
+                - variant_sku: AT-DEN-M
+                  variant_price: 199000
+                  variant_stock: 50
+                  attributes:
+                    - attribute_id: ATTR_COLOR
+                      attribute_value_id: AV_BLACK
+                    - attribute_id: ATTR_SIZE
+                      attribute_value_id: AV_M
+                  media_urls:
+                    - https://cdn.example.com/v/at-den-m.jpg
+                - variant_sku: AT-DEN-L
+                  variant_price: 199000
+                  variant_stock: 30
+                  attributes:
+                    - attribute_id: ATTR_COLOR
+                      attribute_value_id: AV_BLACK
+                    - attribute_id: ATTR_SIZE
+                      attribute_value_id: AV_L
+      responses:
+        "201":
+          description: Đã tạo sản phẩm
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Trùng slug hoặc SKU
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: SKU_EXISTS
+                message: "SKU AT-DEN-M đã tồn tại"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/products/{product_id}:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+    get:
+      tags: [Product]
+      operationId: getProduct
+      summary: Chi tiết sản phẩm kèm tất cả biến thể
+      description: >-
+        Công khai. Trả sản phẩm cùng các variant chưa bị xóa, thuộc tính, ảnh, giá và tồn kho từng variant.
+        Sản phẩm `DELETED` trả 404. Sản phẩm `DRAFT` hoặc `INACTIVE` chỉ xem được khi có token với quyền `product:create`.
+      security:
+        - {}
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Chi tiết sản phẩm
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      tags: [Product]
+      operationId: updateProduct
+      summary: Cập nhật thông tin sản phẩm
+      description: >-
+        Thay thế các trường cấp sản phẩm (tên, mô tả, ảnh đại diện, trạng thái, danh mục).
+        Không đụng tới biến thể, dùng các endpoint `/variants` để quản lý variant.
+        Không cho đặt `product_status = DELETED` ở đây, dùng DELETE.
+      x-required-permission: "product:update"
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductUpdateRequest"
+            example:
+              product_name: Áo thun basic cổ tròn
+              product_description: Áo thun cotton 100%, form regular
+              product_thumbnail: https://cdn.example.com/p/ao-thun.jpg
+              product_status: ACTIVE
+              category_id: CAT01
+      responses:
+        "200":
+          description: Sản phẩm sau khi cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Trùng slug
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: SLUG_EXISTS
+                message: "Slug ao-thun-basic đã tồn tại"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags: [Product]
+      operationId: deleteProduct
+      summary: Xóa sản phẩm
+      description: >-
+        Mặc định xóa mềm (`product_status = DELETED`), giữ lịch sử đơn hàng.
+        Với `hard=true` thì xóa cứng (kéo theo variants, media, reviews), chỉ thành công khi không variant nào còn trong giỏ hoặc đơn hàng.
+      x-required-permission: "product:delete"
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: hard
+          in: query
+          required: false
+          description: "true để xóa cứng"
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "204":
+          description: Đã xóa, không có body
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Xóa cứng bị chặn vì variant đang nằm trong giỏ hoặc đơn hàng
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: PRODUCT_IN_USE
+                message: "Sản phẩm đã có trong đơn hàng, chỉ có thể xóa mềm"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/products/{product_id}/variants:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+    post:
+      tags: [Product]
+      operationId: createVariant
+      summary: Thêm biến thể vào sản phẩm
+      x-required-permission: "product:update"
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariantInput"
+            example:
+              variant_sku: AT-TRANG-M
+              variant_price: 189000
+              variant_stock: 40
+              attributes:
+                - attribute_id: ATTR_COLOR
+                  attribute_value_id: AV_WHITE
+                - attribute_id: ATTR_SIZE
+                  attribute_value_id: AV_M
+      responses:
+        "201":
+          description: Đã tạo biến thể
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Variant"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Trùng SKU
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: SKU_EXISTS
+                message: "SKU AT-TRANG-M đã tồn tại"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/products/{product_id}/variants/{variant_id}:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+      - $ref: "#/components/parameters/VariantId"
+    put:
+      tags: [Product]
+      operationId: updateVariant
+      summary: Cập nhật biến thể (giá, tồn kho, SKU, thuộc tính, ảnh)
+      description: Thay thế toàn bộ dữ liệu của variant bằng nội dung gửi lên.
+      x-required-permission: "product:update"
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariantInput"
+            example:
+              variant_sku: AT-DEN-M
+              variant_price: 179000
+              variant_stock: 45
+              attributes:
+                - attribute_id: ATTR_COLOR
+                  attribute_value_id: AV_BLACK
+                - attribute_id: ATTR_SIZE
+                  attribute_value_id: AV_M
+      responses:
+        "200":
+          description: Biến thể sau khi cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Variant"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Trùng SKU
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: SKU_EXISTS
+                message: "SKU AT-DEN-M đã tồn tại"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    delete:
+      tags: [Product]
+      operationId: deleteVariant
+      summary: Xóa mềm biến thể
+      description: Đặt `is_deleted = true`. Biến thể đã xóa không hiện ở chi tiết sản phẩm và không thêm được vào giỏ.
+      x-required-permission: "product:delete"
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: Đã xóa, không có body
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ===================================================================
+  # NOTIFICATION
+  # ===================================================================
+  /api/v1/notifications:
+    get:
+      tags: [Notification]
+      operationId: listNotifications
+      summary: Danh sách thông báo của tôi
+      description: Chỉ trả thông báo của user đang đăng nhập, bỏ qua thông báo đã xóa, mới nhất trước.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [UNREAD, READ]
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [ORDER, PROMOTION, SYSTEM]
+      responses:
+        "200":
+          description: Danh sách thông báo có phân trang
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      tags: [Notification]
+      operationId: createNotification
+      summary: Tạo thông báo cho một người dùng
+      description: Dành cho Admin hoặc tiến trình hệ thống. Thông báo mới có trạng thái `UNREAD`.
+      x-required-permission: "notification:create"
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationCreateRequest"
+            example:
+              user_id: U100
+              notification_message: "Đơn hàng O001 đã được xác nhận"
+              notification_type: ORDER
+      responses:
+        "201":
+          description: Đã tạo thông báo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/notifications/unread-count:
+    get:
+      tags: [Notification]
+      operationId: getUnreadNotificationCount
+      summary: Số thông báo chưa đọc
+      description: Dùng cho badge trên giao diện.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Số thông báo chưa đọc
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [unread_count]
+                properties:
+                  unread_count:
+                    type: integer
+                    minimum: 0
+              example:
+                unread_count: 4
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/notifications/read-all:
+    patch:
+      tags: [Notification]
+      operationId: markAllNotificationsRead
+      summary: Đánh dấu tất cả đã đọc
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Số thông báo vừa được đánh dấu
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated_count]
+                properties:
+                  updated_count:
+                    type: integer
+                    minimum: 0
+              example:
+                updated_count: 4
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/notifications/{notification_id}/read:
+    parameters:
+      - $ref: "#/components/parameters/NotificationId"
+    patch:
+      tags: [Notification]
+      operationId: markNotificationRead
+      summary: Đánh dấu một thông báo đã đọc
+      description: Chỉ chủ sở hữu thông báo mới thao tác được. Thông báo của người khác trả 404.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Thông báo sau khi cập nhật
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/notifications/{notification_id}:
+    parameters:
+      - $ref: "#/components/parameters/NotificationId"
+    delete:
+      tags: [Notification]
+      operationId: deleteNotification
+      summary: Xóa thông báo
+      description: Xóa mềm (`is_deleted = true`). Chỉ chủ sở hữu thông báo mới xóa được.
+      security:
+        - bearerAuth: []
+      responses:
+        "204":
+          description: Đã xóa, không có body
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Access token JWT, gửi qua header Authorization: Bearer <access_token>"
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    ProductId:
+      name: product_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: P001
+    VariantId:
+      name: variant_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: V001
+    CartItemId:
+      name: cart_item_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: CI001
+    NotificationId:
+      name: notification_id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: N001
+
+  responses:
+    BadRequest:
+      description: Dữ liệu gửi lên không hợp lệ
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: VALIDATION_ERROR
+            message: "quantity phải lớn hơn 0"
+    Unauthorized:
+      description: Thiếu token, token sai chữ ký hoặc đã hết hạn
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: UNAUTHORIZED
+            message: "Token không hợp lệ hoặc đã hết hạn"
+    Forbidden:
+      description: Đã đăng nhập nhưng role không có quyền thực hiện
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: FORBIDDEN
+            message: "Bạn không có quyền thực hiện thao tác này"
+    NotFound:
+      description: Không tìm thấy tài nguyên
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: NOT_FOUND
+            message: "Không tìm thấy tài nguyên"
+    InternalError:
+      description: Lỗi hệ thống
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: INTERNAL_ERROR
+            message: "Đã có lỗi xảy ra, vui lòng thử lại sau"
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          example: NOT_FOUND
+        message:
+          type: string
+          example: "Không tìm thấy tài nguyên"
+
+    PageMeta:
+      type: object
+      required: [page, limit, total_items, total_pages]
+      properties:
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+        total_items:
+          type: integer
+          example: 57
+        total_pages:
+          type: integer
+          example: 3
+
+    # ---------- Product ----------
+    AttributeSelection:
+      type: object
+      description: Chọn một giá trị cho một thuộc tính (ví dụ Color = Black)
+      required: [attribute_id, attribute_value_id]
+      properties:
+        attribute_id:
+          type: string
+          example: ATTR_COLOR
+        attribute_value_id:
+          type: string
+          example: AV_BLACK
+
+    VariantAttribute:
+      type: object
+      required: [attribute_id, attribute_name, attribute_value_id, attribute_value]
+      properties:
+        attribute_id:
+          type: string
+          example: ATTR_COLOR
+        attribute_name:
+          type: string
+          example: Color
+        attribute_value_id:
+          type: string
+          example: AV_BLACK
+        attribute_value:
+          type: string
+          example: Black
+
+    Media:
+      type: object
+      required: [media_id, media_url]
+      properties:
+        media_id:
+          type: string
+          example: M001
+        media_url:
+          type: string
+          format: uri
+          maxLength: 500
+          example: https://cdn.example.com/v/at-den-m.jpg
+
+    VariantInput:
+      type: object
+      required: [variant_sku, variant_price, attributes]
+      properties:
+        variant_sku:
+          type: string
+          maxLength: 255
+          description: Mã SKU, duy nhất toàn hệ thống
+          example: AT-DEN-M
+        variant_price:
+          type: number
+          minimum: 0
+          description: Giá bán, không âm
+          example: 199000
+        variant_stock:
+          type: integer
+          minimum: 0
+          default: 0
+          description: Tồn kho, không âm
+          example: 50
+        attributes:
+          type: array
+          minItems: 1
+          description: Mỗi attribute_id chỉ xuất hiện tối đa 1 lần trong cùng variant
+          items:
+            $ref: "#/components/schemas/AttributeSelection"
+        media_urls:
+          type: array
+          items:
+            type: string
+            format: uri
+            maxLength: 500
+
+    Variant:
+      type: object
+      required: [variant_id, variant_sku, variant_price, variant_stock, attributes, media]
+      properties:
+        variant_id:
+          type: string
+          example: V001
+        variant_sku:
+          type: string
+          example: AT-DEN-M
+        variant_price:
+          type: number
+          example: 199000
+        variant_stock:
+          type: integer
+          example: 50
+        attributes:
+          type: array
+          items:
+            $ref: "#/components/schemas/VariantAttribute"
+        media:
+          type: array
+          items:
+            $ref: "#/components/schemas/Media"
+
+    ProductCreateRequest:
+      type: object
+      required: [product_name, product_description, variants]
+      properties:
+        product_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Áo thun basic
+        product_slug:
+          type: string
+          maxLength: 255
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          description: Không bắt buộc, bỏ trống thì tự sinh từ tên. Duy nhất.
+          example: ao-thun-basic
+        product_description:
+          type: string
+          minLength: 1
+        product_thumbnail:
+          type: string
+          format: uri
+          maxLength: 500
+        product_status:
+          type: string
+          enum: [DRAFT, ACTIVE, INACTIVE]
+          default: ACTIVE
+        category_id:
+          type: string
+          nullable: true
+        media_urls:
+          type: array
+          description: Ảnh cấp sản phẩm
+          items:
+            type: string
+            format: uri
+            maxLength: 500
+        variants:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/VariantInput"
+
+    ProductUpdateRequest:
+      type: object
+      required: [product_name, product_description, product_status]
+      properties:
+        product_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        product_slug:
+          type: string
+          maxLength: 255
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        product_description:
+          type: string
+          minLength: 1
+        product_thumbnail:
+          type: string
+          format: uri
+          maxLength: 500
+          nullable: true
+        product_status:
+          type: string
+          enum: [DRAFT, ACTIVE, INACTIVE]
+        category_id:
+          type: string
+          nullable: true
+
+    ProductSummary:
+      type: object
+      required: [product_id, product_slug, product_name, product_status, min_price, max_price]
+      properties:
+        product_id:
+          type: string
+          example: P001
+        product_slug:
+          type: string
+          example: ao-thun-basic
+        product_name:
+          type: string
+          example: Áo thun basic
+        product_thumbnail:
+          type: string
+          nullable: true
+          example: https://cdn.example.com/p/ao-thun.jpg
+        product_status:
+          type: string
+          enum: [DRAFT, ACTIVE, INACTIVE]
+        category_id:
+          type: string
+          nullable: true
+          example: CAT01
+        min_price:
+          type: number
+          description: Giá variant thấp nhất
+          example: 179000
+        max_price:
+          type: number
+          description: Giá variant cao nhất
+          example: 199000
+        created_at:
+          type: string
+          format: date-time
+
+    ProductDetail:
+      allOf:
+        - $ref: "#/components/schemas/ProductSummary"
+        - type: object
+          required: [product_description, variants]
+          properties:
+            product_description:
+              type: string
+            media:
+              type: array
+              description: Ảnh cấp sản phẩm
+              items:
+                $ref: "#/components/schemas/Media"
+            variants:
+              type: array
+              items:
+                $ref: "#/components/schemas/Variant"
+            updated_at:
+              type: string
+              format: date-time
+
+    ProductList:
+      type: object
+      required: [items, meta]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductSummary"
+        meta:
+          $ref: "#/components/schemas/PageMeta"
+
+    # ---------- Cart ----------
+    AddCartItemRequest:
+      type: object
+      required: [variant_id, quantity]
+      properties:
+        variant_id:
+          type: string
+          example: V001
+        quantity:
+          type: integer
+          minimum: 1
+          example: 2
+
+    UpdateCartItemRequest:
+      type: object
+      required: [quantity]
+      properties:
+        quantity:
+          type: integer
+          minimum: 1
+          example: 3
+
+    CartItem:
+      type: object
+      required: [cart_item_id, variant_id, product_id, product_name, variant_sku, unit_price, quantity, variant_stock, subtotal]
+      properties:
+        cart_item_id:
+          type: string
+          example: CI001
+        variant_id:
+          type: string
+          example: V001
+        product_id:
+          type: string
+          example: P001
+        product_name:
+          type: string
+          example: Áo thun basic
+        variant_sku:
+          type: string
+          example: AT-DEN-M
+        attributes:
+          type: array
+          items:
+            $ref: "#/components/schemas/VariantAttribute"
+        thumbnail:
+          type: string
+          nullable: true
+        unit_price:
+          type: number
+          description: Giá hiện tại của variant (chưa chốt, giá chỉ được chốt khi tạo đơn)
+          example: 199000
+        quantity:
+          type: integer
+          example: 2
+        variant_stock:
+          type: integer
+          description: Tồn kho hiện tại, giao diện dùng để cảnh báo khi quantity vượt tồn
+          example: 50
+        subtotal:
+          type: number
+          example: 398000
+
+    Cart:
+      type: object
+      required: [cart_id, items, total_items, total_amount]
+      properties:
+        cart_id:
+          type: string
+          example: CART100
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CartItem"
+        total_items:
+          type: integer
+          description: Tổng số lượng của mọi dòng
+          example: 2
+        total_amount:
+          type: number
+          example: 398000
+
+    # ---------- Notification ----------
+    Notification:
+      type: object
+      required: [notification_id, notification_message, notification_type, notification_status, created_at]
+      properties:
+        notification_id:
+          type: string
+          example: N001
+        notification_message:
+          type: string
+          example: "Đơn hàng O001 đã được xác nhận"
+        notification_type:
+          type: string
+          enum: [ORDER, PROMOTION, SYSTEM]
+        notification_status:
+          type: string
+          enum: [UNREAD, READ]
+        created_at:
+          type: string
+          format: date-time
+
+    NotificationCreateRequest:
+      type: object
+      required: [user_id, notification_message]
+      properties:
+        user_id:
+          type: string
+          description: Người nhận
+          example: U100
+        notification_message:
+          type: string
+          minLength: 1
+        notification_type:
+          type: string
+          enum: [ORDER, PROMOTION, SYSTEM]
+          default: SYSTEM
+
+    NotificationList:
+      type: object
+      required: [items, unread_count, meta]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notification"
+        unread_count:
+          type: integer
+          example: 4
+        meta:
+          $ref: "#/components/schemas/PageMeta"

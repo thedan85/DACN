@@ -10,3 +10,11 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+
+# Placeholder credentials so the full application context can start in tests
+# without external secrets. No network calls are made at startup.
+cloudinary:
+  cloud-name: test-cloud
+  api-key: test-key
+  api-secret: test-secret
+  secure: true
