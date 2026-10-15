@@ -46,7 +46,7 @@ class UploadControllerTest {
         when(uploadService.uploadProductThumbnail(eq("congo-tetra"), any())).thenReturn(
                 new UploadResponse("https://x/congo.jpg", "home/fish/tetra/congo-tetra", "congo-tetra", null, null));
 
-        mvc.perform(multipart("/api/uploads/products/congo-tetra/thumbnail").file(image()))
+        mvc.perform(multipart("/api/v1/uploads/products/congo-tetra/thumbnail").file(image()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.url").value("https://x/congo.jpg"))
@@ -59,7 +59,7 @@ class UploadControllerTest {
                 new UploadResponse("https://x/albino.jpg", "home/fish/tetra/congo-tetra",
                         "congo-tetra", "congo-tetra-albino", "m-1"));
 
-        mvc.perform(multipart("/api/uploads/variants/congo-tetra-albino").file(image()))
+        mvc.perform(multipart("/api/v1/uploads/variants/congo-tetra-albino").file(image()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.mediaId").value("m-1"));
     }
@@ -69,7 +69,7 @@ class UploadControllerTest {
         when(uploadService.uploadProductThumbnail(eq("nope"), any()))
                 .thenThrow(new ResourceNotFoundException("product not found: nope"));
 
-        mvc.perform(multipart("/api/uploads/products/nope/thumbnail").file(image()))
+        mvc.perform(multipart("/api/v1/uploads/products/nope/thumbnail").file(image()))
                 .andExpect(status().isNotFound());
     }
 
@@ -78,7 +78,7 @@ class UploadControllerTest {
         when(uploadService.uploadProductThumbnail(eq("p"), any()))
                 .thenThrow(new IllegalArgumentException("file too large: max 10MB"));
 
-        mvc.perform(multipart("/api/uploads/products/p/thumbnail").file(image()))
+        mvc.perform(multipart("/api/v1/uploads/products/p/thumbnail").file(image()))
                 .andExpect(status().isBadRequest());
     }
 
@@ -87,7 +87,7 @@ class UploadControllerTest {
         when(uploadService.uploadProductThumbnail(eq("p"), any()))
                 .thenThrow(new CloudinaryException("Cloudinary upload failed"));
 
-        mvc.perform(multipart("/api/uploads/products/p/thumbnail").file(image()))
+        mvc.perform(multipart("/api/v1/uploads/products/p/thumbnail").file(image()))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.message").exists());
     }
@@ -98,7 +98,7 @@ class UploadControllerTest {
         when(uploadService.uploadProductThumbnail(eq("p"), any()))
                 .thenThrow(new IllegalArgumentException("unsupported image type: text/plain"));
 
-        mvc.perform(multipart("/api/uploads/products/p/thumbnail").file(text))
+        mvc.perform(multipart("/api/v1/uploads/products/p/thumbnail").file(text))
                 .andExpect(status().isBadRequest());
     }
 
@@ -107,7 +107,7 @@ class UploadControllerTest {
         when(uploadService.uploadVariantImage(eq("nope"), any()))
                 .thenThrow(new ResourceNotFoundException("variant not found: nope"));
 
-        mvc.perform(multipart("/api/uploads/variants/nope").file(image()))
+        mvc.perform(multipart("/api/v1/uploads/variants/nope").file(image()))
                 .andExpect(status().isNotFound());
     }
 
@@ -116,7 +116,7 @@ class UploadControllerTest {
         when(uploadService.uploadVariantImage(eq("v-1"), any()))
                 .thenThrow(new CloudinaryException("Cloudinary upload failed"));
 
-        mvc.perform(multipart("/api/uploads/variants/v-1").file(image()))
+        mvc.perform(multipart("/api/v1/uploads/variants/v-1").file(image()))
                 .andExpect(status().isBadGateway());
     }
 }

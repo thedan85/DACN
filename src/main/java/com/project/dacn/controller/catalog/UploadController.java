@@ -13,9 +13,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 // NOTE: inherits the project's permitAll SecurityConfig. Restrict
-// /api/uploads/** to admin/employee roles when auth is tightened for production.
+// /api/v1/uploads/** to admin/employee roles when auth is tightened for production.
 @RestController
-@RequestMapping("/api/uploads")
+@RequestMapping("/api/v1/uploads")
 @RequiredArgsConstructor
 public class UploadController {
 
