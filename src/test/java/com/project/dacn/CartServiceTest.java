@@ -128,9 +128,25 @@ class CartServiceTest {
             Variant v = variant(10);
             CartItem existing = item(cart(customer()), v, 2);
             when(cartItemRepository.findByCartItemId("item-1")).thenReturn(Optional.of(existing));
+            when(variantRepository.findWithProductByVariantId("v")).thenReturn(Optional.of(v));
 
             assertThatThrownBy(() -> service.setQuantity("cust", "item-1", new CartItemUpdateRequest(99)))
                     .isInstanceOf(OutOfStockException.class);
+        }
+
+        @Test
+        void patchOnDeactivatedProductThrows404() {
+            givenCart();
+            Product product = Product.builder().productId("p").name("P")
+                    .description("d").status(ProductStatus.INACTIVE).build();
+            Variant stale = Variant.builder().variantId("v").sku("SKU-1")
+                    .price(new BigDecimal("10.00")).stock(10).product(product).build();
+            CartItem existing = item(cart(customer()), stale, 2);
+            when(cartItemRepository.findByCartItemId("item-1")).thenReturn(Optional.of(existing));
+            when(variantRepository.findWithProductByVariantId("v")).thenReturn(Optional.of(stale));
+
+            assertThatThrownBy(() -> service.setQuantity("cust", "item-1", new CartItemUpdateRequest(1)))
+                    .isInstanceOf(ResourceNotFoundException.class);
         }
 
         @Test

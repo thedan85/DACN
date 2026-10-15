@@ -100,7 +100,11 @@ public class CartService {
             throw new IllegalArgumentException("quantity must be between 1 and stock");
         }
         CartItem item = requireOwned(customerId, cartItemId);
-        Variant variant = item.getVariant();
+        Variant current = item.getVariant();
+        if (current == null || current.getVariantId() == null) {
+            throw new ResourceNotFoundException("variant not found: null");
+        }
+        Variant variant = requireSellable(current.getVariantId());
         if (req.quantity() > variant.getStock()) {
             throw new OutOfStockException(
                     "requested quantity " + req.quantity() + " exceeds stock " + variant.getStock());
