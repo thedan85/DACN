@@ -49,7 +49,7 @@ public class AttributeValueController {
     @PutMapping("/api/attribute-values/{attributeValueId}")
     public ApiResponse<AttributeValueResponse> replace(@PathVariable String attributeValueId,
             @Valid @RequestBody AttributeValueUpdateRequest request) {
-        return ApiResponse.ok(service.update(attributeValueId, request));
+        return ApiResponse.ok(service.replace(attributeValueId, request));
     }
 
     @PatchMapping("/api/attribute-values/{attributeValueId}")

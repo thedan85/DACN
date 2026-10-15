@@ -18,4 +18,6 @@ public interface MediaRepository extends JpaRepository<Media, Long> {
     Page<Media> findByProduct_ProductId(String productId, Pageable pageable);
 
     Page<Media> findByVariant_VariantId(String variantId, Pageable pageable);
+
+    Page<Media> findByDeletedFalse(Pageable pageable);
 }

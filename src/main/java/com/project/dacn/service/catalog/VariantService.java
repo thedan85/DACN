@@ -25,7 +25,7 @@ public class VariantService {
     private final CatalogMapper mapper;
 
     public PageResponse<VariantResponse> list(Pageable pageable) {
-        Page<Variant> page = repo.findAll(pageable);
+        Page<Variant> page = repo.findByDeletedFalse(pageable);
         return PageResponse.from(page, page.map(mapper::toVariantResponse).getContent());
     }
 
@@ -51,6 +51,14 @@ public class VariantService {
         Variant entity = require(variantId);
         mapper.updateVariant(request, entity);
         return mapper.toVariantResponse(repo.save(entity));
+    }
+
+    /**
+     * PUT replace. Currently merge-only (scalar DTO, NOT NULL columns):
+     * kept separate from {@link #update} so PUT/PATCH semantics can diverge.
+     */
+    public VariantResponse replace(String variantId, VariantUpdateRequest request) {
+        return update(variantId, request);
     }
 
     public void delete(String variantId) {

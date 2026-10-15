@@ -84,4 +84,17 @@ class ProductFilterTest {
 
         assertThat(result.getContent()).hasSize(2);
     }
+
+    @Test
+    void explicitDeletedStatusReturnsSoftDeletedForAudit() {
+        Product gone = products.save(Product.builder().name("Gone Fish").description("d").build());
+        gone.setStatus(ProductStatus.DELETED);
+        products.save(gone);
+        products.save(Product.builder().name("Live Fish").description("d").build());
+
+        var result = service.search(new ProductFilter(null, ProductStatus.DELETED, null), Pageable.unpaged());
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).name()).isEqualTo("Gone Fish");
+    }
 }

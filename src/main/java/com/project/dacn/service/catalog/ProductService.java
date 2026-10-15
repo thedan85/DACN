@@ -33,6 +33,13 @@ public class ProductService {
     }
 
     public PageResponse<ProductResponse> search(ProductFilter filter, Pageable pageable) {
+        // DELETED is hidden by @SQLRestriction on Product; route explicit DELETED
+        // requests through the native admin query that bypasses that restriction.
+        if (filter.status() == ProductStatus.DELETED) {
+            Page<Product> page = repo.findByStatusIncludingDeleted(
+                    ProductStatus.DELETED.name(), filter.name(), filter.categoryId(), pageable);
+            return PageResponse.from(page, page.map(mapper::toProductResponse).getContent());
+        }
         Page<Product> page = repo.findAll(ProductSpecs.filter(filter), pageable);
         return PageResponse.from(page, page.map(mapper::toProductResponse).getContent());
     }
@@ -58,6 +65,25 @@ public class ProductService {
             entity.setCategory(categoryRepo.findByCategoryId(request.categoryId())
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "category not found: " + request.categoryId())));
+        }
+        // PATCH merge: null categoryId means "not provided", keep existing.
+        return mapper.toProductResponse(repo.save(entity));
+    }
+
+    /**
+     * PUT replace semantics: {@code null} categoryId explicitly detaches the
+     * product from its category. Scalar nulls still merge (columns are NOT NULL,
+     * so true null-wipe is impossible with the current DTO).
+     */
+    public ProductResponse replace(String productId, ProductUpdateRequest request) {
+        Product entity = require(productId);
+        mapper.updateProduct(request, entity);
+        if (request.categoryId() != null) {
+            entity.setCategory(categoryRepo.findByCategoryId(request.categoryId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "category not found: " + request.categoryId())));
+        } else {
+            entity.setCategory(null);
         }
         return mapper.toProductResponse(repo.save(entity));
     }

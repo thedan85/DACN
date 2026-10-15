@@ -38,8 +38,15 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<?>> handleValidation(MethodArgumentNotValidException ex) {
+        String message = ex.getBindingResult().getFieldErrors().stream()
+                .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
+                .sorted()
+                .collect(java.util.stream.Collectors.joining("; "));
+        if (message.isBlank()) {
+            message = "validation failed";
+        }
         return ResponseEntity.badRequest()
-                .body(ApiResponse.of(400, ex.getMessage(), null));
+                .body(ApiResponse.of(400, message, null));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)

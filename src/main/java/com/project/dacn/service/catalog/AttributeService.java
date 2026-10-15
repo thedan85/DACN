@@ -23,7 +23,7 @@ public class AttributeService {
     private final CatalogMapper mapper;
 
     public PageResponse<AttributeResponse> list(Pageable pageable) {
-        Page<Attribute> page = repo.findAll(pageable);
+        Page<Attribute> page = repo.findByDeletedFalse(pageable);
         return PageResponse.from(page, page.map(mapper::toAttributeResponse).getContent());
     }
 
@@ -39,6 +39,14 @@ public class AttributeService {
         Attribute entity = require(attributeId);
         mapper.updateAttribute(request, entity);
         return mapper.toAttributeResponse(repo.save(entity));
+    }
+
+    /**
+     * PUT replace. Currently merge-only: kept separate from {@link #update}
+     * so PUT/PATCH semantics can diverge.
+     */
+    public AttributeResponse replace(String attributeId, AttributeUpdateRequest request) {
+        return update(attributeId, request);
     }
 
     public void delete(String attributeId) {
