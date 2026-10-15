@@ -54,6 +54,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(400, ex.getMessage(), null));
     }
 
+    @ExceptionHandler(com.project.dacn.integration.cloudinary.CloudinaryException.class)
+    public ResponseEntity<ApiResponse<?>> handleCloudinary(
+            com.project.dacn.integration.cloudinary.CloudinaryException ex) {
+        return ResponseEntity.status(502)
+                .body(ApiResponse.of(502, "UPLOAD_FAILED: " + ex.getMessage(), null));
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<?>> handleNotReadable(HttpMessageNotReadableException ex) {
         return ResponseEntity.badRequest()
