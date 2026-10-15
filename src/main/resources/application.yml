@@ -30,6 +30,11 @@ spring:
 server:
   port: 8080
 
+jwt:
+  secret: ${JWT_SECRET:dev-secret-key-please-change-min-256-bits-hs256-algorithm-requires-this-length}
+  access-token-expiration-ms: 900000      # 15 minutes
+  refresh-token-expiration-ms: 604800000  # 7 days
+
 cloudinary:
   cloud-name: ${CLOUDINARY_CLOUD_NAME:}
   api-key: ${CLOUDINARY_API_KEY:}
