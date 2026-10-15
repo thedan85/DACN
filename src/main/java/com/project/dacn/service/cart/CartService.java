@@ -125,8 +125,10 @@ public class CartService {
 
     public OrderResponse checkout(String customerId, CartCheckoutRequest req) {
         Customer customer = requireCustomer(customerId);
-        Cart cart = requireCart(customerId);
-        List<CartItem> items = cartItemRepository.findWithDetailsByCart_CartId(cart.getCartId());
+        Cart cart = cartRepository.findByCustomer_CustomerId(customerId).orElse(null);
+        List<CartItem> items = cart == null
+                ? List.of()
+                : cartItemRepository.findWithDetailsByCart_CartId(cart.getCartId());
         if (items.isEmpty()) {
             throw new IllegalArgumentException("cart is empty");
         }

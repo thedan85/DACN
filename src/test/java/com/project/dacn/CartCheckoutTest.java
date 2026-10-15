@@ -146,6 +146,21 @@ class CartCheckoutTest {
         }
 
         @Test
+        void checkoutWithNoCartRowThrows400() {
+            when(customerRepository.findByCustomerId("cust"))
+                    .thenReturn(Optional.of(customer()));
+            when(cartRepository.findByCustomer_CustomerId("cust"))
+                    .thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.checkout("cust",
+                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
+                    .isInstanceOf(IllegalArgumentException.class);
+            verify(orderRepository, never()).save(any(Order.class));
+            verify(cartRepository, never()).save(any(Cart.class));
+            verify(cartItemRepository, never()).findWithDetailsByCart_CartId(any());
+        }
+
+        @Test
         void checkoutOverStockThrows409() {
             givenCart();
             Variant v = variant(10);
