@@ -92,4 +92,20 @@ class CatalogExceptionHandlerTest {
         assertThat(response.getStatusCode().value()).isEqualTo(400);
         assertThat(response.getBody().getCode()).isEqualTo(400);
     }
+
+    @Test
+    void oversizeUploadMapsTo400Envelope() {
+        ResponseEntity<ApiResponse<?>> response = handler.handleOversize(
+                new org.springframework.web.multipart.MaxUploadSizeExceededException(10L * 1024 * 1024));
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(response.getBody().getCode()).isEqualTo(400);
+    }
+
+    @Test
+    void missingFilePartMapsTo400Envelope() {
+        ResponseEntity<ApiResponse<?>> response = handler.handleMissingPart(
+                new org.springframework.web.multipart.support.MissingServletRequestPartException("file"));
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(response.getBody().getCode()).isEqualTo(400);
+    }
 }

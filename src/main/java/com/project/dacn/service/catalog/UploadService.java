@@ -20,6 +20,10 @@ import java.util.Locale;
 import java.util.Set;
 
 @Service
+// NOTE: @Transactional spans the Cloudinary network call so the lazy
+// category/parent traversal in folder resolution stays in-session.
+// Deliberate uni-scale tradeoff; split read/upload/write phases if upload
+// traffic ever contends for DB connections.
 @Transactional
 @RequiredArgsConstructor
 public class UploadService {

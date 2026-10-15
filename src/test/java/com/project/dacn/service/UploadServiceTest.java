@@ -186,4 +186,33 @@ class UploadServiceTest {
                 .isInstanceOf(com.project.dacn.integration.cloudinary.CloudinaryException.class);
         verify(productRepo, never()).save(any());
     }
+
+    @Test
+    void variantCloudinaryFailureCreatesNoMedia() {
+        Product product = Product.builder().productId("p").name("P").build();
+        Variant variant = Variant.builder().variantId("v-1").sku("SKU-1")
+                .price(new java.math.BigDecimal("1000")).product(product).build();
+        when(variantRepo.findByVariantId("v-1")).thenReturn(Optional.of(variant));
+        when(folderResolver.resolve(product)).thenReturn("home/p");
+        when(cloudinaryService.uploadAndGetUrl(any(byte[].class), anyString(), anyString()))
+                .thenThrow(new com.project.dacn.integration.cloudinary.CloudinaryException("boom"));
+
+        assertThatThrownBy(() -> service.uploadVariantImage("v-1", jpg("a.jpg", new byte[] {1})))
+                .isInstanceOf(com.project.dacn.integration.cloudinary.CloudinaryException.class);
+        verify(mediaService, never()).create(any());
+    }
+
+    @Test
+    void dbSaveFailurePropagates() {
+        Product product = Product.builder().productId("p").name("P").build();
+        when(productRepo.findByProductId("p")).thenReturn(Optional.of(product));
+        when(folderResolver.resolve(product)).thenReturn("home/p");
+        when(cloudinaryService.uploadAndGetUrl(any(byte[].class), anyString(), anyString()))
+                .thenReturn("https://x/u.jpg");
+        when(productRepo.save(any())).thenThrow(new RuntimeException("db down"));
+
+        assertThatThrownBy(() -> service.uploadProductThumbnail("p", jpg("a.jpg", new byte[] {1})))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("db down");
+    }
 }

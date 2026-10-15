@@ -61,6 +61,20 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(502, "UPLOAD_FAILED: " + ex.getMessage(), null));
     }
 
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<?>> handleOversize(
+            org.springframework.web.multipart.MaxUploadSizeExceededException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.of(400, "file too large: max 10MB", null));
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.support.MissingServletRequestPartException.class)
+    public ResponseEntity<ApiResponse<?>> handleMissingPart(
+            org.springframework.web.multipart.support.MissingServletRequestPartException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.of(400, "missing file part: " + ex.getRequestPartName(), null));
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<?>> handleNotReadable(HttpMessageNotReadableException ex) {
         return ResponseEntity.badRequest()

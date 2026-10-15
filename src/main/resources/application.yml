@@ -29,6 +29,12 @@ spring:
 
 server:
   port: 8080
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      # Slightly above max-file-size: a 10MB file plus multipart overhead
+      # must still fit inside the request limit.
+      max-request-size: 11MB
 
 cloudinary:
   cloud-name: ${CLOUDINARY_CLOUD_NAME:}

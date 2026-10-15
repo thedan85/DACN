@@ -45,7 +45,10 @@ public class CloudinaryService {
     public String uploadAndGetUrl(byte[] bytes, String folder, String publicId) {
         Map<String, Object> result = upload(bytes, folder, publicId);
         Object url = result.get("secure_url");
-        return url != null ? url.toString() : null;
+        if (url == null || url.toString().isBlank()) {
+            throw new CloudinaryException("Cloudinary upload returned no secure_url");
+        }
+        return url.toString();
     }
 
     @SuppressWarnings("unchecked")

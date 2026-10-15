@@ -101,4 +101,22 @@ class UploadControllerTest {
         mvc.perform(multipart("/api/uploads/products/p/thumbnail").file(text))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void unknownVariantMapsTo404() throws Exception {
+        when(uploadService.uploadVariantImage(eq("nope"), any()))
+                .thenThrow(new ResourceNotFoundException("variant not found: nope"));
+
+        mvc.perform(multipart("/api/uploads/variants/nope").file(image()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void variantCloudinaryFailureMapsTo502() throws Exception {
+        when(uploadService.uploadVariantImage(eq("v-1"), any()))
+                .thenThrow(new CloudinaryException("Cloudinary upload failed"));
+
+        mvc.perform(multipart("/api/uploads/variants/v-1").file(image()))
+                .andExpect(status().isBadGateway());
+    }
 }

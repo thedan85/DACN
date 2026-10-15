@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.when;
@@ -70,5 +71,13 @@ class CloudinaryServiceTest {
         String url = service.uploadAndGetUrl(new byte[] {1}, "home/fish/tetra/congo-tetra", "congo-tetra-123");
 
         assertThat(url).isEqualTo("https://x/y.jpg");
+    }
+
+    @Test
+    void missingSecureUrlThrowsInsteadOfReturningNull() throws Exception {
+        when(uploader.upload(any(), anyMap())).thenReturn(new HashMap<>());
+
+        assertThatThrownBy(() -> service.uploadAndGetUrl(new byte[] {1}, "home/fish/tetra/congo-tetra", "x"))
+                .isInstanceOf(com.project.dacn.integration.cloudinary.CloudinaryException.class);
     }
 }
