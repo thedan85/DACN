@@ -48,8 +48,9 @@ public class CartService {
         if (req == null || req.quantity() == null || req.quantity() <= 0) {
             throw new IllegalArgumentException("quantity must be positive");
         }
-        Cart cart = getOrCreate(customerId);
+        requireCustomer(customerId);
         Variant variant = requireSellable(req.variantId());
+        Cart cart = getOrCreate(customerId);
         int quantity = req.quantity();
         Optional<CartItem> existing =
                 cartItemRepository.findByCart_CartIdAndVariant_VariantId(cart.getCartId(), variant.getVariantId());
@@ -100,14 +101,24 @@ public class CartService {
     }
 
     public void clear(String customerId) {
-        Cart cart = getOrCreate(customerId);
+        Cart cart = requireCart(customerId);
         cartItemRepository.deleteByCart_CartId(cart.getCartId());
         log.info("Cleared cart {} for customer {}", cart.getCartId(), customerId);
     }
 
-    private Cart getOrCreate(String customerId) {
-        Customer customer = customerRepository.findByCustomerId(customerId)
+    private Customer requireCustomer(String customerId) {
+        return customerRepository.findByCustomerId(customerId)
                 .orElseThrow(() -> new ResourceNotFoundException("customer not found: " + customerId));
+    }
+
+    private Cart requireCart(String customerId) {
+        requireCustomer(customerId);
+        return cartRepository.findByCustomer_CustomerId(customerId)
+                .orElseThrow(() -> new ResourceNotFoundException("cart not found: " + customerId));
+    }
+
+    private Cart getOrCreate(String customerId) {
+        Customer customer = requireCustomer(customerId);
         return cartRepository.findByCustomer_CustomerId(customerId).orElseGet(() -> {
             Cart cart = cartRepository.save(Cart.builder().customer(customer).build());
             log.info("Created cart {} for customer {}", cart.getCartId(), customerId);
@@ -127,7 +138,7 @@ public class CartService {
     }
 
     private CartItem requireOwned(String customerId, String cartItemId) {
-        Cart cart = getOrCreate(customerId);
+        Cart cart = requireCart(customerId);
         CartItem item = cartItemRepository.findByCartItemId(cartItemId)
                 .orElseThrow(() -> new ResourceNotFoundException("cart item not found: " + cartItemId));
         if (item.getCart() == null || !cart.getCartId().equals(item.getCart().getCartId())) {

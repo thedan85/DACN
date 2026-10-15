@@ -45,6 +45,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class CartServiceTest {
@@ -138,7 +140,7 @@ class CartServiceTest {
 
         @Test
         void softDeletedVariantThrows404() {
-            givenCart();
+            when(customerRepository.findByCustomerId("cust")).thenReturn(Optional.of(customer()));
             Variant v = variant(10);
             v.setDeleted(true);
             when(variantRepository.findWithProductByVariantId("v")).thenReturn(Optional.of(v));
@@ -163,6 +165,29 @@ class CartServiceTest {
             CartItemResponse result = service.addItem("cust", new CartItemAddRequest("v", 3));
 
             assertThat(result.quantity()).isEqualTo(2 + 3);
+        }
+
+        @Test
+        void invalidVariantCreatesNoCart() {
+            when(customerRepository.findByCustomerId("cust")).thenReturn(Optional.of(customer()));
+            when(variantRepository.findWithProductByVariantId("gone")).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.addItem("cust", new CartItemAddRequest("gone", 1)))
+                    .isInstanceOf(ResourceNotFoundException.class);
+            verify(cartRepository, never()).save(any(Cart.class));
+        }
+
+        @Test
+        void crossCartRemoveCreatesNoCart() {
+            givenCart();
+            Cart otherCart = Cart.builder().cartId("cart-2").customer(customer()).build();
+            CartItem foreign = CartItem.builder().cartItemId("item-9")
+                    .cart(otherCart).variant(variant(10)).quantity(1).build();
+            when(cartItemRepository.findByCartItemId("item-9")).thenReturn(Optional.of(foreign));
+
+            assertThatThrownBy(() -> service.removeItem("cust", "item-9"))
+                    .isInstanceOf(ResourceNotFoundException.class);
+            verify(cartRepository, never()).save(any(Cart.class));
         }
 
         private void givenCart() {
