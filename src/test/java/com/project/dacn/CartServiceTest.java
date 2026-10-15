@@ -15,6 +15,7 @@ import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.mapper.cart.CartMapper;
+import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.cart.CartItemRepository;
@@ -22,6 +23,9 @@ import com.project.dacn.repository.cart.CartRepository;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
+import com.project.dacn.repository.order.OrderItemRepository;
+import com.project.dacn.repository.order.OrderRepository;
+import com.project.dacn.repository.order.PaymentRepository;
 import com.project.dacn.service.cart.CartService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -57,6 +61,11 @@ class CartServiceTest {
         CartMapper cartMapper() {
             return Mappers.getMapper(CartMapper.class);
         }
+
+        @Bean
+        OrderMapper orderMapper() {
+            return Mappers.getMapper(OrderMapper.class);
+        }
     }
 
     @Nested
@@ -75,14 +84,26 @@ class CartServiceTest {
         @Mock
         CartItemRepository cartItemRepository;
 
+        @Mock
+        OrderRepository orderRepository;
+
+        @Mock
+        OrderItemRepository orderItemRepository;
+
+        @Mock
+        PaymentRepository paymentRepository;
+
         CartMapper mapper = Mappers.getMapper(CartMapper.class);
+
+        OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
 
         CartService service;
 
         @BeforeEach
         void setUp() {
             service = new CartService(customerRepository, variantRepository,
-                    cartRepository, cartItemRepository, mapper);
+                    cartRepository, cartItemRepository, mapper,
+                    orderRepository, orderItemRepository, paymentRepository, orderMapper);
         }
 
         @Test

@@ -3,25 +3,38 @@ package com.project.dacn.service.cart;
 import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.common.exception.OutOfStockException;
 import com.project.dacn.common.exception.ResourceNotFoundException;
+import com.project.dacn.dto.request.cart.CartCheckoutRequest;
 import com.project.dacn.dto.request.cart.CartItemAddRequest;
 import com.project.dacn.dto.request.cart.CartItemUpdateRequest;
+import com.project.dacn.dto.request.order.OrderCreateRequest;
+import com.project.dacn.dto.request.order.PaymentCreateRequest;
 import com.project.dacn.dto.response.cart.CartDetailResponse;
 import com.project.dacn.dto.response.cart.CartItemResponse;
+import com.project.dacn.dto.response.order.OrderResponse;
 import com.project.dacn.entity.cart.Cart;
 import com.project.dacn.entity.cart.CartItem;
 import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.identity.Customer;
+import com.project.dacn.entity.order.Order;
+import com.project.dacn.entity.order.OrderItem;
+import com.project.dacn.entity.order.Payment;
 import com.project.dacn.mapper.cart.CartMapper;
+import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.repository.cart.CartItemRepository;
 import com.project.dacn.repository.cart.CartRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
+import com.project.dacn.repository.order.OrderItemRepository;
+import com.project.dacn.repository.order.OrderRepository;
+import com.project.dacn.repository.order.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -36,6 +49,10 @@ public class CartService {
     private final CartRepository cartRepository;
     private final CartItemRepository cartItemRepository;
     private final CartMapper mapper;
+    private final OrderRepository orderRepository;
+    private final OrderItemRepository orderItemRepository;
+    private final PaymentRepository paymentRepository;
+    private final OrderMapper orderMapper;
 
     public CartDetailResponse getDetail(String customerId) {
         Cart cart = getOrCreate(customerId);
@@ -104,6 +121,54 @@ public class CartService {
         Cart cart = requireCart(customerId);
         cartItemRepository.deleteByCart_CartId(cart.getCartId());
         log.info("Cleared cart {} for customer {}", cart.getCartId(), customerId);
+    }
+
+    public OrderResponse checkout(String customerId, CartCheckoutRequest req) {
+        Customer customer = requireCustomer(customerId);
+        Cart cart = requireCart(customerId);
+        List<CartItem> items = cartItemRepository.findWithDetailsByCart_CartId(cart.getCartId());
+        if (items.isEmpty()) {
+            throw new IllegalArgumentException("cart is empty");
+        }
+        for (CartItem item : items) {
+            Variant variant = item.getVariant();
+            if (variant == null || Boolean.TRUE.equals(variant.getDeleted())
+                    || variant.getProduct() == null
+                    || variant.getProduct().getStatus() != ProductStatus.ACTIVE) {
+                throw new ResourceNotFoundException("variant not found: "
+                        + (variant == null ? null : variant.getVariantId()));
+            }
+            if (item.getQuantity() > variant.getStock()) {
+                throw new OutOfStockException("requested quantity " + item.getQuantity()
+                        + " exceeds stock " + variant.getStock());
+            }
+        }
+        BigDecimal total = items.stream()
+                .map(item -> item.getVariant().getPrice()
+                        .multiply(BigDecimal.valueOf(item.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        Order order = orderMapper.toOrder(new OrderCreateRequest(
+                customerId, total, req.address(), req.recipientName(), req.phone()));
+        order.setCustomer(customer);
+        Order saved = orderRepository.save(order);
+        List<OrderItem> lines = new ArrayList<>(items.size());
+        for (CartItem item : items) {
+            lines.add(OrderItem.builder()
+                    .order(saved)
+                    .variant(item.getVariant())
+                    .quantity(item.getQuantity())
+                    .unitPrice(item.getVariant().getPrice())
+                    .build());
+        }
+        orderItemRepository.saveAll(lines);
+        Payment payment = orderMapper.toPayment(new PaymentCreateRequest(
+                saved.getOrderId(), req.method(), total, null));
+        payment.setOrder(saved);
+        paymentRepository.save(payment);
+        cartItemRepository.deleteByCart_CartId(cart.getCartId());
+        log.info("Checked out cart {} to order {} (total {}) for customer {}",
+                cart.getCartId(), saved.getOrderId(), total, customerId);
+        return orderMapper.toOrderResponse(saved);
     }
 
     private Customer requireCustomer(String customerId) {
