@@ -19,13 +19,20 @@ public final class ProductSpecs {
     public static Specification<Product> filter(ProductFilter filter) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.notEqual(root.get(Product_.status), ProductStatus.DELETED));
+            // Only exclude DELETED by default. When an explicit status is requested
+            // (including DELETED for admin recovery/audit), filter by it alone;
+            // otherwise WHERE status != 'DELETED' AND status = 'DELETED' is always empty.
+            // NOTE: Product also carries @SQLRestriction("product_status <> 'DELETED'"),
+            // so true DELETED recovery still needs a native query bypassing that
+            // restriction; this fix removes the contradictory Specification clause.
+            if (filter.status() != null) {
+                predicates.add(cb.equal(root.get(Product_.status), filter.status()));
+            } else {
+                predicates.add(cb.notEqual(root.get(Product_.status), ProductStatus.DELETED));
+            }
             if (filter.name() != null && !filter.name().isBlank()) {
                 predicates.add(cb.like(cb.lower(root.get(Product_.name)),
                         "%" + filter.name().toLowerCase() + "%"));
-            }
-            if (filter.status() != null) {
-                predicates.add(cb.equal(root.get(Product_.status), filter.status()));
             }
             if (filter.categoryId() != null) {
                 var category = root.join(Product_.category, JoinType.LEFT);

@@ -55,6 +55,14 @@ public class AttributeValueService {
         return mapper.toAttributeValueResponse(repo.save(entity));
     }
 
+    /**
+     * PUT replace. Currently merge-only: kept separate from {@link #update}
+     * so PUT/PATCH semantics can diverge.
+     */
+    public AttributeValueResponse replace(String attributeValueId, AttributeValueUpdateRequest request) {
+        return update(attributeValueId, request);
+    }
+
     public void delete(String attributeValueId) {
         repo.delete(require(attributeValueId));
     }

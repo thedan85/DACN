@@ -1,4 +1,4 @@
-package com.project.dacn;
+package com.project.dacn.common;
 
 import com.project.dacn.common.exception.GlobalExceptionHandler;
 import com.project.dacn.common.exception.ResourceNotFoundException;
@@ -89,6 +89,22 @@ class CatalogExceptionHandlerTest {
     void malformedJsonMapsTo400Envelope() {
         ResponseEntity<ApiResponse<?>> response = handler.handleNotReadable(
                 new org.springframework.http.converter.HttpMessageNotReadableException("bad json", null, null));
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(response.getBody().getCode()).isEqualTo(400);
+    }
+
+    @Test
+    void oversizeUploadMapsTo400Envelope() {
+        ResponseEntity<ApiResponse<?>> response = handler.handleOversize(
+                new org.springframework.web.multipart.MaxUploadSizeExceededException(10L * 1024 * 1024));
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(response.getBody().getCode()).isEqualTo(400);
+    }
+
+    @Test
+    void missingFilePartMapsTo400Envelope() {
+        ResponseEntity<ApiResponse<?>> response = handler.handleMissingPart(
+                new org.springframework.web.multipart.support.MissingServletRequestPartException("file"));
         assertThat(response.getStatusCode().value()).isEqualTo(400);
         assertThat(response.getBody().getCode()).isEqualTo(400);
     }

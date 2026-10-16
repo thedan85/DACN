@@ -41,14 +41,51 @@ public class CategoryService {
 
     public CategoryResponse update(String categoryId, CategoryUpdateRequest request) {
         Category entity = require(categoryId);
-        if (request.parentCategoryId() != null && request.parentCategoryId().equals(categoryId)) {
-            throw new IllegalArgumentException("category cannot be its own parent");
-        }
-        mapper.updateCategory(request, entity);
         if (request.parentCategoryId() != null) {
-            entity.setParent(require(request.parentCategoryId()));
+            if (request.parentCategoryId().equals(categoryId)) {
+                throw new IllegalArgumentException("category cannot be its own parent");
+            }
+            Category newParent = require(request.parentCategoryId());
+            assertNoCycle(categoryId, newParent);
+            mapper.updateCategory(request, entity);
+            entity.setParent(newParent);
+        } else {
+            // PATCH merge semantics: null means "not provided", keep existing parent.
+            mapper.updateCategory(request, entity);
         }
         return mapper.toCategoryResponse(repo.save(entity));
+    }
+
+    /**
+     * PUT replace semantics: {@code null} parentCategoryId explicitly detaches
+     * the category to root. Scalar nulls still merge (name/slug are NOT NULL
+     * in DB, so true null-wipe is impossible with the current DTO).
+     */
+    public CategoryResponse replace(String categoryId, CategoryUpdateRequest request) {
+        Category entity = require(categoryId);
+        if (request.parentCategoryId() != null) {
+            if (request.parentCategoryId().equals(categoryId)) {
+                throw new IllegalArgumentException("category cannot be its own parent");
+            }
+            Category newParent = require(request.parentCategoryId());
+            assertNoCycle(categoryId, newParent);
+            mapper.updateCategory(request, entity);
+            entity.setParent(newParent);
+        } else {
+            mapper.updateCategory(request, entity);
+            entity.setParent(null);
+        }
+        return mapper.toCategoryResponse(repo.save(entity));
+    }
+
+    private void assertNoCycle(String categoryId, Category newParent) {
+        Category cursor = newParent;
+        while (cursor != null) {
+            if (categoryId.equals(cursor.getCategoryId())) {
+                throw new IllegalArgumentException("category hierarchy cycle detected");
+            }
+            cursor = cursor.getParent();
+        }
     }
 
     public void delete(String categoryId) {

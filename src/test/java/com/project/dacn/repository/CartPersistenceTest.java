@@ -1,4 +1,4 @@
-package com.project.dacn;
+package com.project.dacn.repository;
 
 import com.project.dacn.entity.auth.Role;
 import com.project.dacn.entity.auth.User;

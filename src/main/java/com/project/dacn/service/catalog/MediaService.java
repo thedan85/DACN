@@ -27,7 +27,7 @@ public class MediaService {
     private final CatalogMapper mapper;
 
     public PageResponse<MediaResponse> list(Pageable pageable) {
-        Page<Media> page = repo.findAll(pageable);
+        Page<Media> page = repo.findByDeletedFalse(pageable);
         return PageResponse.from(page, page.map(mapper::toMediaResponse).getContent());
     }
 
@@ -70,6 +70,14 @@ public class MediaService {
         Media entity = require(mediaId);
         mapper.updateMedia(request, entity);
         return mapper.toMediaResponse(repo.save(entity));
+    }
+
+    /**
+     * PUT replace. Currently merge-only: kept separate from {@link #update}
+     * so PUT/PATCH semantics can diverge.
+     */
+    public MediaResponse replace(String mediaId, MediaUpdateRequest request) {
+        return update(mediaId, request);
     }
 
     public void delete(String mediaId) {

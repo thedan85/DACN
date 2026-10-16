@@ -48,10 +48,23 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(409, "resource already exists or is still referenced", null));
     }
 
+    @ExceptionHandler(OutOfStockException.class)
+    public ResponseEntity<ApiResponse<?>> handleOutOfStock(OutOfStockException ex) {
+        return ResponseEntity.status(409)
+                .body(ApiResponse.of(409, ex.getMessage(), null));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<?>> handleValidation(MethodArgumentNotValidException ex) {
+        String message = ex.getBindingResult().getFieldErrors().stream()
+                .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
+                .sorted()
+                .collect(java.util.stream.Collectors.joining("; "));
+        if (message.isBlank()) {
+            message = "validation failed";
+        }
         return ResponseEntity.badRequest()
-                .body(ApiResponse.of(400, ex.getMessage(), null));
+                .body(ApiResponse.of(400, message, null));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -64,6 +77,27 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<?>> handleIllegalArgument(IllegalArgumentException ex) {
         return ResponseEntity.badRequest()
                 .body(ApiResponse.of(400, ex.getMessage(), null));
+    }
+
+    @ExceptionHandler(com.project.dacn.integration.cloudinary.CloudinaryException.class)
+    public ResponseEntity<ApiResponse<?>> handleCloudinary(
+            com.project.dacn.integration.cloudinary.CloudinaryException ex) {
+        return ResponseEntity.status(502)
+                .body(ApiResponse.of(502, "UPLOAD_FAILED: " + ex.getMessage(), null));
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<?>> handleOversize(
+            org.springframework.web.multipart.MaxUploadSizeExceededException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.of(400, "file too large: max 10MB", null));
+    }
+
+    @ExceptionHandler(org.springframework.web.multipart.support.MissingServletRequestPartException.class)
+    public ResponseEntity<ApiResponse<?>> handleMissingPart(
+            org.springframework.web.multipart.support.MissingServletRequestPartException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.of(400, "missing file part: " + ex.getRequestPartName(), null));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
