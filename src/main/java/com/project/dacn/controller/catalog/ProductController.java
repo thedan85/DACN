@@ -56,7 +56,7 @@ public class ProductController {
     @PutMapping("/{productId}")
     public ApiResponse<ProductResponse> replace(@PathVariable String productId,
             @Valid @RequestBody ProductUpdateRequest request) {
-        return ApiResponse.ok(service.update(productId, request));
+        return ApiResponse.ok(service.replace(productId, request));
     }
 
     @PatchMapping("/{productId}")

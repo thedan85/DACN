@@ -1,4 +1,4 @@
-package com.project.dacn;
+package com.project.dacn.service;
 
 import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.common.response.PageResponse;
@@ -52,6 +52,41 @@ class CategoryServiceTest {
         when(repo.findByCategoryId("a")).thenReturn(Optional.of(c));
         assertThatThrownBy(() -> service.update("a", new CategoryUpdateRequest(null, null, "a")))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void transitiveCycleRejected() {
+        Category a = Category.builder().categoryId("a").name("A").slug("a").build();
+        Category b = Category.builder().categoryId("b").name("B").slug("b").build();
+        Category c = Category.builder().categoryId("c").name("C").slug("c").build();
+        b.setParent(a);
+        c.setParent(b);
+        when(repo.findByCategoryId("a")).thenReturn(Optional.of(a));
+        when(repo.findByCategoryId("c")).thenReturn(Optional.of(c));
+        assertThatThrownBy(() -> service.update("a", new CategoryUpdateRequest(null, null, "c")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("cycle");
+    }
+
+    @Test
+    void replaceWithNullParentDetachesToRoot() {
+        Category child = Category.builder().categoryId("child").name("C").slug("c").build();
+        child.setParent(Category.builder().categoryId("parent").name("P").slug("p").build());
+        when(repo.findByCategoryId("child")).thenReturn(Optional.of(child));
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+        service.replace("child", new CategoryUpdateRequest(null, null, null));
+        assertThat(child.getParent()).isNull();
+    }
+
+    @Test
+    void patchWithNullParentKeepsExisting() {
+        Category parent = Category.builder().categoryId("parent").name("P").slug("p").build();
+        Category child = Category.builder().categoryId("child").name("C").slug("c").build();
+        child.setParent(parent);
+        when(repo.findByCategoryId("child")).thenReturn(Optional.of(child));
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+        service.update("child", new CategoryUpdateRequest(null, null, null));
+        assertThat(child.getParent()).isSameAs(parent);
     }
 
     @Test

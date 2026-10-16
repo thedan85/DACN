@@ -55,7 +55,7 @@ public class MediaController {
     @PutMapping("/api/media/{mediaId}")
     public ApiResponse<MediaResponse> replace(@PathVariable String mediaId,
             @Valid @RequestBody MediaUpdateRequest request) {
-        return ApiResponse.ok(service.update(mediaId, request));
+        return ApiResponse.ok(service.replace(mediaId, request));
     }
 
     @PatchMapping("/api/media/{mediaId}")

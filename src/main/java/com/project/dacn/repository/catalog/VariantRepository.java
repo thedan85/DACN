@@ -16,4 +16,6 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
     List<Variant> findByProduct_ProductId(String productId);
 
     Page<Variant> findByProduct_ProductId(String productId, Pageable pageable);
+
+    Page<Variant> findByDeletedFalse(Pageable pageable);
 }

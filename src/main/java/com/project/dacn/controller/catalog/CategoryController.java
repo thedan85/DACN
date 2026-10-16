@@ -44,7 +44,7 @@ public class CategoryController {
     @PutMapping("/{categoryId}")
     public ApiResponse<CategoryResponse> replace(@PathVariable String categoryId,
             @Valid @RequestBody CategoryUpdateRequest request) {
-        return ApiResponse.ok(service.update(categoryId, request));
+        return ApiResponse.ok(service.replace(categoryId, request));
     }
 
     @PatchMapping("/{categoryId}")

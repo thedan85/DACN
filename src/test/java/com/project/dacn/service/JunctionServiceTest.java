@@ -1,4 +1,4 @@
-package com.project.dacn;
+package com.project.dacn.service;
 
 import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.dto.request.catalog.VariantAttributeValueCreateRequest;

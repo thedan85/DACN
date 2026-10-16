@@ -49,7 +49,7 @@ public class VariantController {
     @PutMapping("/api/variants/{variantId}")
     public ApiResponse<VariantResponse> replace(@PathVariable String variantId,
             @Valid @RequestBody VariantUpdateRequest request) {
-        return ApiResponse.ok(service.update(variantId, request));
+        return ApiResponse.ok(service.replace(variantId, request));
     }
 
     @PatchMapping("/api/variants/{variantId}")
