@@ -71,7 +71,7 @@ public class AuthService {
             String passwordHash = passwordEncoder.encode(request.password());
 
             // Get CUSTOMER role
-            Role customerRole = roleRepository.findByCode("CUSTOMER")
+            Role customerRole = roleRepository.findByCodeIgnoreCase("CUSTOMER")
                     .orElseThrow(() -> new IllegalStateException("CUSTOMER role not found"));
 
             // Create User

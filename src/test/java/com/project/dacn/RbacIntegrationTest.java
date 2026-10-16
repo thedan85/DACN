@@ -59,7 +59,7 @@ class RbacIntegrationTest {
     @BeforeEach
     void seedRbac() {
         // Profile test has no V8 seed: create roles/permissions here
-        Role customerRole = roleRepository.findByCode("CUSTOMER").orElseGet(() ->
+        Role customerRole = roleRepository.findByCodeIgnoreCase("CUSTOMER").orElseGet(() ->
                 roleRepository.save(Role.builder()
                         .code("CUSTOMER")
                         .name("Customer")
@@ -67,7 +67,7 @@ class RbacIntegrationTest {
                         .deleted(false)
                         .build()));
 
-        Role employeeRole = roleRepository.findByCode("EMPLOYEE").orElseGet(() ->
+        Role employeeRole = roleRepository.findByCodeIgnoreCase("EMPLOYEE").orElseGet(() ->
                 roleRepository.save(Role.builder()
                         .code("EMPLOYEE")
                         .name("Employee")
@@ -145,7 +145,7 @@ class RbacIntegrationTest {
     @Test
     void protectedEndpoint_employeeToken_200() throws Exception {
         // Create EMPLOYEE user directly via repository (register only creates CUSTOMER)
-        Role employeeRole = roleRepository.findByCode("EMPLOYEE").orElseThrow();
+        Role employeeRole = roleRepository.findByCodeIgnoreCase("EMPLOYEE").orElseThrow();
 
         User employee = User.builder()
                 .email("employee@test.com")
