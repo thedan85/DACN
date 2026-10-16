@@ -36,6 +36,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(409, "resource already exists or is still referenced", null));
     }
 
+    @ExceptionHandler(OutOfStockException.class)
+    public ResponseEntity<ApiResponse<?>> handleOutOfStock(OutOfStockException ex) {
+        return ResponseEntity.status(409)
+                .body(ApiResponse.of(409, ex.getMessage(), null));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<?>> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()
