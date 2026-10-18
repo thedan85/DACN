@@ -8,6 +8,7 @@ import com.project.dacn.dto.response.catalog.AttributeValueResponse;
 import com.project.dacn.service.catalog.AttributeValueService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,7 +26,7 @@ public class AttributeValueController {
     private final AttributeValueService service;
 
     @GetMapping("/api/attribute-values")
-    public ApiResponse<PageResponse<AttributeValueResponse>> list(Pageable pageable) {
+    public ApiResponse<PageResponse<AttributeValueResponse>> list(@ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.list(pageable));
     }
 
@@ -36,7 +37,7 @@ public class AttributeValueController {
 
     @GetMapping("/api/attributes/{attributeId}/values")
     public ApiResponse<PageResponse<AttributeValueResponse>> listByAttribute(
-            @PathVariable String attributeId, Pageable pageable) {
+            @PathVariable String attributeId, @ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.listByAttribute(attributeId, pageable));
     }
 

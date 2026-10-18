@@ -10,6 +10,7 @@ import com.project.dacn.service.catalog.ProductService;
 import com.project.dacn.spec.ProductFilter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,7 +31,7 @@ public class ProductController {
     private final ProductService service;
 
     @GetMapping
-    public ApiResponse<PageResponse<ProductResponse>> list(Pageable pageable) {
+    public ApiResponse<PageResponse<ProductResponse>> list(@ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.list(pageable));
     }
 
@@ -39,7 +40,7 @@ public class ProductController {
             @RequestParam(required = false) String name,
             @RequestParam(required = false) ProductStatus status,
             @RequestParam(required = false) String categoryId,
-            Pageable pageable) {
+            @ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.search(new ProductFilter(name, status, categoryId), pageable));
     }
 

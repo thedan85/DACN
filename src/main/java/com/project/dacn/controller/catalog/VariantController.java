@@ -8,6 +8,7 @@ import com.project.dacn.dto.response.catalog.VariantResponse;
 import com.project.dacn.service.catalog.VariantService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,7 +27,7 @@ public class VariantController {
     private final VariantService service;
 
     @GetMapping("/api/variants")
-    public ApiResponse<PageResponse<VariantResponse>> list(Pageable pageable) {
+    public ApiResponse<PageResponse<VariantResponse>> list(@ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.list(pageable));
     }
 
@@ -37,7 +38,7 @@ public class VariantController {
 
     @GetMapping("/api/products/{productId}/variants")
     public ApiResponse<PageResponse<VariantResponse>> listByProduct(@PathVariable String productId,
-            Pageable pageable) {
+            @ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.listByProduct(productId, pageable));
     }
 

@@ -16,6 +16,7 @@ public class PageResponse<T> {
     private int size;
     private long totalElements;
     private int totalPages;
+    
 
     public static <T> PageResponse<T> from(Page<?> page, List<T> content) {
         return new PageResponse<>(
