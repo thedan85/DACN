@@ -30,7 +30,7 @@ public class ProductFolderResolver {
         return "home/" + String.join("/", segments);
     }
 
-    /** Business IDs carry a type prefix ({@code PR_x}); folders should not. */
+    /** Business IDs carry a type prefix ({@code PRD_x}); folders should not. */
     private static String stripPrefix(String businessId) {
         int underscore = businessId.indexOf('_');
         return underscore > 0 ? businessId.substring(underscore + 1) : businessId;

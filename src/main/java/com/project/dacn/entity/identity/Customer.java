@@ -59,6 +59,8 @@ public class Customer extends BaseEntity {
 
     @Override
     protected String buildBusinessId() {
-        return BusinessId.of("CUS", name);
+        return user != null && user.getEmail() != null
+                ? BusinessId.of("CUS", user.getEmail())
+                : BusinessId.random("CUS");
     }
 }

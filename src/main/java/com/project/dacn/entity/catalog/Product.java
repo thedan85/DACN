@@ -1,6 +1,5 @@
 package com.project.dacn.entity.catalog;
 
-import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import com.project.dacn.common.constant.ProductStatus;
 import jakarta.persistence.Column;
@@ -66,11 +65,10 @@ public class Product extends BaseEntity {
 
     @Override
     protected String getBusinessIdPrefix() {
-        return "PR";
+        return "PRD";
     }
 
-    @Override
-    protected String buildBusinessId() {
-        return BusinessId.of("PR", name);
-    }
+    // product_id is derived from the surrogate id (PRD_<id>), so it cannot be
+    // built in @PrePersist: with GenerationType.IDENTITY the id only exists
+    // after the insert. ProductService rewrites it right after saveAndFlush.
 }

@@ -19,17 +19,6 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
 
     Page<Product> findByStatusNot(ProductStatus status, Pageable pageable);
 
-    @Query(nativeQuery = true, value = """
-            SELECT COUNT(*) FROM products
-            WHERE (LOWER(product_name) = :name
-                   OR product_id = :plain
-                   OR product_id = :prefixed)
-              AND product_id <> :selfId""")
-    long countNameTaken(@Param("name") String name,
-                        @Param("plain") String plain,
-                        @Param("prefixed") String prefixed,
-                        @Param("selfId") String selfId);
-
     /**
      * Admin/audit path bypassing {@code @SQLRestriction("product_status <> 'DELETED'")}.
      * Native queries are not augmented with the entity restriction, so explicit
