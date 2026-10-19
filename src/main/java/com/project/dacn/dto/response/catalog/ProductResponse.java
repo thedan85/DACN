@@ -7,6 +7,7 @@ import java.time.Instant;
 
 public record ProductResponse(
         String productId,
+        String slug,
         String name,
         String description,
         String detailDescription,

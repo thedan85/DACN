@@ -2,6 +2,7 @@ package com.project.dacn.entity.catalog;
 
 import com.project.dacn.entity.BaseEntity;
 import com.project.dacn.common.constant.ProductStatus;
+import com.project.dacn.common.util.BusinessId;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -10,6 +11,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -36,6 +38,9 @@ public class Product extends BaseEntity {
 
     @Column(name = "product_name", nullable = false)
     private String name;
+
+    @Column(name = "product_slug", nullable = false, unique = true)
+    private String slug;
 
     @Column(name = "product_description", nullable = false, columnDefinition = "TEXT")
     private String description;
@@ -69,6 +74,17 @@ public class Product extends BaseEntity {
     @Override
     protected String getBusinessIdPrefix() {
         return "PRD";
+    }
+
+    /**
+     * Safety net for direct repository writes (seeds/tests). ProductService
+     * generates a collision-free slug before saving; this only fills a gap.
+     */
+    @PrePersist
+    void generateSlug() {
+        if (slug == null || slug.isBlank()) {
+            slug = BusinessId.slug(name);
+        }
     }
 
     // product_id is derived from the surrogate id (PRD_<id>), so it cannot be

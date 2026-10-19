@@ -29,9 +29,9 @@ public class VariantService {
         return PageResponse.from(page, page.map(mapper::toVariantResponse).getContent());
     }
 
-    public PageResponse<VariantResponse> listByProduct(String productId, Pageable pageable) {
-        requireProduct(productId);
-        Page<Variant> page = repo.findByProduct_ProductId(productId, pageable);
+    public PageResponse<VariantResponse> listByProductSlug(String slug, Pageable pageable) {
+        requireProductBySlug(slug);
+        Page<Variant> page = repo.findByProduct_SlugIgnoreCase(slug, pageable);
         return PageResponse.from(page, page.map(mapper::toVariantResponse).getContent());
     }
 
@@ -72,9 +72,9 @@ public class VariantService {
                 .orElseThrow(() -> new ResourceNotFoundException("variant not found: " + variantId));
     }
 
-    private void requireProduct(String productId) {
-        if (productRepo.findByProductId(productId).isEmpty()) {
-            throw new ResourceNotFoundException("product not found: " + productId);
+    private void requireProductBySlug(String slug) {
+        if (productRepo.findBySlugIgnoreCase(slug).isEmpty()) {
+            throw new ResourceNotFoundException("product not found: " + slug);
         }
     }
 }

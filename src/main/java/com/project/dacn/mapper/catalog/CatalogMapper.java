@@ -65,6 +65,7 @@ public interface CatalogMapper {
     // ---- Product ----
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "productId", ignore = true)
+    @Mapping(target = "slug", ignore = true)
     @Mapping(target = "category", ignore = true)
     @Mapping(target = "status", constant = "ACTIVE")
     @Mapping(target = "createdAt", ignore = true)
@@ -80,6 +81,7 @@ public interface CatalogMapper {
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "productId", ignore = true)
+    @Mapping(target = "slug", ignore = true)
     @Mapping(target = "category", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)

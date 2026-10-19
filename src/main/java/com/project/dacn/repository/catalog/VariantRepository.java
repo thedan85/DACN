@@ -21,6 +21,8 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
 
     Page<Variant> findByProduct_ProductId(String productId, Pageable pageable);
 
+    Page<Variant> findByProduct_SlugIgnoreCase(String slug, Pageable pageable);
+
     Page<Variant> findByDeletedFalse(Pageable pageable);
 
     @EntityGraph(attributePaths = {"product"})

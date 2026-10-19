@@ -43,9 +43,9 @@ public class ProductController {
         return ApiResponse.ok(service.search(new ProductFilter(name, status, categoryId), pageable));
     }
 
-    @GetMapping("/{productId}")
-    public ApiResponse<ProductResponse> get(@PathVariable String productId) {
-        return ApiResponse.ok(service.get(productId));
+    @GetMapping("/{slug}")
+    public ApiResponse<ProductResponse> get(@PathVariable String slug) {
+        return ApiResponse.ok(service.getBySlug(slug));
     }
 
     @PostMapping

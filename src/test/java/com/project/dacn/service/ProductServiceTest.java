@@ -51,7 +51,7 @@ class ProductServiceTest {
 
     @Test
     void deleteSetsStatusDeleted() {
-        Product p = Product.builder().productId("p").name("P").description("d").build();
+        Product p = Product.builder().productId("p").slug("p").name("P").description("d").build();
         when(repo.findByProductId("p")).thenReturn(Optional.of(p));
         service.delete("p");
         assertThat(p.getStatus()).isEqualTo(ProductStatus.DELETED);
@@ -61,14 +61,14 @@ class ProductServiceTest {
     void createWithMissingCategoryThrowsNotFound() {
         when(categoryRepo.findByCategoryId("gone")).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.create(
-                new ProductCreateRequest("P", "d", null, null, "gone")))
+                new ProductCreateRequest("P", "d", null, null, "gone", null)))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
     void getMissingThrowsNotFound() {
-        when(repo.findByProductId("nope")).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.get("nope")).isInstanceOf(ResourceNotFoundException.class);
+        when(repo.findBySlugIgnoreCase("nope")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.getBySlug("nope")).isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
@@ -110,12 +110,12 @@ class ProductServiceTest {
         Product p = product(1L);
         ProductPriceRange range = new ProductPriceRange(
                 1L, new BigDecimal("179000"), new BigDecimal("199000"));
-        when(repo.findByProductId("PRD_1")).thenReturn(Optional.of(p));
+        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
         when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of(range));
         when(mapper.toProductResponse(p, range.minPrice(), range.maxPrice()))
                 .thenReturn(response(range.minPrice(), range.maxPrice()));
 
-        ProductResponse result = service.get("PRD_1");
+        ProductResponse result = service.getBySlug("ember-tetra");
 
         assertThat(result.minPrice()).isEqualByComparingTo("179000");
         assertThat(result.maxPrice()).isEqualByComparingTo("199000");
@@ -125,13 +125,14 @@ class ProductServiceTest {
         return Product.builder()
                 .id(id)
                 .productId("PRD_" + id)
+                .slug("ember-tetra")
                 .name("P")
                 .description("d")
                 .build();
     }
 
     private static ProductResponse response(BigDecimal minPrice, BigDecimal maxPrice) {
-        return new ProductResponse("PRD_1", "P", "d", null, null,
+        return new ProductResponse("PRD_1", "ember-tetra", "P", "d", null, null,
                 ProductStatus.ACTIVE, null, null, minPrice, maxPrice, null, null);
     }
 }
