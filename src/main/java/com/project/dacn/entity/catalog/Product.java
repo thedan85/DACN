@@ -27,7 +27,10 @@ import org.hibernate.annotations.SQLRestriction;
 @SQLRestriction("product_status <> 'DELETED'")
 public class Product extends BaseEntity {
 
-    @NaturalId
+    // product_id is rewritten by ProductService right after the insert
+    // (PRD_<hex> from @PrePersist -> PRD_<surrogate id>), so it must be a
+    // mutable natural id; Hibernate rejects immutable natural id changes.
+    @NaturalId(mutable = true)
     @Column(name = "product_id", nullable = false, unique = true)
     private String productId;
 
