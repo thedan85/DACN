@@ -82,6 +82,48 @@ class ProductFilterTest {
     }
 
     @Test
+    void filterByParentCategoryIncludesDescendants() {
+        Category fish = categories.save(Category.builder().name("Fish").slug("pf-fish-parent").build());
+        Category tetra = categories.save(
+                Category.builder().name("Tetra").slug("pf-tetra").parent(fish).build());
+        Category plant = categories.save(Category.builder().name("Plant").slug("pf-plant-sibling").build());
+        products.save(Product.builder().name("Congo Tetra").description("d").category(tetra).build());
+        products.save(Product.builder().name("Anubias").description("d").category(plant).build());
+
+        var result = service.search(new ProductFilter(null, null, fish.getCategoryId()), Pageable.unpaged());
+
+        assertThat(result.getContent()).extracting("name").containsExactly("Congo Tetra");
+    }
+
+    @Test
+    void filterByGrandparentCategoryIncludesGrandchildren() {
+        Category plants = categories.save(Category.builder().name("Plants").slug("pf-plants").build());
+        Category epiphyte = categories.save(
+                Category.builder().name("Epiphyte").slug("pf-epiphyte").parent(plants).build());
+        products.save(Product.builder().name("Anubias Nana").description("d").category(epiphyte).build());
+
+        var result = service.search(new ProductFilter(null, null, plants.getCategoryId()), Pageable.unpaged());
+
+        assertThat(result.getContent()).extracting("name").containsExactly("Anubias Nana");
+    }
+
+    @Test
+    void deletedStatusFilterIncludesDescendants() {
+        Category fish = categories.save(Category.builder().name("Fish").slug("pf-fish-deleted").build());
+        Category tetra = categories.save(
+                Category.builder().name("Tetra").slug("pf-tetra-deleted").parent(fish).build());
+        Product gone = products.save(
+                Product.builder().name("Gone Tetra").description("d").category(tetra).build());
+        gone.setStatus(ProductStatus.DELETED);
+        products.save(gone);
+
+        var result = service.search(
+                new ProductFilter(null, ProductStatus.DELETED, fish.getCategoryId()), Pageable.unpaged());
+
+        assertThat(result.getContent()).extracting("name").containsExactly("Gone Tetra");
+    }
+
+    @Test
     void listIncludesMinAndMaxPriceFromActiveVariants() {
         Product priced = products.save(Product.builder()
                 .name("Priced Fish").description("d").build());

@@ -24,6 +24,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -65,15 +70,50 @@ public class ProductService {
         // parsed from the generic `sort` query param by the Pageable resolver,
         // otherwise Spring Data appends an invalid property order.
         Pageable cleanPageable = withoutSort(pageable);
+        // A category filter covers the whole subtree: a parent category page
+        // must list products filed under any descendant category.
+        Set<String> categoryIds = filter.categoryId() == null
+                ? null
+                : categorySubtree(filter.categoryId());
         // DELETED is hidden by @SQLRestriction on Product; route explicit DELETED
         // requests through the native admin query that bypasses that restriction.
         if (filter.status() == ProductStatus.DELETED) {
-            Page<Product> page = repo.findByStatusIncludingDeleted(
-                    ProductStatus.DELETED.name(), filter.keyword(), filter.categoryId(), cleanPageable);
+            // Native LIKE has no null handling: an empty keyword matches every name.
+            String keyword = filter.keyword() == null ? "" : filter.keyword();
+            Page<Product> page = categoryIds == null
+                    ? repo.findByStatusIncludingDeleted(
+                            ProductStatus.DELETED.name(), keyword, cleanPageable)
+                    : repo.findByStatusIncludingDeletedInCategories(
+                            ProductStatus.DELETED.name(), keyword, categoryIds, cleanPageable);
             return toPageResponse(page);
         }
-        Page<Product> page = repo.findAll(ProductSpecs.filter(filter), cleanPageable);
+        Page<Product> page = repo.findAll(ProductSpecs.filter(filter, categoryIds), cleanPageable);
         return toPageResponse(page);
+    }
+
+    /**
+     * The requested category plus every descendant. The seeded category tree is
+     * small and shallow, so resolving it in memory beats a DB-specific recursive
+     * CTE. Switch to a recursive query if the tree grows large.
+     */
+    private Set<String> categorySubtree(String rootId) {
+        Map<String, List<String>> childrenByParent = new HashMap<>();
+        for (Category category : categoryRepo.findByDeletedFalse()) {
+            Category parent = category.getParent();
+            if (parent != null) {
+                childrenByParent.computeIfAbsent(parent.getCategoryId(), key -> new ArrayList<>())
+                        .add(category.getCategoryId());
+            }
+        }
+        Set<String> ids = new LinkedHashSet<>();
+        Deque<String> pending = new ArrayDeque<>(List.of(rootId));
+        while (!pending.isEmpty()) {
+            String id = pending.poll();
+            if (ids.add(id)) {
+                pending.addAll(childrenByParent.getOrDefault(id, List.of()));
+            }
+        }
+        return ids;
     }
 
     public ProductResponse getBySlug(String slug) {

@@ -11,7 +11,6 @@ import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.catalog.Variant_;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
-import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Subquery;
@@ -19,6 +18,7 @@ import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 public final class ProductSpecs {
@@ -26,7 +26,12 @@ public final class ProductSpecs {
     private ProductSpecs() {
     }
 
-    public static Specification<Product> filter(ProductFilter filter) {
+    /**
+     * @param categoryIds expanded set of category ids: the requested category
+     *                    plus all of its descendants. A parent filter must match
+     *                    products filed under any child category.
+     */
+    public static Specification<Product> filter(ProductFilter filter, Collection<String> categoryIds) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             // Only exclude DELETED by default. When an explicit status is requested
@@ -44,9 +49,9 @@ public final class ProductSpecs {
                 predicates.add(cb.like(cb.lower(root.get(Product_.name)),
                         "%" + filter.keyword().toLowerCase() + "%"));
             }
-            if (filter.categoryId() != null) {
-                var category = root.join(Product_.category, JoinType.LEFT);
-                predicates.add(cb.equal(category.get(Category_.categoryId), filter.categoryId()));
+            if (categoryIds != null && !categoryIds.isEmpty()) {
+                predicates.add(root.get(Product_.category)
+                        .get(Category_.categoryId).in(categoryIds));
             }
             // Both bounds compare against the lowest active variant price, so a
             // product is in range if any of its sellable variants is in range.
