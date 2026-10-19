@@ -74,4 +74,9 @@ public class ProductAttributeValue extends BaseEntity {
     protected void setBusinessId(String businessId) {
         this.productValueId = businessId;
     }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "PAV";
+    }
 }

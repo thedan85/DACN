@@ -63,4 +63,9 @@ public class Order extends BaseEntity {
     protected void setBusinessId(String businessId) {
         this.orderId = businessId;
     }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "ORD";
+    }
 }

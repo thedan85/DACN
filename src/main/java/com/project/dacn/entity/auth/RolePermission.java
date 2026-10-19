@@ -1,5 +1,6 @@
 package com.project.dacn.entity.auth;
 
+import com.project.dacn.common.util.BusinessId;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -19,7 +20,6 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.NaturalId;
 
 import java.time.Instant;
-import java.util.UUID;
 
 @Getter
 @Setter
@@ -61,7 +61,7 @@ public class RolePermission {
     @jakarta.persistence.PrePersist
     protected void generateBusinessId() {
         if (rolePermissionId == null) {
-            rolePermissionId = UUID.randomUUID().toString();
+            rolePermissionId = BusinessId.random("RP");
         }
     }
 }

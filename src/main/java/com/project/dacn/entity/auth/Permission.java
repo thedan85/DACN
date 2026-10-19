@@ -1,5 +1,6 @@
 package com.project.dacn.entity.auth;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -45,5 +46,15 @@ public class Permission extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.permissionId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "PERM";
+    }
+
+    @Override
+    protected String buildBusinessId() {
+        return BusinessId.of("PERM", code);
     }
 }

@@ -1,5 +1,6 @@
 package com.project.dacn.entity.catalog;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -39,5 +40,15 @@ public class Attribute extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.attributeId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "ATTR";
+    }
+
+    @Override
+    protected String buildBusinessId() {
+        return BusinessId.of("ATTR", name);
     }
 }

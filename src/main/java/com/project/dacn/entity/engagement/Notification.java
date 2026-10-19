@@ -64,4 +64,9 @@ public class Notification extends BaseEntity {
     protected void setBusinessId(String businessId) {
         this.notificationId = businessId;
     }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "NOTI";
+    }
 }

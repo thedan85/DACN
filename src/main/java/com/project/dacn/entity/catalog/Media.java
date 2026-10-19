@@ -54,4 +54,9 @@ public class Media extends BaseEntity {
     protected void setBusinessId(String businessId) {
         this.mediaId = businessId;
     }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "MED";
+    }
 }

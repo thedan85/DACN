@@ -1,5 +1,6 @@
 package com.project.dacn.entity.catalog;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import com.project.dacn.common.constant.ProductStatus;
 import jakarta.persistence.Column;
@@ -61,5 +62,15 @@ public class Product extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.productId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "PR";
+    }
+
+    @Override
+    protected String buildBusinessId() {
+        return BusinessId.of("PR", name);
     }
 }

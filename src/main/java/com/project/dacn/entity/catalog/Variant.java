@@ -1,5 +1,6 @@
 package com.project.dacn.entity.catalog;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -57,5 +58,15 @@ public class Variant extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.variantId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "VAR";
+    }
+
+    @Override
+    protected String buildBusinessId() {
+        return BusinessId.of("VAR", sku);
     }
 }

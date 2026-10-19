@@ -1,5 +1,6 @@
 package com.project.dacn.entity.order;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import com.project.dacn.common.constant.PaymentMethod;
 import com.project.dacn.common.constant.PaymentStatus;
@@ -64,5 +65,17 @@ public class Payment extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.paymentId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "PAY";
+    }
+
+    @Override
+    protected String buildBusinessId() {
+        return order != null && order.getOrderId() != null
+                ? BusinessId.child("PAY", order.getOrderId())
+                : BusinessId.random("PAY");
     }
 }

@@ -1,5 +1,6 @@
 package com.project.dacn.entity.auth;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import com.project.dacn.common.constant.UserStatus;
 import jakarta.persistence.Column;
@@ -60,5 +61,15 @@ public class User extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.userId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "USR";
+    }
+
+    @Override
+    protected String buildBusinessId() {
+        return BusinessId.of("USR", email);
     }
 }

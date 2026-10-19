@@ -54,4 +54,9 @@ public class OrderItem extends BaseEntity {
     protected void setBusinessId(String businessId) {
         this.orderItemId = businessId;
     }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "OI";
+    }
 }

@@ -36,6 +36,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(409, "resource already exists or is still referenced", null));
     }
 
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ApiResponse<?>> handleDuplicate(DuplicateResourceException ex) {
+        return ResponseEntity.status(409)
+                .body(ApiResponse.of(409, ex.getMessage(), null));
+    }
+
     @ExceptionHandler(OutOfStockException.class)
     public ResponseEntity<ApiResponse<?>> handleOutOfStock(OutOfStockException ex) {
         return ResponseEntity.status(409)

@@ -74,4 +74,9 @@ public class VariantAttributeValue extends BaseEntity {
     protected void setBusinessId(String businessId) {
         this.variantValueId = businessId;
     }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "VAV";
+    }
 }

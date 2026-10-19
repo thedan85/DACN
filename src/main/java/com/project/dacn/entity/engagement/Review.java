@@ -64,4 +64,9 @@ public class Review extends BaseEntity {
     protected void setBusinessId(String businessId) {
         this.reviewId = businessId;
     }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "REV";
+    }
 }

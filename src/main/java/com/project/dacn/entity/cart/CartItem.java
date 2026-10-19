@@ -52,4 +52,9 @@ public class CartItem extends BaseEntity {
     protected void setBusinessId(String businessId) {
         this.cartItemId = businessId;
     }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "CI";
+    }
 }

@@ -58,4 +58,9 @@ public class RefreshToken extends BaseEntity {
     protected void setBusinessId(String businessId) {
         this.tokenId = businessId;
     }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "RT";
+    }
 }

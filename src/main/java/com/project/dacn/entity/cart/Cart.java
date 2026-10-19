@@ -1,5 +1,6 @@
 package com.project.dacn.entity.cart;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import com.project.dacn.entity.identity.Customer;
 import jakarta.persistence.Column;
@@ -40,5 +41,17 @@ public class Cart extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.cartId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "CART";
+    }
+
+    @Override
+    protected String buildBusinessId() {
+        return customer != null && customer.getCustomerId() != null
+                ? BusinessId.child("CART", customer.getCustomerId())
+                : BusinessId.random("CART");
     }
 }

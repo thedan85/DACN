@@ -1,5 +1,6 @@
 package com.project.dacn.entity.identity;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.auth.User;
 import com.project.dacn.entity.BaseEntity;
 import com.project.dacn.common.constant.EmployeeStatus;
@@ -57,5 +58,15 @@ public class Employee extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.employeeId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "EMP";
+    }
+
+    @Override
+    protected String buildBusinessId() {
+        return BusinessId.of("EMP", name);
     }
 }
