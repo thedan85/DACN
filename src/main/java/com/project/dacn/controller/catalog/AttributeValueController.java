@@ -24,41 +24,41 @@ public class AttributeValueController {
 
     private final AttributeValueService service;
 
-    @GetMapping("/api/attribute-values")
+    @GetMapping("/api/v1/attribute-values")
     public ApiResponse<PageResponse<AttributeValueResponse>> list(Pageable pageable) {
         return ApiResponse.ok(service.list(pageable));
     }
 
-    @GetMapping("/api/attribute-values/{attributeValueId}")
+    @GetMapping("/api/v1/attribute-values/{attributeValueId}")
     public ApiResponse<AttributeValueResponse> get(@PathVariable String attributeValueId) {
         return ApiResponse.ok(service.get(attributeValueId));
     }
 
-    @GetMapping("/api/attributes/{attributeId}/values")
+    @GetMapping("/api/v1/attributes/{attributeId}/values")
     public ApiResponse<PageResponse<AttributeValueResponse>> listByAttribute(
             @PathVariable String attributeId, Pageable pageable) {
         return ApiResponse.ok(service.listByAttribute(attributeId, pageable));
     }
 
-    @PostMapping("/api/attribute-values")
+    @PostMapping("/api/v1/attribute-values")
     public ApiResponse<AttributeValueResponse> create(
             @Valid @RequestBody AttributeValueCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
-    @PutMapping("/api/attribute-values/{attributeValueId}")
+    @PutMapping("/api/v1/attribute-values/{attributeValueId}")
     public ApiResponse<AttributeValueResponse> replace(@PathVariable String attributeValueId,
             @Valid @RequestBody AttributeValueUpdateRequest request) {
         return ApiResponse.ok(service.replace(attributeValueId, request));
     }
 
-    @PatchMapping("/api/attribute-values/{attributeValueId}")
+    @PatchMapping("/api/v1/attribute-values/{attributeValueId}")
     public ApiResponse<AttributeValueResponse> patch(@PathVariable String attributeValueId,
             @Valid @RequestBody AttributeValueUpdateRequest request) {
         return ApiResponse.ok(service.update(attributeValueId, request));
     }
 
-    @DeleteMapping("/api/attribute-values/{attributeValueId}")
+    @DeleteMapping("/api/v1/attribute-values/{attributeValueId}")
     public ApiResponse<Void> delete(@PathVariable String attributeValueId) {
         service.delete(attributeValueId);
         return ApiResponse.ok(null);

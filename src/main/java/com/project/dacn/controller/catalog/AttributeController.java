@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/attributes")
+@RequestMapping("/api/v1/attributes")
 @RequiredArgsConstructor
 public class AttributeController {
 

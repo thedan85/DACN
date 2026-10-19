@@ -21,24 +21,24 @@ public class ProductAttributeController {
 
     private final ProductAttributeService service;
 
-    @GetMapping("/api/products/{productId}/attributes")
+    @GetMapping("/api/v1/products/{productId}/attributes")
     public ApiResponse<PageResponse<ProductAttributeValueResponse>> listByProduct(
             @PathVariable String productId, Pageable pageable) {
         return ApiResponse.ok(service.listByProduct(productId, pageable));
     }
 
-    @GetMapping("/api/product-attributes/{productValueId}")
+    @GetMapping("/api/v1/product-attributes/{productValueId}")
     public ApiResponse<ProductAttributeValueResponse> get(@PathVariable String productValueId) {
         return ApiResponse.ok(service.get(productValueId));
     }
 
-    @PostMapping("/api/product-attributes")
+    @PostMapping("/api/v1/product-attributes")
     public ApiResponse<ProductAttributeValueResponse> create(
             @Valid @RequestBody ProductAttributeValueCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
-    @DeleteMapping("/api/product-attributes/{productValueId}")
+    @DeleteMapping("/api/v1/product-attributes/{productValueId}")
     public ApiResponse<Void> delete(@PathVariable String productValueId) {
         service.delete(productValueId);
         return ApiResponse.ok(null);

@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/webhooks/momo")
+@RequestMapping("/api/v1/webhooks/momo")
 public class MomoWebhookController {
 
     @PostMapping

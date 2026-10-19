@@ -25,40 +25,40 @@ public class VariantController {
 
     private final VariantService service;
 
-    @GetMapping("/api/variants")
+    @GetMapping("/api/v1/variants")
     public ApiResponse<PageResponse<VariantResponse>> list(Pageable pageable) {
         return ApiResponse.ok(service.list(pageable));
     }
 
-    @GetMapping("/api/variants/{variantId}")
+    @GetMapping("/api/v1/variants/{variantId}")
     public ApiResponse<VariantResponse> get(@PathVariable String variantId) {
         return ApiResponse.ok(service.get(variantId));
     }
 
-    @GetMapping("/api/products/{productId}/variants")
+    @GetMapping("/api/v1/products/{productId}/variants")
     public ApiResponse<PageResponse<VariantResponse>> listByProduct(@PathVariable String productId,
             Pageable pageable) {
         return ApiResponse.ok(service.listByProduct(productId, pageable));
     }
 
-    @PostMapping("/api/variants")
+    @PostMapping("/api/v1/variants")
     public ApiResponse<VariantResponse> create(@Valid @RequestBody VariantCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
-    @PutMapping("/api/variants/{variantId}")
+    @PutMapping("/api/v1/variants/{variantId}")
     public ApiResponse<VariantResponse> replace(@PathVariable String variantId,
             @Valid @RequestBody VariantUpdateRequest request) {
         return ApiResponse.ok(service.replace(variantId, request));
     }
 
-    @PatchMapping("/api/variants/{variantId}")
+    @PatchMapping("/api/v1/variants/{variantId}")
     public ApiResponse<VariantResponse> patch(@PathVariable String variantId,
             @Valid @RequestBody VariantUpdateRequest request) {
         return ApiResponse.ok(service.update(variantId, request));
     }
 
-    @DeleteMapping("/api/variants/{variantId}")
+    @DeleteMapping("/api/v1/variants/{variantId}")
     public ApiResponse<Void> delete(@PathVariable String variantId) {
         service.delete(variantId);
         return ApiResponse.ok(null);

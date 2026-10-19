@@ -21,24 +21,24 @@ public class VariantAttributeController {
 
     private final VariantAttributeService service;
 
-    @GetMapping("/api/variants/{variantId}/attributes")
+    @GetMapping("/api/v1/variants/{variantId}/attributes")
     public ApiResponse<PageResponse<VariantAttributeValueResponse>> listByVariant(
             @PathVariable String variantId, Pageable pageable) {
         return ApiResponse.ok(service.listByVariant(variantId, pageable));
     }
 
-    @GetMapping("/api/variant-attributes/{variantValueId}")
+    @GetMapping("/api/v1/variant-attributes/{variantValueId}")
     public ApiResponse<VariantAttributeValueResponse> get(@PathVariable String variantValueId) {
         return ApiResponse.ok(service.get(variantValueId));
     }
 
-    @PostMapping("/api/variant-attributes")
+    @PostMapping("/api/v1/variant-attributes")
     public ApiResponse<VariantAttributeValueResponse> create(
             @Valid @RequestBody VariantAttributeValueCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
-    @DeleteMapping("/api/variant-attributes/{variantValueId}")
+    @DeleteMapping("/api/v1/variant-attributes/{variantValueId}")
     public ApiResponse<Void> delete(@PathVariable String variantValueId) {
         service.delete(variantValueId);
         return ApiResponse.ok(null);
