@@ -36,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -54,14 +55,14 @@ public class CartService {
     private final PaymentRepository paymentRepository;
     private final OrderMapper orderMapper;
 
-    public CartDetailResponse getDetail(String customerId) {
+    public CartDetailResponse getDetail(Long customerId) {
         Cart cart = getOrCreate(customerId);
-        List<CartItem> items = cartItemRepository.findWithDetailsByCart_CartId(cart.getCartId());
+        List<CartItem> items = cartItemRepository.findWithDetailsByCart_Id(cart.getId());
         List<CartItemResponse> responses = items.stream().map(mapper::toCartItemResponse).toList();
         return mapper.toDetail(cart, responses);
     }
 
-    public CartItemResponse addItem(String customerId, CartItemAddRequest req) {
+    public CartItemResponse addItem(Long customerId, CartItemAddRequest req) {
         if (req == null || req.quantity() == null || req.quantity() <= 0) {
             throw new IllegalArgumentException("quantity must be positive");
         }
@@ -70,7 +71,7 @@ public class CartService {
         Cart cart = getOrCreate(customerId);
         int quantity = req.quantity();
         Optional<CartItem> existing =
-                cartItemRepository.findByCart_CartIdAndVariant_VariantId(cart.getCartId(), variant.getVariantId());
+                cartItemRepository.findByCart_IdAndVariant_Id(cart.getId(), variant.getId());
         if (existing.isPresent()) {
             CartItem item = existing.get();
             log.debug("Bumping cart item {} from {} by {}", item.getCartItemId(), item.getQuantity(), quantity);
@@ -89,13 +90,13 @@ public class CartService {
             log.warn("Concurrent insert for cart {} variant {}, merging as bump",
                     cart.getCartId(), variant.getVariantId());
             CartItem raced = cartItemRepository
-                    .findByCart_CartIdAndVariant_VariantId(cart.getCartId(), variant.getVariantId())
+                    .findByCart_IdAndVariant_Id(cart.getId(), variant.getId())
                     .orElseThrow(() -> e);
             return mapper.toCartItemResponse(saveWithCap(raced, raced.getQuantity() + quantity, variant));
         }
     }
 
-    public CartItemResponse setQuantity(String customerId, String cartItemId, CartItemUpdateRequest req) {
+    public CartItemResponse setQuantity(Long customerId, Long cartItemId, CartItemUpdateRequest req) {
         if (req == null || req.quantity() == null || req.quantity() <= 0) {
             throw new IllegalArgumentException("quantity must be between 1 and stock");
         }
@@ -115,24 +116,24 @@ public class CartService {
         return response;
     }
 
-    public void removeItem(String customerId, String cartItemId) {
+    public void removeItem(Long customerId, Long cartItemId) {
         CartItem item = requireOwned(customerId, cartItemId);
         cartItemRepository.delete(item);
         log.info("Removed cart item {} from customer {}", cartItemId, customerId);
     }
 
-    public void clear(String customerId) {
+    public void clear(Long customerId) {
         Cart cart = requireCart(customerId);
-        cartItemRepository.deleteByCart_CartId(cart.getCartId());
+        cartItemRepository.deleteByCart_Id(cart.getId());
         log.info("Cleared cart {} for customer {}", cart.getCartId(), customerId);
     }
 
-    public OrderResponse checkout(String customerId, CartCheckoutRequest req) {
+    public OrderResponse checkout(Long customerId, CartCheckoutRequest req) {
         Customer customer = requireCustomer(customerId);
-        Cart cart = cartRepository.findByCustomer_CustomerId(customerId).orElse(null);
+        Cart cart = cartRepository.findByCustomer_Id(customerId).orElse(null);
         List<CartItem> items = cart == null
                 ? List.of()
-                : cartItemRepository.findWithDetailsByCart_CartId(cart.getCartId());
+                : cartItemRepository.findWithDetailsByCart_Id(cart.getId());
         if (items.isEmpty()) {
             throw new IllegalArgumentException("cart is empty");
         }
@@ -154,7 +155,7 @@ public class CartService {
                         .multiply(BigDecimal.valueOf(item.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         Order order = orderMapper.toOrder(new OrderCreateRequest(
-                customerId, total, req.address(), req.recipientName(), req.phone()));
+                customer.getCustomerId(), total, req.address(), req.recipientName(), req.phone()));
         order.setCustomer(customer);
         Order saved = orderRepository.save(order);
         List<OrderItem> lines = new ArrayList<>(items.size());
@@ -171,26 +172,26 @@ public class CartService {
                 saved.getOrderId(), req.method(), total, null));
         payment.setOrder(saved);
         paymentRepository.save(payment);
-        cartItemRepository.deleteByCart_CartId(cart.getCartId());
+        cartItemRepository.deleteByCart_Id(cart.getId());
         log.info("Checked out cart {} to order {} (total {}) for customer {}",
                 cart.getCartId(), saved.getOrderId(), total, customerId);
         return orderMapper.toOrderResponse(saved);
     }
 
-    private Customer requireCustomer(String customerId) {
-        return customerRepository.findByCustomerId(customerId)
+    private Customer requireCustomer(Long customerId) {
+        return customerRepository.findById(customerId)
                 .orElseThrow(() -> new ResourceNotFoundException("customer not found: " + customerId));
     }
 
-    private Cart requireCart(String customerId) {
+    private Cart requireCart(Long customerId) {
         requireCustomer(customerId);
-        return cartRepository.findByCustomer_CustomerId(customerId)
+        return cartRepository.findByCustomer_Id(customerId)
                 .orElseThrow(() -> new ResourceNotFoundException("cart not found: " + customerId));
     }
 
-    private Cart getOrCreate(String customerId) {
+    private Cart getOrCreate(Long customerId) {
         Customer customer = requireCustomer(customerId);
-        return cartRepository.findByCustomer_CustomerId(customerId).orElseGet(() -> {
+        return cartRepository.findByCustomer_Id(customerId).orElseGet(() -> {
             Cart cart = cartRepository.save(Cart.builder().customer(customer).build());
             log.info("Created cart {} for customer {}", cart.getCartId(), customerId);
             return cart;
@@ -208,11 +209,11 @@ public class CartService {
         return variant;
     }
 
-    private CartItem requireOwned(String customerId, String cartItemId) {
+    private CartItem requireOwned(Long customerId, Long cartItemId) {
         Cart cart = requireCart(customerId);
-        CartItem item = cartItemRepository.findByCartItemId(cartItemId)
+        CartItem item = cartItemRepository.findById(cartItemId)
                 .orElseThrow(() -> new ResourceNotFoundException("cart item not found: " + cartItemId));
-        if (item.getCart() == null || !cart.getCartId().equals(item.getCart().getCartId())) {
+        if (item.getCart() == null || !Objects.equals(cart.getId(), item.getCart().getId())) {
             throw new ResourceNotFoundException("cart item not found: " + cartItemId);
         }
         return item;

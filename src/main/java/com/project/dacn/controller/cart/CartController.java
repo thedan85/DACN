@@ -32,14 +32,14 @@ public class CartController {
 
     @GetMapping
     public ApiResponse<CartDetailResponse> get(
-            @RequestHeader(value = "X-Customer-Id", required = false) String customerId,
+            @RequestHeader(value = "X-Customer-Id", required = false) Long customerId,
             Authentication auth) {
         return ApiResponse.ok(service.getDetail(resolveCustomerId(auth, customerId)));
     }
 
     @DeleteMapping
     public ApiResponse<Void> clear(
-            @RequestHeader(value = "X-Customer-Id", required = false) String customerId,
+            @RequestHeader(value = "X-Customer-Id", required = false) Long customerId,
             Authentication auth) {
         service.clear(resolveCustomerId(auth, customerId));
         return ApiResponse.ok(null);
@@ -47,7 +47,7 @@ public class CartController {
 
     @PostMapping("/items")
     public ApiResponse<CartItemResponse> add(
-            @RequestHeader(value = "X-Customer-Id", required = false) String customerId,
+            @RequestHeader(value = "X-Customer-Id", required = false) Long customerId,
             Authentication auth,
             @Valid @RequestBody CartItemAddRequest request) {
         return ApiResponse.ok(service.addItem(resolveCustomerId(auth, customerId), request));
@@ -55,35 +55,34 @@ public class CartController {
 
     @PatchMapping("/items/{cartItemId}")
     public ApiResponse<CartItemResponse> patch(
-            @RequestHeader(value = "X-Customer-Id", required = false) String customerId,
+            @RequestHeader(value = "X-Customer-Id", required = false) Long customerId,
             Authentication auth,
-            @PathVariable String cartItemId,
+            @PathVariable Long cartItemId,
             @Valid @RequestBody CartItemUpdateRequest request) {
         return ApiResponse.ok(service.setQuantity(resolveCustomerId(auth, customerId), cartItemId, request));
     }
 
     @DeleteMapping("/items/{cartItemId}")
     public ApiResponse<Void> remove(
-            @RequestHeader(value = "X-Customer-Id", required = false) String customerId,
+            @RequestHeader(value = "X-Customer-Id", required = false) Long customerId,
             Authentication auth,
-            @PathVariable String cartItemId) {
+            @PathVariable Long cartItemId) {
         service.removeItem(resolveCustomerId(auth, customerId), cartItemId);
         return ApiResponse.ok(null);
     }
 
     @PostMapping("/checkout")
     public ApiResponse<OrderResponse> checkout(
-            @RequestHeader(value = "X-Customer-Id", required = false) String customerId,
+            @RequestHeader(value = "X-Customer-Id", required = false) Long customerId,
             Authentication auth,
             @Valid @RequestBody CartCheckoutRequest request) {
         return ApiResponse.ok(service.checkout(resolveCustomerId(auth, customerId), request));
     }
 
-    private String resolveCustomerId(Authentication auth, String header) {
-        // TODO: JWT — resolve customerId from authenticated principal via JwtService once it lands.
-        if (auth != null && auth.getName() != null && !auth.getName().isBlank()
-                && !"anonymousUser".equals(auth.getName())) {
-            return auth.getName();
+    private Long resolveCustomerId(Authentication auth, Long header) {
+        // TODO: JWT — resolve the customer DB id from the authenticated principal via JwtService once it lands.
+        if (auth != null && auth.getName() != null && auth.getName().matches("\\d+")) {
+            return Long.valueOf(auth.getName());
         }
         return header;
     }

@@ -32,9 +32,9 @@ class CartMapperTest {
 
     @Test
     void detailSumsTotalsNullSafe() {
-        CartItemResponse a = new CartItemResponse("i1", "c", "v1", "S1", 2,
+        CartItemResponse a = new CartItemResponse(1L, "c", "v1", "S1", 2,
                 new BigDecimal("10.00"), new BigDecimal("20.00"), "p", "P", null, 5, null, null);
-        CartItemResponse b = new CartItemResponse("i2", "c", "v2", "S2", 1,
+        CartItemResponse b = new CartItemResponse(2L, "c", "v2", "S2", 1,
                 null, null, "p", "P", null, 3, null, null);
         Cart cart = Cart.builder().customer(Customer.builder().name("C").build()).build();
         CartDetailResponse detail = mapper.toDetail(cart, List.of(a, b));

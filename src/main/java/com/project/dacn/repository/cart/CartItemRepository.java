@@ -8,14 +8,12 @@ import java.util.List;
 import java.util.Optional;
 
 public interface CartItemRepository extends JpaRepository<CartItem, Long> {
-    Optional<CartItem> findByCartItemId(String cartItemId);
+    List<CartItem> findByCart_Id(Long cartId);
 
-    List<CartItem> findByCart_CartId(String cartId);
+    Optional<CartItem> findByCart_IdAndVariant_Id(Long cartId, Long variantId);
 
-    Optional<CartItem> findByCart_CartIdAndVariant_VariantId(String cartId, String variantId);
-
-    void deleteByCart_CartId(String cartId);
+    void deleteByCart_Id(Long cartId);
 
     @EntityGraph(attributePaths = {"variant", "variant.product"})
-    List<CartItem> findWithDetailsByCart_CartId(String cartId);
+    List<CartItem> findWithDetailsByCart_Id(Long cartId);
 }

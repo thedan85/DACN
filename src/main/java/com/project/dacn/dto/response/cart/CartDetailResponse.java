@@ -6,7 +6,7 @@ import java.util.List;
 
 public record CartDetailResponse(
         String cartId,
-        String customerId,
+        Long customerId,
         String customerName,
         List<CartItemResponse> items,
         int totalQuantity,

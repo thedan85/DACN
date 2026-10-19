@@ -32,19 +32,25 @@ class CartControllerTest {
 
     @Test
     void getAutoCreatesCart() throws Exception {
-        var detail = new CartDetailResponse("cart-1", "c-1", "Jane", List.of(),
+        var detail = new CartDetailResponse("cart-1", 42L, "Jane", List.of(),
                 0, BigDecimal.ZERO, null, null);
-        when(service.getDetail("c-1")).thenReturn(detail);
-        mockMvc.perform(get("/api/v1/cart").header("X-Customer-Id", "c-1"))
+        when(service.getDetail(42L)).thenReturn(detail);
+        mockMvc.perform(get("/api/v1/cart").header("X-Customer-Id", "42"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.cartId").value("cart-1"));
     }
 
     @Test
     void patchInvalidQtyIs400() throws Exception {
-        mockMvc.perform(patch("/api/v1/cart/items/i-1").header("X-Customer-Id", "c-1")
+        mockMvc.perform(patch("/api/v1/cart/items/7").header("X-Customer-Id", "42")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"quantity\":0}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void nonNumericCustomerHeaderIs400() throws Exception {
+        mockMvc.perform(get("/api/v1/cart").header("X-Customer-Id", "CUS_x"))
                 .andExpect(status().isBadRequest());
     }
 }

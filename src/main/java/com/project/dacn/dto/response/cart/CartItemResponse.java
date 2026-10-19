@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 public record CartItemResponse(
-        String cartItemId,
+        Long cartItemId,
         String cartId,
         String variantId,
         String sku,
