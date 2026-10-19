@@ -5,8 +5,10 @@ import com.project.dacn.entity.catalog.Category;
 import com.project.dacn.entity.catalog.Category_;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.entity.catalog.Product_;
+import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.repository.catalog.CategoryRepository;
 import com.project.dacn.repository.catalog.ProductRepository;
+import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.service.catalog.ProductService;
 import com.project.dacn.spec.ProductFilter;
 import org.junit.jupiter.api.Test;
@@ -15,6 +17,8 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.ActiveProfiles;
+
+import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -29,6 +33,8 @@ class ProductFilterTest {
     ProductRepository products;
     @Autowired
     CategoryRepository categories;
+    @Autowired
+    VariantRepository variants;
 
     @Test
     void metamodelAttributesResolve() {
@@ -73,6 +79,28 @@ class ProductFilterTest {
 
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).name()).isEqualTo("Tetra");
+    }
+
+    @Test
+    void listIncludesMinAndMaxPriceFromActiveVariants() {
+        Product priced = products.save(Product.builder()
+                .name("Priced Fish").description("d").build());
+        variants.save(Variant.builder().product(priced).sku("PF-1")
+                .price(new BigDecimal("179000")).stock(1).build());
+        variants.save(Variant.builder().product(priced).sku("PF-2")
+                .price(new BigDecimal("199000")).stock(1).build());
+        variants.save(Variant.builder().product(priced).sku("PF-DELETED")
+                .price(new BigDecimal("99000")).stock(1).deleted(true).build());
+
+        var result = service.search(new ProductFilter(null, null, null), Pageable.unpaged());
+
+        assertThat(result.getContent())
+                .filteredOn(response -> response.name().equals("Priced Fish"))
+                .singleElement()
+                .satisfies(response -> {
+                    assertThat(response.minPrice()).isEqualByComparingTo("179000");
+                    assertThat(response.maxPrice()).isEqualByComparingTo("199000");
+                });
     }
 
     @Test

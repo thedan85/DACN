@@ -5,7 +5,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,7 +22,23 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
     Page<Variant> findByProduct_ProductId(String productId, Pageable pageable);
 
     Page<Variant> findByDeletedFalse(Pageable pageable);
-    
+
     @EntityGraph(attributePaths = {"product"})
     Optional<Variant> findWithProductByVariantId(String variantId);
+
+    /**
+     * One query for a whole product page: min/max price per product across
+     * active variants. Soft-deleted variants are excluded explicitly in
+     * addition to the entity's {@code @SQLRestriction}.
+     */
+    @Query("""
+            SELECT new com.project.dacn.repository.catalog.ProductPriceRange(
+                v.product.id, MIN(v.price), MAX(v.price))
+            FROM Variant v
+            WHERE v.product.id IN :productIds
+              AND v.deleted = false
+            GROUP BY v.product.id
+            """)
+    List<ProductPriceRange> findPriceRangesByProductIds(
+            @Param("productIds") Collection<Long> productIds);
 }
