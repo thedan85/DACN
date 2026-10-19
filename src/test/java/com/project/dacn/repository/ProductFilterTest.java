@@ -10,7 +10,7 @@ import com.project.dacn.repository.catalog.CategoryRepository;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.service.catalog.ProductService;
-import com.project.dacn.spec.ProductFilter;
+import com.project.dacn.dto.request.catalog.ProductFilter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;

@@ -6,6 +6,7 @@ import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.dto.request.catalog.ProductCreateRequest;
+import com.project.dacn.dto.request.catalog.ProductFilter;
 import com.project.dacn.dto.request.catalog.ProductUpdateRequest;
 import com.project.dacn.dto.response.catalog.ProductResponse;
 import com.project.dacn.entity.catalog.Category;
@@ -15,10 +16,10 @@ import com.project.dacn.repository.catalog.CategoryRepository;
 import com.project.dacn.repository.catalog.ProductPriceRange;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
-import com.project.dacn.spec.ProductFilter;
 import com.project.dacn.spec.ProductSpecs;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,14 +60,19 @@ public class ProductService {
     }
 
     public PageResponse<ProductResponse> search(ProductFilter filter, Pageable pageable) {
+        validatePriceRange(filter);
+        // Sorting is driven by ProductSort inside ProductSpecs. Drop any Sort
+        // parsed from the generic `sort` query param by the Pageable resolver,
+        // otherwise Spring Data appends an invalid property order.
+        Pageable cleanPageable = withoutSort(pageable);
         // DELETED is hidden by @SQLRestriction on Product; route explicit DELETED
         // requests through the native admin query that bypasses that restriction.
         if (filter.status() == ProductStatus.DELETED) {
             Page<Product> page = repo.findByStatusIncludingDeleted(
-                    ProductStatus.DELETED.name(), filter.name(), filter.categoryId(), pageable);
+                    ProductStatus.DELETED.name(), filter.keyword(), filter.categoryId(), cleanPageable);
             return toPageResponse(page);
         }
-        Page<Product> page = repo.findAll(ProductSpecs.filter(filter), pageable);
+        Page<Product> page = repo.findAll(ProductSpecs.filter(filter), cleanPageable);
         return toPageResponse(page);
     }
 
@@ -276,5 +282,25 @@ public class ProductService {
             throw new IllegalArgumentException("product name must not be blank");
         }
         return name;
+    }
+
+    private static void validatePriceRange(ProductFilter filter) {
+        if (filter.minPrice() != null && filter.minPrice().signum() < 0) {
+            throw new IllegalArgumentException("min_price must be greater than or equal to 0");
+        }
+        if (filter.maxPrice() != null && filter.maxPrice().signum() < 0) {
+            throw new IllegalArgumentException("max_price must be greater than or equal to 0");
+        }
+        if (filter.minPrice() != null && filter.maxPrice() != null
+                && filter.minPrice().compareTo(filter.maxPrice()) > 0) {
+            throw new IllegalArgumentException("min_price must be less than or equal to max_price");
+        }
+    }
+
+    private static Pageable withoutSort(Pageable pageable) {
+        if (pageable == null || pageable.isUnpaged()) {
+            return Pageable.unpaged();
+        }
+        return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
     }
 }
