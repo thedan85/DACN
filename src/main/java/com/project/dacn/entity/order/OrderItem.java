@@ -13,7 +13,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
-import org.hibernate.annotations.NaturalId;
 
 import java.math.BigDecimal;
 
@@ -25,17 +24,13 @@ import java.math.BigDecimal;
 @Table(name = "order_items")
 public class OrderItem extends BaseEntity {
 
-    @NaturalId
-    @Column(name = "order_item_id", nullable = false, unique = true)
-    private String orderItemId;
-
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "order_id", referencedColumnName = "order_id",
+    @JoinColumn(name = "order_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_order_items_order"))
     private Order order;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "variant_id", referencedColumnName = "variant_id",
+    @JoinColumn(name = "variant_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_order_items_variant"))
     private Variant variant;
 
@@ -44,19 +39,4 @@ public class OrderItem extends BaseEntity {
 
     @Column(name = "unit_price", nullable = false, precision = 10, scale = 2)
     private BigDecimal unitPrice;
-
-    @Override
-    protected String getBusinessId() {
-        return orderItemId;
-    }
-
-    @Override
-    protected void setBusinessId(String businessId) {
-        this.orderItemId = businessId;
-    }
-
-    @Override
-    protected String getBusinessIdPrefix() {
-        return "OI";
-    }
 }

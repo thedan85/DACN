@@ -42,13 +42,13 @@ public interface OrderMapper {
     void updateOrder(OrderUpdateRequest request, @MappingTarget Order order);
 
     @Mapping(target = "id", ignore = true)
-    @Mapping(target = "orderItemId", ignore = true)
     @Mapping(target = "order", ignore = true)
     @Mapping(target = "variant", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     OrderItem toOrderItem(OrderItemCreateRequest request);
 
+    @Mapping(source = "id", target = "orderItemId")
     @Mapping(source = "order.orderId", target = "orderId")
     @Mapping(source = "variant.variantId", target = "variantId")
     @Mapping(source = "variant.sku", target = "sku")

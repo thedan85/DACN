@@ -36,7 +36,7 @@ public class Category extends BaseEntity {
     private String slug;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "parent_category_id", referencedColumnName = "category_id",
+    @JoinColumn(name = "parent_category_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_categories_parent"))
     private Category parent;
 

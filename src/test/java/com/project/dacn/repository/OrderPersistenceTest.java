@@ -65,7 +65,6 @@ class OrderPersistenceTest {
         OrderItem item = orderItemRepository.save(OrderItem.builder()
                 .order(order).variant(variant).quantity(2)
                 .unitPrice(new BigDecimal("20.00")).build());
-        assertThat(item.getOrderItemId()).isNotNull();
 
         Payment payment = paymentRepository.save(Payment.builder()
                 .order(order).method(PaymentMethod.COD)

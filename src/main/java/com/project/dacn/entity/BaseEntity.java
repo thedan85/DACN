@@ -35,11 +35,16 @@ public abstract class BaseEntity {
     @UpdateTimestamp
     protected Instant updatedAt;
 
-    protected abstract String getBusinessId();
+    protected String getBusinessId() {
+        return null;
+    }
 
-    protected abstract void setBusinessId(String businessId);
+    protected void setBusinessId(String businessId) {
+    }
 
-    protected abstract String getBusinessIdPrefix();
+    protected String getBusinessIdPrefix() {
+        return null;
+    }
 
     /**
      * Default: {@code PREFIX_<8 hex>}. Entities with a unique natural key
@@ -51,7 +56,7 @@ public abstract class BaseEntity {
 
     @PrePersist
     protected void generateBusinessId() {
-        if (getBusinessId() == null) {
+        if (getBusinessId() == null && getBusinessIdPrefix() != null) {
             setBusinessId(buildBusinessId());
         }
     }

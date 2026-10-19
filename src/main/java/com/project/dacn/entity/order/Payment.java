@@ -35,7 +35,7 @@ public class Payment extends BaseEntity {
     private String paymentId;
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "order_id", referencedColumnName = "order_id", unique = true,
+    @JoinColumn(name = "order_id", referencedColumnName = "id", unique = true,
             foreignKey = @ForeignKey(name = "fk_payments_order"))
     private Order order;
 

@@ -49,7 +49,7 @@ public class Product extends BaseEntity {
     private ProductStatus status = ProductStatus.ACTIVE;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id", referencedColumnName = "category_id",
+    @JoinColumn(name = "category_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_products_category"))
     private Category category;
 

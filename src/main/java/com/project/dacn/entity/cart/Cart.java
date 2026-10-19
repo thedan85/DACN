@@ -29,7 +29,7 @@ public class Cart extends BaseEntity {
     private String cartId;
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "customer_id", referencedColumnName = "customer_id", unique = true,
+    @JoinColumn(name = "customer_id", referencedColumnName = "id", unique = true,
             foreignKey = @ForeignKey(name = "fk_carts_customer"))
     private Customer customer;
 

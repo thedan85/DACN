@@ -32,7 +32,7 @@ public class AttributeValue extends BaseEntity {
     private String attributeValueId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "attribute_id", referencedColumnName = "attribute_id",
+    @JoinColumn(name = "attribute_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_attribute_values_attribute"))
     private Attribute attribute;
 

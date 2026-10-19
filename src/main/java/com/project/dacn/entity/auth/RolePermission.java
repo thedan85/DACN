@@ -39,12 +39,12 @@ public class RolePermission {
     private String rolePermissionId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "role_id", referencedColumnName = "role_id",
+    @JoinColumn(name = "role_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_role_permissions_role"))
     private Role role;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "permission_id", referencedColumnName = "permission_id",
+    @JoinColumn(name = "permission_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_role_permissions_permission"))
     private Permission permission;
 

@@ -185,7 +185,6 @@ public interface CatalogMapper {
     @Mapping(target = "variant", ignore = true)
     @Mapping(target = "attribute", ignore = true)
     @Mapping(target = "attributeValue", ignore = true)
-    @Mapping(target = "attributeValueId", source = "attributeValueId")
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     VariantAttributeValue toVariantAttributeValue(VariantAttributeValueCreateRequest request);
@@ -202,7 +201,6 @@ public interface CatalogMapper {
     @Mapping(target = "product", ignore = true)
     @Mapping(target = "attribute", ignore = true)
     @Mapping(target = "attributeValue", ignore = true)
-    @Mapping(target = "attributeValueId", source = "attributeValueId")
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     ProductAttributeValue toProductAttributeValue(ProductAttributeValueCreateRequest request);

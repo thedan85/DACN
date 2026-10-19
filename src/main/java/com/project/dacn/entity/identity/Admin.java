@@ -32,7 +32,7 @@ public class Admin extends BaseEntity {
     private String adminId;
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", referencedColumnName = "user_id", unique = true,
+    @JoinColumn(name = "user_id", referencedColumnName = "id", unique = true,
             foreignKey = @ForeignKey(name = "fk_admins_user"))
     private User user;
 

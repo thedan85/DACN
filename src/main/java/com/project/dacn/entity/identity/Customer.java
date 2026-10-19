@@ -29,7 +29,7 @@ public class Customer extends BaseEntity {
     private String customerId;
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", referencedColumnName = "user_id", unique = true,
+    @JoinColumn(name = "user_id", referencedColumnName = "id", unique = true,
             foreignKey = @ForeignKey(name = "fk_customers_user"))
     private User user;
 

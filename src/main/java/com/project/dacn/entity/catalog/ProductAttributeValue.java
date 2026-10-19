@@ -6,7 +6,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.JoinColumns;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
@@ -31,39 +30,18 @@ public class ProductAttributeValue extends BaseEntity {
     private String productValueId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "product_id", referencedColumnName = "product_id",
+    @JoinColumn(name = "product_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_product_values_product"))
     private Product product;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "attribute_id", referencedColumnName = "attribute_id")
+    @JoinColumn(name = "attribute_id", referencedColumnName = "id")
     private Attribute attribute;
 
-    @Column(name = "attribute_value_id", nullable = false)
-    private String attributeValueId;
-
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumns(value = {
-            @JoinColumn(name = "attribute_id", referencedColumnName = "attribute_id",
-                    insertable = false, updatable = false),
-            @JoinColumn(name = "attribute_value_id", referencedColumnName = "attribute_value_id",
-                    insertable = false, updatable = false,
-                    foreignKey = @ForeignKey(name = "fk_product_values_attr_pair"))
-    })
+    @JoinColumn(name = "attribute_value_id", referencedColumnName = "id",
+            foreignKey = @ForeignKey(name = "fk_product_values_attr_pair"))
     private AttributeValue attributeValue;
-
-    public void setAttributeValue(AttributeValue attributeValue) {
-        this.attributeValue = attributeValue;
-        this.attributeValueId = attributeValue != null ? attributeValue.getAttributeValueId() : null;
-    }
-
-    @jakarta.persistence.PrePersist
-    @jakarta.persistence.PreUpdate
-    private void syncAttributeValueId() {
-        if (attributeValue != null && attributeValue.getAttributeValueId() != null) {
-            this.attributeValueId = attributeValue.getAttributeValueId();
-        }
-    }
 
     @Override
     protected String getBusinessId() {

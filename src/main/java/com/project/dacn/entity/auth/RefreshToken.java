@@ -29,7 +29,7 @@ public class RefreshToken extends BaseEntity {
     private String tokenId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", referencedColumnName = "user_id",
+    @JoinColumn(name = "user_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_refresh_tokens_user"))
     private User user;
 

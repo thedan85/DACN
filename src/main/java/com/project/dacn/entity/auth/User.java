@@ -46,7 +46,7 @@ public class User extends BaseEntity {
     private UserStatus status = UserStatus.ACTIVE;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "role_id", referencedColumnName = "role_id",
+    @JoinColumn(name = "role_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_users_role"))
     private Role role;
 

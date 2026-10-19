@@ -42,7 +42,7 @@ public class Variant extends BaseEntity {
     private Integer stock = 0;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "product_id", referencedColumnName = "product_id",
+    @JoinColumn(name = "product_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_variants_product"))
     private Product product;
 
