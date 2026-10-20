@@ -1,5 +1,6 @@
 package com.project.dacn.entity.catalog;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -56,5 +57,18 @@ public class VariantAttributeValue extends BaseEntity {
     @Override
     protected String getBusinessIdPrefix() {
         return "VAV";
+    }
+
+    /**
+     * Matches the seeded IDs: {@code <variantId>-<attributeId>}, e.g.
+     * {@code devil-tetra-red-color}.
+     */
+    @Override
+    protected String buildBusinessId() {
+        if (variant != null && variant.getVariantId() != null
+                && attribute != null && attribute.getAttributeId() != null) {
+            return variant.getVariantId() + "-" + attribute.getAttributeId();
+        }
+        return BusinessId.randomToken();
     }
 }

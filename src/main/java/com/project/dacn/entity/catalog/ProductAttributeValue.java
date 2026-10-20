@@ -1,5 +1,6 @@
 package com.project.dacn.entity.catalog;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -56,5 +57,18 @@ public class ProductAttributeValue extends BaseEntity {
     @Override
     protected String getBusinessIdPrefix() {
         return "PAV";
+    }
+
+    /**
+     * Matches the seeded IDs: {@code <productId>-<attributeId>}, e.g.
+     * {@code PRD_7-temperature}.
+     */
+    @Override
+    protected String buildBusinessId() {
+        if (product != null && product.getProductId() != null
+                && attribute != null && attribute.getAttributeId() != null) {
+            return product.getProductId() + "-" + attribute.getAttributeId();
+        }
+        return BusinessId.randomToken();
     }
 }

@@ -26,4 +26,10 @@ class BusinessIdTest {
         assertThat(BusinessId.random("ORD")).matches("ORD_[0-9a-f]{8}");
         assertThat(BusinessId.random("ORD")).isNotEqualTo(BusinessId.random("ORD"));
     }
+
+    @Test
+    void randomTokenHasEightHexCharsAndNoPrefix() {
+        assertThat(BusinessId.randomToken()).matches("[0-9a-f]{8}");
+        assertThat(BusinessId.randomToken()).isNotEqualTo(BusinessId.randomToken());
+    }
 }

@@ -16,7 +16,12 @@ public final class BusinessId {
 
     /** {@code PREFIX_<8 hex>} for entities with no unique natural key. */
     public static String random(String prefix) {
-        return prefix + "_" + UUID.randomUUID().toString().substring(0, 8);
+        return prefix + "_" + randomToken();
+    }
+
+    /** 8 hex chars with no prefix, for IDs assembled from other keys. */
+    public static String randomToken() {
+        return UUID.randomUUID().toString().substring(0, 8);
     }
 
     /** {@code PREFIX_<slug(part1)>_<slug(part2)>...} from unique natural keys. */

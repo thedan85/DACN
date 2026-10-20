@@ -70,11 +70,13 @@ class CatalogPersistenceTest {
 
         VariantAttributeValue vav = variantAttributeValueRepository.save(VariantAttributeValue.builder()
                 .variant(variant).attribute(color).attributeValue(red).build());
-        assertThat(vav.getVariantValueId()).isNotNull();
+        assertThat(vav.getVariantValueId())
+                .isEqualTo(variant.getVariantId() + "-" + color.getAttributeId());
 
         ProductAttributeValue pav = productAttributeValueRepository.save(ProductAttributeValue.builder()
                 .product(product).attribute(color).attributeValue(red).build());
-        assertThat(pav.getProductValueId()).isNotNull();
+        assertThat(pav.getProductValueId())
+                .isEqualTo(product.getProductId() + "-" + color.getAttributeId());
 
         Media media = mediaRepository.save(Media.builder()
                 .url("http://img/1.jpg").variant(variant).build());
