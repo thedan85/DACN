@@ -61,9 +61,8 @@ class VariantServiceTest {
         when(repo.findByProduct_SlugIgnoreCase("congo-tetra", Pageable.unpaged())).thenReturn(page);
         when(mapper.toVariantResponse(v)).thenReturn(
                 new VariantResponse(1L, "v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P", false, null, null));
-        PageResponse<VariantResponse> result = service.listByProduct("p-1", Pageable.unpaged());
-                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P", false, null, null));
-        PageResponse<VariantResponse> result = service.listByProductSlug("congo-tetra", Pageable.unpaged());
+        PageResponse<VariantResponse> result =
+                service.listByProductSlug("congo-tetra", Pageable.unpaged());
         assertThat(result.getContent()).hasSize(1);
         verify(repo).findByProduct_SlugIgnoreCase("congo-tetra", Pageable.unpaged());
     }
