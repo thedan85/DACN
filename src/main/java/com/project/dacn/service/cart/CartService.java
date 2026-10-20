@@ -10,6 +10,7 @@ import com.project.dacn.dto.request.order.OrderCreateRequest;
 import com.project.dacn.dto.request.order.PaymentCreateRequest;
 import com.project.dacn.dto.response.cart.CartDetailResponse;
 import com.project.dacn.dto.response.cart.CartItemResponse;
+import com.project.dacn.dto.response.order.OrderItemResponse;
 import com.project.dacn.dto.response.order.OrderResponse;
 import com.project.dacn.entity.cart.Cart;
 import com.project.dacn.entity.cart.CartItem;
@@ -102,10 +103,10 @@ public class CartService {
         }
         CartItem item = requireOwned(customerId, cartItemId);
         Variant current = item.getVariant();
-        if (current == null || current.getVariantId() == null) {
+        if (current == null || current.getId() == null) {
             throw new ResourceNotFoundException("variant not found: null");
         }
-        Variant variant = requireSellable(current.getVariantId());
+        Variant variant = requireSellable(current.getId());
         if (req.quantity() > variant.getStock()) {
             throw new OutOfStockException(
                     "requested quantity " + req.quantity() + " exceeds stock " + variant.getStock());
@@ -150,6 +151,14 @@ public class CartService {
                         + " exceeds stock " + variant.getStock());
             }
         }
+        for (CartItem item : items) {
+            int updated = variantRepository.decrementStock(
+                    item.getVariant().getId(), item.getQuantity());
+            if (updated == 0) {
+                throw new OutOfStockException("insufficient stock for variant "
+                        + item.getVariant().getId());
+            }
+        }
         BigDecimal total = items.stream()
                 .map(item -> item.getVariant().getPrice()
                         .multiply(BigDecimal.valueOf(item.getQuantity())))
@@ -167,7 +176,7 @@ public class CartService {
                     .unitPrice(item.getVariant().getPrice())
                     .build());
         }
-        orderItemRepository.saveAll(lines);
+        List<OrderItem> savedLines = orderItemRepository.saveAll(lines);
         Payment payment = orderMapper.toPayment(new PaymentCreateRequest(
                 saved.getOrderId(), req.method(), total, null));
         payment.setOrder(saved);
@@ -175,7 +184,9 @@ public class CartService {
         cartItemRepository.deleteByCart_Id(cart.getId());
         log.info("Checked out cart {} to order {} (total {}) for customer {}",
                 cart.getCartId(), saved.getOrderId(), total, customerId);
-        return orderMapper.toOrderResponse(saved);
+        List<OrderItemResponse> lineResponses = savedLines.stream()
+                .map(orderMapper::toOrderItemResponse).toList();
+        return orderMapper.toOrderResponse(saved, lineResponses);
     }
 
     private Customer requireCustomer(Long customerId) {
@@ -198,8 +209,8 @@ public class CartService {
         });
     }
 
-    private Variant requireSellable(String variantId) {
-        Variant variant = variantRepository.findWithProductByVariantId(variantId)
+    private Variant requireSellable(Long variantId) {
+        Variant variant = variantRepository.findWithProductById(variantId)
                 .orElseThrow(() -> new ResourceNotFoundException("variant not found: " + variantId));
         if (Boolean.TRUE.equals(variant.getDeleted())
                 || variant.getProduct() == null

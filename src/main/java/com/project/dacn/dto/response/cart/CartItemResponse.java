@@ -6,7 +6,7 @@ import java.time.Instant;
 public record CartItemResponse(
         Long cartItemId,
         String cartId,
-        String variantId,
+        Long variantId,
         String sku,
         Integer quantity,
         BigDecimal price,

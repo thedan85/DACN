@@ -12,7 +12,7 @@ class CartDtoValidationTest {
 
     @Test
     void addRequestRejectsZeroQty() {
-        var v = Validation.buildDefaultValidatorFactory().getValidator().validate(new CartItemAddRequest("v-1", 0));
+        var v = Validation.buildDefaultValidatorFactory().getValidator().validate(new CartItemAddRequest(1L, 0));
         assertThat(v).isNotEmpty();
     }
 

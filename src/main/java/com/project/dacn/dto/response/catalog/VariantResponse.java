@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 public record VariantResponse(
+        Long id,
         String variantId,
         String sku,
         BigDecimal price,

@@ -30,6 +30,7 @@ import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.order.PaymentRepository;
 import com.project.dacn.service.cart.CartService;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -118,6 +119,7 @@ class CartCheckoutTest {
                     .thenReturn(List.of());
             when(orderRepository.save(any(Order.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
+            when(variantRepository.decrementStock(20L, 2)).thenReturn(1);
             when(orderItemRepository.saveAll(any()))
                     .thenAnswer(inv -> inv.getArgument(0));
             when(paymentRepository.save(any(Payment.class)))
@@ -173,6 +175,21 @@ class CartCheckoutTest {
                     .isInstanceOf(OutOfStockException.class);
             verify(orderRepository, never()).save(any(Order.class));
             verify(cartItemRepository, never()).deleteByCart_Id(any());
+        }
+
+        @Test
+        void checkoutStockRaceThrows409() {
+            givenCart();
+            Variant v = variant(10);
+            CartItem existing = item(cart(customer()), v, 2);
+            when(cartItemRepository.findWithDetailsByCart_Id(10L))
+                    .thenReturn(List.of(existing));
+            when(variantRepository.decrementStock(20L, 2)).thenReturn(0);
+
+            assertThatThrownBy(() -> service.checkout(1L,
+                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
+                    .isInstanceOf(OutOfStockException.class);
+            verify(orderRepository, never()).save(any(Order.class));
         }
 
         private void givenCart() {
@@ -242,6 +259,9 @@ class CartCheckoutTest {
         @Autowired
         PaymentRepository paymentRepository;
 
+        @Autowired
+        EntityManager entityManager;
+
         @Test
         void checkoutPersistsPendingOrderAndClearsCart() {
             Role role = roleRepository.save(Role.builder().code("co1").name("R").build());
@@ -272,7 +292,8 @@ class CartCheckoutTest {
             assertThat(paymentRepository.findByOrder_OrderId(o.orderId()).get().getAmount())
                     .isEqualByComparingTo(new BigDecimal("20.00"));
             assertThat(service.getDetail(customer.getId()).items()).isEmpty();
-            assertThat(variantRepository.findById(variant.getId()).get().getStock()).isEqualTo(5);
+            entityManager.clear();
+            assertThat(variantRepository.findById(variant.getId()).get().getStock()).isEqualTo(3);
         }
     }
 }

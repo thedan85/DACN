@@ -60,7 +60,7 @@ class VariantServiceTest {
                         .productId("p-1").name("P").description("d").build()));
         when(repo.findByProduct_ProductId("p-1", Pageable.unpaged())).thenReturn(page);
         when(mapper.toVariantResponse(v)).thenReturn(
-                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P", false, null, null));
+                new VariantResponse(1L, "v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P", false, null, null));
         PageResponse<VariantResponse> result = service.listByProduct("p-1", Pageable.unpaged());
         assertThat(result.getContent()).hasSize(1);
         verify(repo).findByProduct_ProductId("p-1", Pageable.unpaged());

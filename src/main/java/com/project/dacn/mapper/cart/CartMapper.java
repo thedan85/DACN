@@ -42,7 +42,7 @@ public interface CartMapper {
 
     @Mapping(source = "id", target = "cartItemId")
     @Mapping(source = "cart.cartId", target = "cartId")
-    @Mapping(source = "variant.variantId", target = "variantId")
+    @Mapping(source = "variant.id", target = "variantId")
     @Mapping(source = "variant.sku", target = "sku")
     @Mapping(source = "variant.price", target = "price")
     @Mapping(source = "variant.product.productId", target = "productId")

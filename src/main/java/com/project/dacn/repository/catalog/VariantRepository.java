@@ -5,6 +5,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -22,4 +25,11 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
     
     @EntityGraph(attributePaths = {"product"})
     Optional<Variant> findWithProductByVariantId(String variantId);
+
+    @EntityGraph(attributePaths = {"product"})
+    Optional<Variant> findWithProductById(Long id);
+
+    @Modifying
+    @Query("update Variant v set v.stock = v.stock - :quantity where v.id = :id and v.stock >= :quantity")
+    int decrementStock(@Param("id") Long id, @Param("quantity") int quantity);
 }

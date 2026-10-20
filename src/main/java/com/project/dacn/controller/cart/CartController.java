@@ -84,6 +84,9 @@ public class CartController {
         if (auth != null && auth.getName() != null && auth.getName().matches("\\d+")) {
             return Long.valueOf(auth.getName());
         }
+        if (header == null) {
+            throw new IllegalArgumentException("X-Customer-Id is required");
+        }
         return header;
     }
 }

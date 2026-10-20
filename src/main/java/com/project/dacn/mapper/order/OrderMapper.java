@@ -17,6 +17,8 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 
+import java.util.List;
+
 @Mapper(componentModel = "spring")
 public interface OrderMapper {
 
@@ -28,9 +30,18 @@ public interface OrderMapper {
     @Mapping(target = "updatedAt", ignore = true)
     Order toOrder(OrderCreateRequest request);
 
-    @Mapping(source = "customer.customerId", target = "customerId")
+    @Mapping(target = "items", ignore = true)
+    @Mapping(source = "customer.id", target = "customerId")
     @Mapping(source = "customer.name", target = "customerName")
     OrderResponse toOrderResponse(Order order);
+
+    default OrderResponse toOrderResponse(Order order, List<OrderItemResponse> items) {
+        OrderResponse base = toOrderResponse(order);
+        return new OrderResponse(base.orderId(), base.customerId(), base.customerName(),
+                base.status(), base.total(), base.address(), base.recipientName(),
+                base.phone(), items == null ? List.of() : items,
+                base.createdAt(), base.updatedAt());
+    }
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "id", ignore = true)
@@ -50,7 +61,7 @@ public interface OrderMapper {
 
     @Mapping(source = "id", target = "orderItemId")
     @Mapping(source = "order.orderId", target = "orderId")
-    @Mapping(source = "variant.variantId", target = "variantId")
+    @Mapping(source = "variant.id", target = "variantId")
     @Mapping(source = "variant.sku", target = "sku")
     OrderItemResponse toOrderItemResponse(OrderItem item);
 
