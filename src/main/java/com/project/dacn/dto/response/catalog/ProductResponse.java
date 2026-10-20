@@ -12,6 +12,7 @@ public record ProductResponse(
         String description,
         String detailDescription,
         String thumbnail,
+        String thumbnailMediaId,
         ProductStatus status,
         String categoryId,
         String categoryName,

@@ -4,10 +4,13 @@ import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.catalog.ProductCreateRequest;
+import com.project.dacn.dto.request.catalog.ProductUpdateRequest;
 import com.project.dacn.dto.response.catalog.ProductResponse;
+import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.mapper.catalog.CatalogMapper;
 import com.project.dacn.repository.catalog.CategoryRepository;
+import com.project.dacn.repository.catalog.MediaRepository;
 import com.project.dacn.repository.catalog.ProductPriceRange;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
@@ -44,6 +47,9 @@ class ProductServiceTest {
     VariantRepository variantRepo;
 
     @Mock
+    MediaRepository mediaRepo;
+
+    @Mock
     CatalogMapper mapper;
 
     @InjectMocks
@@ -61,7 +67,7 @@ class ProductServiceTest {
     void createWithMissingCategoryThrowsNotFound() {
         when(categoryRepo.findByCategoryId("gone")).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.create(
-                new ProductCreateRequest("P", "d", null, null, "gone", null)))
+                new ProductCreateRequest("P", "d", null, "gone", null)))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -121,6 +127,43 @@ class ProductServiceTest {
         assertThat(result.maxPrice()).isEqualByComparingTo("199000");
     }
 
+    @Test
+    void updateAssignsOwnedMediaAsThumbnail() {
+        Product p = product(1L);
+        Media media = Media.builder().mediaId("MED_1").product(p).build();
+        when(repo.findByProductId("PRD_1")).thenReturn(Optional.of(p));
+        when(mediaRepo.findByMediaId("MED_1")).thenReturn(Optional.of(media));
+        when(repo.save(p)).thenReturn(p);
+        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
+
+        service.update("PRD_1", new ProductUpdateRequest(null, null, null, "MED_1", null, null));
+
+        assertThat(p.getThumbnail()).isSameAs(media);
+    }
+
+    @Test
+    void updateRejectsMediaOwnedByAnotherProduct() {
+        Product p = product(1L);
+        Media foreign = Media.builder().mediaId("MED_x").product(product(2L)).build();
+        when(repo.findByProductId("PRD_1")).thenReturn(Optional.of(p));
+        when(mediaRepo.findByMediaId("MED_x")).thenReturn(Optional.of(foreign));
+
+        assertThatThrownBy(() -> service.update("PRD_1",
+                new ProductUpdateRequest(null, null, null, "MED_x", null, null)))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void updateRejectsUnknownMediaId() {
+        Product p = product(1L);
+        when(repo.findByProductId("PRD_1")).thenReturn(Optional.of(p));
+        when(mediaRepo.findByMediaId("MED_nope")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.update("PRD_1",
+                new ProductUpdateRequest(null, null, null, "MED_nope", null, null)))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
     private static Product product(Long id) {
         return Product.builder()
                 .id(id)
@@ -132,7 +175,7 @@ class ProductServiceTest {
     }
 
     private static ProductResponse response(BigDecimal minPrice, BigDecimal maxPrice) {
-        return new ProductResponse("PRD_1", "ember-tetra", "P", "d", null, null,
+        return new ProductResponse("PRD_1", "ember-tetra", "P", "d", null, null, null,
                 ProductStatus.ACTIVE, null, null, minPrice, maxPrice, null, null);
     }
 }

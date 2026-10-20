@@ -48,8 +48,10 @@ public class Product extends BaseEntity {
     @Column(name = "product_detail_description", columnDefinition = "TEXT")
     private String detailDescription;
 
-    @Column(name = "product_thumbnail", length = 500)
-    private String thumbnail;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "thumbnail_media_id", referencedColumnName = "id",
+            foreignKey = @ForeignKey(name = "fk_products_thumbnail_media"))
+    private Media thumbnail;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "product_status", nullable = false, length = 20)

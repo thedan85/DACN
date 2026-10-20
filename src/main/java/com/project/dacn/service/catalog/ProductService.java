@@ -10,9 +10,11 @@ import com.project.dacn.dto.request.catalog.ProductFilter;
 import com.project.dacn.dto.request.catalog.ProductUpdateRequest;
 import com.project.dacn.dto.response.catalog.ProductResponse;
 import com.project.dacn.entity.catalog.Category;
+import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.mapper.catalog.CatalogMapper;
 import com.project.dacn.repository.catalog.CategoryRepository;
+import com.project.dacn.repository.catalog.MediaRepository;
 import com.project.dacn.repository.catalog.ProductPriceRange;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
@@ -57,6 +59,7 @@ public class ProductService {
     private final ProductRepository repo;
     private final CategoryRepository categoryRepo;
     private final VariantRepository variantRepo;
+    private final MediaRepository mediaRepo;
     private final CatalogMapper mapper;
 
     public PageResponse<ProductResponse> list(Pageable pageable) {
@@ -152,6 +155,9 @@ public class ProductService {
             entity.setName(normalizeName(request.name()));
         }
         applySlugChange(entity, request.slug());
+        if (request.thumbnailMediaId() != null) {
+            entity.setThumbnail(resolveThumbnail(entity, request.thumbnailMediaId()));
+        }
         if (request.categoryId() != null) {
             entity.setCategory(categoryRepo.findByCategoryId(request.categoryId())
                     .orElseThrow(() -> new ResourceNotFoundException(
@@ -174,6 +180,11 @@ public class ProductService {
             entity.setName(normalizeName(request.name()));
         }
         applySlugChange(entity, request.slug());
+        if (request.thumbnailMediaId() != null) {
+            entity.setThumbnail(resolveThumbnail(entity, request.thumbnailMediaId()));
+        } else {
+            entity.setThumbnail(null);
+        }
         if (request.categoryId() != null) {
             entity.setCategory(categoryRepo.findByCategoryId(request.categoryId())
                     .orElseThrow(() -> new ResourceNotFoundException(
@@ -240,6 +251,20 @@ public class ProductService {
     private Product requireBySlug(String slug) {
         return repo.findBySlugIgnoreCase(slug)
                 .orElseThrow(() -> new ResourceNotFoundException("product not found: " + slug));
+    }
+
+    /**
+     * A thumbnail must be an existing, non-deleted media row that belongs to
+     * this product, so a product cannot point at another product's image.
+     */
+    private Media resolveThumbnail(Product product, String mediaId) {
+        Media media = mediaRepo.findByMediaId(mediaId)
+                .orElseThrow(() -> new ResourceNotFoundException("media not found: " + mediaId));
+        if (media.getProduct() == null
+                || !Objects.equals(media.getProduct().getId(), product.getId())) {
+            throw new ResourceNotFoundException("media not found: " + mediaId);
+        }
+        return media;
     }
 
     private String resolveCreateSlug(String rawSlug, String name) {

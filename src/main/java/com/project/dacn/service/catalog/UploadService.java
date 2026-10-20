@@ -4,6 +4,7 @@ import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.dto.request.catalog.MediaCreateRequest;
 import com.project.dacn.dto.response.catalog.MediaResponse;
 import com.project.dacn.dto.response.catalog.UploadResponse;
+import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.integration.cloudinary.CloudinaryException;
@@ -50,9 +51,11 @@ public class UploadService {
         String publicId = product.getProductId() + "-" + System.currentTimeMillis();
         // Upload first: a Cloudinary failure leaves the DB untouched (old thumbnail kept).
         String url = cloudinaryService.uploadAndGetUrl(bytes, folder, publicId);
-        product.setThumbnail(url);
+        Media media = mediaService.createEntity(
+                new MediaCreateRequest(url, product.getProductId(), null));
+        product.setThumbnail(media);
         productRepo.save(product);
-        return new UploadResponse(url, folder, product.getProductId(), null, null);
+        return new UploadResponse(url, folder, product.getProductId(), null, media.getMediaId());
     }
 
     public UploadResponse uploadVariantImage(String variantId, MultipartFile file) {

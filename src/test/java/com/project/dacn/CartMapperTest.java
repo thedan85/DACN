@@ -4,6 +4,7 @@ import com.project.dacn.dto.response.cart.CartDetailResponse;
 import com.project.dacn.dto.response.cart.CartItemResponse;
 import com.project.dacn.entity.cart.Cart;
 import com.project.dacn.entity.cart.CartItem;
+import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.identity.Customer;
@@ -43,7 +44,8 @@ class CartMapperTest {
     }
 
     private CartItem item(BigDecimal price, int qty, int stock) {
-        Product product = Product.builder().name("P").description("d").thumbnail("t").build();
+        Product product = Product.builder().name("P").description("d")
+                .thumbnail(Media.builder().url("t").build()).build();
         Variant variant = Variant.builder().product(product).sku("S1").price(price).stock(stock).build();
         Cart cart = Cart.builder().build();
         return CartItem.builder().cart(cart).variant(variant).quantity(qty).build();

@@ -6,7 +6,7 @@ public record ProductUpdateRequest(
         @Size(max = 255) String name,
         String description,
         String detailDescription,
-        String thumbnail,
+        String thumbnailMediaId,
         String categoryId,
         @Size(max = 255) String slug) {
 }

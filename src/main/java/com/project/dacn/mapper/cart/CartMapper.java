@@ -47,7 +47,7 @@ public interface CartMapper {
     @Mapping(source = "variant.price", target = "price")
     @Mapping(source = "variant.product.productId", target = "productId")
     @Mapping(source = "variant.product.name", target = "productName")
-    @Mapping(source = "variant.product.thumbnail", target = "thumbnail")
+    @Mapping(source = "variant.product.thumbnail.url", target = "thumbnail")
     @Mapping(source = "variant.stock", target = "stock")
     @Mapping(target = "lineTotal", source = ".", qualifiedByName = "toLineTotal")
     CartItemResponse toCartItemResponse(CartItem item);

@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS products (
     product_slug        VARCHAR(255) NOT NULL,
     product_name        VARCHAR(255) NOT NULL,
     product_description TEXT NOT NULL,
-    product_thumbnail   VARCHAR(500) NULL,
+    product_thumbnail_media_id BIGINT UNSIGNED NULL,
     product_status      ENUM('DRAFT','ACTIVE','INACTIVE','DELETED') NOT NULL DEFAULT 'ACTIVE',
     category_id         BIGINT UNSIGNED NULL,
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -382,6 +382,11 @@ ALTER TABLE products ADD CONSTRAINT fk_products_category
 
 -- products.product_id UNIQUE: business key cho API/external, khong dung cho FK
 ALTER TABLE products ADD CONSTRAINT uq_products_id UNIQUE (product_id);
+
+-- products.thumbnail_media_id -> media.id SET NULL: xoa media thi product mat thumbnail
+ALTER TABLE products ADD CONSTRAINT fk_products_thumbnail_media
+    FOREIGN KEY (thumbnail_media_id) REFERENCES media(id)
+    ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- products.product_slug UNIQUE: slug cho public API (ai_ci nen khong phan biet hoa/thuong)
 ALTER TABLE products ADD CONSTRAINT uq_products_slug UNIQUE (product_slug);
