@@ -25,7 +25,7 @@ class ProductBusinessIdTest {
     private ProductRepository productRepo;
 
     private static ProductCreateRequest create(String name) {
-        return new ProductCreateRequest(name, "desc", null, null, null);
+        return new ProductCreateRequest(name, "desc", null, null, null, null);
     }
 
     @Test
@@ -33,6 +33,7 @@ class ProductBusinessIdTest {
         ProductResponse created = service.create(create("  Ember   Tetra  "));
 
         assertThat(created.name()).isEqualTo("Ember Tetra");
+        assertThat(created.slug()).isEqualTo("ember-tetra");
         assertThat(created.productId()).startsWith("PRD_");
         assertThat(created.productId())
                 .isEqualTo("PRD_" + productRepo.findByProductId(created.productId())

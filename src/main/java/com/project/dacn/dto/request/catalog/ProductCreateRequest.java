@@ -8,5 +8,6 @@ public record ProductCreateRequest(
         @NotBlank String description,
         String detailDescription,
         String thumbnail,
-        String categoryId) {
+        String categoryId,
+        @Size(max = 255) String slug) {
 }

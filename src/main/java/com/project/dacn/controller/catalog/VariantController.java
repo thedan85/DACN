@@ -35,10 +35,10 @@ public class VariantController {
         return ApiResponse.ok(service.get(variantId));
     }
 
-    @GetMapping("/api/v1/products/{productId}/variants")
-    public ApiResponse<PageResponse<VariantResponse>> listByProduct(@PathVariable String productId,
+    @GetMapping("/api/v1/products/{slug}/variants")
+    public ApiResponse<PageResponse<VariantResponse>> listByProduct(@PathVariable String slug,
             Pageable pageable) {
-        return ApiResponse.ok(service.listByProduct(productId, pageable));
+        return ApiResponse.ok(service.listByProductSlug(slug, pageable));
     }
 
     @PostMapping("/api/v1/variants")

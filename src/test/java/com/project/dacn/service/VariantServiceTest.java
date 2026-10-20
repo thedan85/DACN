@@ -55,15 +55,17 @@ class VariantServiceTest {
     void listByProductDelegatesToFinder() {
         Variant v = Variant.builder().variantId("v").sku("SKU-1").build();
         Page<Variant> page = new PageImpl<>(List.of(v), Pageable.unpaged(), 1);
-        when(productRepo.findByProductId("p-1"))
+        when(productRepo.findBySlugIgnoreCase("congo-tetra"))
                 .thenReturn(Optional.of(com.project.dacn.entity.catalog.Product.builder()
-                        .productId("p-1").name("P").description("d").build()));
-        when(repo.findByProduct_ProductId("p-1", Pageable.unpaged())).thenReturn(page);
+                        .productId("p-1").slug("congo-tetra").name("P").description("d").build()));
+        when(repo.findByProduct_SlugIgnoreCase("congo-tetra", Pageable.unpaged())).thenReturn(page);
         when(mapper.toVariantResponse(v)).thenReturn(
                 new VariantResponse(1L, "v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P", false, null, null));
         PageResponse<VariantResponse> result = service.listByProduct("p-1", Pageable.unpaged());
+                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P", false, null, null));
+        PageResponse<VariantResponse> result = service.listByProductSlug("congo-tetra", Pageable.unpaged());
         assertThat(result.getContent()).hasSize(1);
-        verify(repo).findByProduct_ProductId("p-1", Pageable.unpaged());
+        verify(repo).findByProduct_SlugIgnoreCase("congo-tetra", Pageable.unpaged());
     }
 
     @Test
@@ -83,8 +85,8 @@ class VariantServiceTest {
 
     @Test
     void listByProductMissingParentThrowsNotFound() {
-        when(productRepo.findByProductId("nope")).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.listByProduct("nope", Pageable.unpaged()))
+        when(productRepo.findBySlugIgnoreCase("nope")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.listByProductSlug("nope", Pageable.unpaged()))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 }

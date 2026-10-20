@@ -37,6 +37,8 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 
+import java.math.BigDecimal;
+
 @Mapper(componentModel = "spring")
 public interface CatalogMapper {
 
@@ -63,19 +65,23 @@ public interface CatalogMapper {
     // ---- Product ----
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "productId", ignore = true)
+    @Mapping(target = "slug", ignore = true)
     @Mapping(target = "category", ignore = true)
     @Mapping(target = "status", constant = "ACTIVE")
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     Product toProduct(ProductCreateRequest request);
 
-    @Mapping(source = "category.categoryId", target = "categoryId")
-    @Mapping(source = "category.name", target = "categoryName")
-    ProductResponse toProductResponse(Product product);
+    @Mapping(source = "product.category.categoryId", target = "categoryId")
+    @Mapping(source = "product.category.name", target = "categoryName")
+    @Mapping(source = "minPrice", target = "minPrice")
+    @Mapping(source = "maxPrice", target = "maxPrice")
+    ProductResponse toProductResponse(Product product, BigDecimal minPrice, BigDecimal maxPrice);
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "productId", ignore = true)
+    @Mapping(target = "slug", ignore = true)
     @Mapping(target = "category", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)

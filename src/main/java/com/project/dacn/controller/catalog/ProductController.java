@@ -1,13 +1,14 @@
 package com.project.dacn.controller.catalog;
 
+import com.project.dacn.common.constant.ProductSort;
+import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.common.response.ApiResponse;
 import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.catalog.ProductCreateRequest;
+import com.project.dacn.dto.request.catalog.ProductFilter;
 import com.project.dacn.dto.request.catalog.ProductUpdateRequest;
 import com.project.dacn.dto.response.catalog.ProductResponse;
-import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.service.catalog.ProductService;
-import com.project.dacn.spec.ProductFilter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
@@ -22,6 +23,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
+
 @RestController
 @RequestMapping("/api/v1/products")
 @RequiredArgsConstructor
@@ -30,8 +33,16 @@ public class ProductController {
     private final ProductService service;
 
     @GetMapping
-    public ApiResponse<PageResponse<ProductResponse>> list(Pageable pageable) {
-        return ApiResponse.ok(service.list(pageable));
+    public ApiResponse<PageResponse<ProductResponse>> list(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(name = "category_id", required = false) String categoryId,
+            @RequestParam(name = "min_price", required = false) BigDecimal minPrice,
+            @RequestParam(name = "max_price", required = false) BigDecimal maxPrice,
+            @RequestParam(required = false, defaultValue = "newest") ProductSort sort,
+            Pageable pageable) {
+        ProductFilter filter = new ProductFilter(
+                keyword, null, categoryId, minPrice, maxPrice, sort);
+        return ApiResponse.ok(service.search(filter, pageable));
     }
 
     @GetMapping("/search")
@@ -43,9 +54,9 @@ public class ProductController {
         return ApiResponse.ok(service.search(new ProductFilter(name, status, categoryId), pageable));
     }
 
-    @GetMapping("/{productId}")
-    public ApiResponse<ProductResponse> get(@PathVariable String productId) {
-        return ApiResponse.ok(service.get(productId));
+    @GetMapping("/{slug}")
+    public ApiResponse<ProductResponse> get(@PathVariable String slug) {
+        return ApiResponse.ok(service.getBySlug(slug));
     }
 
     @PostMapping

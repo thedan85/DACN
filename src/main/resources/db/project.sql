@@ -141,6 +141,7 @@ CREATE TABLE IF NOT EXISTS categories (
 CREATE TABLE IF NOT EXISTS products (
     id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     product_id          VARCHAR(255) NOT NULL,
+    product_slug        VARCHAR(255) NOT NULL,
     product_name        VARCHAR(255) NOT NULL,
     product_description TEXT NOT NULL,
     product_thumbnail   VARCHAR(500) NULL,
@@ -381,6 +382,9 @@ ALTER TABLE products ADD CONSTRAINT fk_products_category
 
 -- products.product_id UNIQUE: business key cho API/external, khong dung cho FK
 ALTER TABLE products ADD CONSTRAINT uq_products_id UNIQUE (product_id);
+
+-- products.product_slug UNIQUE: slug cho public API (ai_ci nen khong phan biet hoa/thuong)
+ALTER TABLE products ADD CONSTRAINT uq_products_slug UNIQUE (product_slug);
 
 -- attributes.attribute_name UNIQUE: ten thuoc tinh 'Color' khong duoc trung (ai_ci chong Red/red)
 ALTER TABLE attributes ADD CONSTRAINT uq_attributes_name UNIQUE (attribute_name);
