@@ -46,13 +46,17 @@ cloudinary:
   secure: ${CLOUDINARY_SECURE:true}
 
 payment:
-  momo:
-    partner-code: ${MOMO_PARTNER_CODE:}
-    access-key: ${MOMO_ACCESS_KEY:}
-    secret-key: ${MOMO_SECRET_KEY:}
-    endpoint: ${MOMO_ENDPOINT:https://test-payment.momo.vn/v2/gateway/api/create}
-    redirect-url: ${MOMO_REDIRECT_URL:http://localhost:8080/api/v1/webhooks/momo/return}
-    ipn-url: ${MOMO_IPN_URL:http://localhost:8080/api/v1/webhooks/momo}
+  vnpay:
+    tmn-code: ${VNPAY_TMN_CODE:}
+    hash-secret: ${VNPAY_HASH_SECRET:}
+    pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+    return-url: ${VNPAY_RETURN_URL:http://localhost:8080/api/v1/webhooks/vnpay/return}
+    ipn-url: ${VNPAY_IPN_URL:http://localhost:8080/api/v1/webhooks/vnpay/ipn}
+    version: "2.1.0"
+    command: pay
+    curr-code: VND
+    order-type: other
+    locale: vn
 
 shipping:
   ghtk:
