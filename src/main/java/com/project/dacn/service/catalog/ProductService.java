@@ -63,7 +63,7 @@ public class ProductService {
     private final CatalogMapper mapper;
 
     public PageResponse<ProductResponse> list(Pageable pageable) {
-        Page<Product> page = repo.findByStatusNot(ProductStatus.DELETED, pageable);
+        Page<Product> page = repo.findByStatus(ProductStatus.ACTIVE, pageable);
         return toPageResponse(page);
     }
 
@@ -120,7 +120,15 @@ public class ProductService {
     }
 
     public ProductResponse getBySlug(String slug) {
-        return toResponse(requireBySlug(slug));
+        return getBySlug(slug, false);
+    }
+
+    /**
+     * @param includeHidden true only for callers holding the catalog-manage
+     *                      permission; DRAFT/INACTIVE are otherwise 404.
+     */
+    public ProductResponse getBySlug(String slug, boolean includeHidden) {
+        return toResponse(requireBySlug(slug, includeHidden));
     }
 
     public ProductResponse create(ProductCreateRequest request) {
@@ -240,7 +248,8 @@ public class ProductService {
     private ProductResponse toResponse(Product product, ProductPriceRange range) {
         return mapper.toProductResponse(product,
                 range == null ? null : range.minPrice(),
-                range == null ? null : range.maxPrice());
+                range == null ? null : range.maxPrice(),
+                range == null ? 0 : range.totalStock().intValue());
     }
 
     private Product require(String productId) {
@@ -248,8 +257,14 @@ public class ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("product not found: " + productId));
     }
 
-    private Product requireBySlug(String slug) {
+    /**
+     * Storefront detail lookup: products that are not ACTIVE (DRAFT/INACTIVE)
+     * must look identical to missing ones. Soft-deleted rows are already hidden
+     * by the entity's SQL restriction.
+     */
+    private Product requireBySlug(String slug, boolean includeHidden) {
         return repo.findBySlugIgnoreCase(slug)
+                .filter(product -> includeHidden || product.getStatus() == ProductStatus.ACTIVE)
                 .orElseThrow(() -> new ResourceNotFoundException("product not found: " + slug));
     }
 

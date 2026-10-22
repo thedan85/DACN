@@ -80,7 +80,9 @@ public interface CatalogMapper {
     @Mapping(source = "product.thumbnail.mediaId", target = "thumbnailMediaId")
     @Mapping(source = "minPrice", target = "minPrice")
     @Mapping(source = "maxPrice", target = "maxPrice")
-    ProductResponse toProductResponse(Product product, BigDecimal minPrice, BigDecimal maxPrice);
+    @Mapping(source = "stock", target = "stock")
+    ProductResponse toProductResponse(Product product, BigDecimal minPrice, BigDecimal maxPrice,
+            Integer stock);
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "id", ignore = true)

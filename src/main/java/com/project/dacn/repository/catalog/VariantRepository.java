@@ -1,5 +1,6 @@
 package com.project.dacn.repository.catalog;
 
+import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.entity.catalog.Variant;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -26,6 +27,8 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
 
     Page<Variant> findByDeletedFalse(Pageable pageable);
 
+    Page<Variant> findByDeletedFalseAndProduct_Status(ProductStatus status, Pageable pageable);
+
     @EntityGraph(attributePaths = {"product"})
     Optional<Variant> findWithProductByVariantId(String variantId);
 
@@ -36,13 +39,13 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
     @Query("update Variant v set v.stock = v.stock - :quantity where v.id = :id and v.stock >= :quantity")
     int decrementStock(@Param("id") Long id, @Param("quantity") int quantity);
     /**
-     * One query for a whole product page: min/max price per product across
-     * active variants. Soft-deleted variants are excluded explicitly in
-     * addition to the entity's {@code @SQLRestriction}.
+     * One query for a whole product page: min/max price and total stock per
+     * product across active variants. Soft-deleted variants are excluded
+     * explicitly in addition to the entity's {@code @SQLRestriction}.
      */
     @Query("""
             SELECT new com.project.dacn.repository.catalog.ProductPriceRange(
-                v.product.id, MIN(v.price), MAX(v.price))
+                v.product.id, MIN(v.price), MAX(v.price), SUM(v.stock))
             FROM Variant v
             WHERE v.product.id IN :productIds
               AND v.deleted = false

@@ -5,10 +5,12 @@ import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.catalog.VariantCreateRequest;
 import com.project.dacn.dto.request.catalog.VariantUpdateRequest;
 import com.project.dacn.dto.response.catalog.VariantResponse;
+import com.project.dacn.security.Permissions;
 import com.project.dacn.service.catalog.VariantService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -26,19 +28,20 @@ public class VariantController {
     private final VariantService service;
 
     @GetMapping("/api/v1/variants")
-    public ApiResponse<PageResponse<VariantResponse>> list(Pageable pageable) {
-        return ApiResponse.ok(service.list(pageable));
+    public ApiResponse<PageResponse<VariantResponse>> list(Pageable pageable,
+            Authentication auth) {
+        return ApiResponse.ok(service.list(pageable, canViewHidden(auth)));
     }
 
     @GetMapping("/api/v1/variants/{variantId}")
-    public ApiResponse<VariantResponse> get(@PathVariable String variantId) {
-        return ApiResponse.ok(service.get(variantId));
+    public ApiResponse<VariantResponse> get(@PathVariable String variantId, Authentication auth) {
+        return ApiResponse.ok(service.get(variantId, canViewHidden(auth)));
     }
 
     @GetMapping("/api/v1/products/{slug}/variants")
     public ApiResponse<PageResponse<VariantResponse>> listByProduct(@PathVariable String slug,
-            Pageable pageable) {
-        return ApiResponse.ok(service.listByProductSlug(slug, pageable));
+            Pageable pageable, Authentication auth) {
+        return ApiResponse.ok(service.listByProductSlug(slug, pageable, canViewHidden(auth)));
     }
 
     @PostMapping("/api/v1/variants")
@@ -62,5 +65,9 @@ public class VariantController {
     public ApiResponse<Void> delete(@PathVariable String variantId) {
         service.delete(variantId);
         return ApiResponse.ok(null);
+    }
+
+    private static boolean canViewHidden(Authentication auth) {
+        return Permissions.has(auth, Permissions.VIEW_HIDDEN_PRODUCTS);
     }
 }

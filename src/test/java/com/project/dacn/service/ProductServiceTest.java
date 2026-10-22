@@ -78,20 +78,44 @@ class ProductServiceTest {
     }
 
     @Test
+    void getDraftProductHidesIt() {
+        Product p = product(1L);
+        p.setStatus(ProductStatus.DRAFT);
+        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
+
+        assertThatThrownBy(() -> service.getBySlug("ember-tetra"))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void getDraftProductVisibleToCatalogManager() {
+        Product p = product(1L);
+        p.setStatus(ProductStatus.DRAFT);
+        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
+        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
+        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(response(null, null, 0));
+
+        ProductResponse result = service.getBySlug("ember-tetra", true);
+
+        assertThat(result.name()).isEqualTo("P");
+    }
+
+    @Test
     void listReturnsPageResponseWithoutPricesWhenProductHasNoVariants() {
         Product p = product(1L);
         Page<Product> page = new PageImpl<>(List.of(p), Pageable.unpaged(), 1);
-        when(repo.findByStatusNot(any(ProductStatus.class), any(Pageable.class))).thenReturn(page);
+        when(repo.findByStatus(ProductStatus.ACTIVE, Pageable.unpaged())).thenReturn(page);
         when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
-        when(mapper.toProductResponse(p, null, null)).thenReturn(response(null, null));
+        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(response(null, null, 0));
 
         PageResponse<ProductResponse> result = service.list(Pageable.unpaged());
 
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).minPrice()).isNull();
         assertThat(result.getContent().get(0).maxPrice()).isNull();
+        assertThat(result.getContent().get(0).stock()).isZero();
         assertThat(result.getTotalElements()).isEqualTo(1);
-        verify(repo).findByStatusNot(any(ProductStatus.class), any(Pageable.class));
+        verify(repo).findByStatus(ProductStatus.ACTIVE, Pageable.unpaged());
     }
 
     @Test
@@ -99,32 +123,34 @@ class ProductServiceTest {
         Product p = product(1L);
         Page<Product> page = new PageImpl<>(List.of(p), Pageable.unpaged(), 1);
         ProductPriceRange range = new ProductPriceRange(
-                1L, new BigDecimal("179000"), new BigDecimal("199000"));
-        when(repo.findByStatusNot(any(ProductStatus.class), any(Pageable.class))).thenReturn(page);
+                1L, new BigDecimal("179000"), new BigDecimal("199000"), 30L);
+        when(repo.findByStatus(ProductStatus.ACTIVE, Pageable.unpaged())).thenReturn(page);
         when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of(range));
-        when(mapper.toProductResponse(p, range.minPrice(), range.maxPrice()))
-                .thenReturn(response(range.minPrice(), range.maxPrice()));
+        when(mapper.toProductResponse(p, range.minPrice(), range.maxPrice(), 30))
+                .thenReturn(response(range.minPrice(), range.maxPrice(), 30));
 
         PageResponse<ProductResponse> result = service.list(Pageable.unpaged());
 
         assertThat(result.getContent().get(0).minPrice()).isEqualByComparingTo("179000");
         assertThat(result.getContent().get(0).maxPrice()).isEqualByComparingTo("199000");
+        assertThat(result.getContent().get(0).stock()).isEqualTo(30);
     }
 
     @Test
     void getIncludesMinAndMaxPriceFromVariants() {
         Product p = product(1L);
         ProductPriceRange range = new ProductPriceRange(
-                1L, new BigDecimal("179000"), new BigDecimal("199000"));
+                1L, new BigDecimal("179000"), new BigDecimal("199000"), 30L);
         when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
         when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of(range));
-        when(mapper.toProductResponse(p, range.minPrice(), range.maxPrice()))
-                .thenReturn(response(range.minPrice(), range.maxPrice()));
+        when(mapper.toProductResponse(p, range.minPrice(), range.maxPrice(), 30))
+                .thenReturn(response(range.minPrice(), range.maxPrice(), 30));
 
         ProductResponse result = service.getBySlug("ember-tetra");
 
         assertThat(result.minPrice()).isEqualByComparingTo("179000");
         assertThat(result.maxPrice()).isEqualByComparingTo("199000");
+        assertThat(result.stock()).isEqualTo(30);
     }
 
     @Test
@@ -174,8 +200,8 @@ class ProductServiceTest {
                 .build();
     }
 
-    private static ProductResponse response(BigDecimal minPrice, BigDecimal maxPrice) {
+    private static ProductResponse response(BigDecimal minPrice, BigDecimal maxPrice, int stock) {
         return new ProductResponse("PRD_1", "ember-tetra", "P", "d", null, null, null,
-                ProductStatus.ACTIVE, null, null, minPrice, maxPrice, null, null);
+                ProductStatus.ACTIVE, null, null, minPrice, maxPrice, stock, null, null);
     }
 }

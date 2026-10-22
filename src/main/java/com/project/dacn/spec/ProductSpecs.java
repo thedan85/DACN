@@ -34,16 +34,15 @@ public final class ProductSpecs {
     public static Specification<Product> filter(ProductFilter filter, Collection<String> categoryIds) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            // Only exclude DELETED by default. When an explicit status is requested
-            // (including DELETED for admin recovery/audit), filter by it alone;
-            // otherwise WHERE status != 'DELETED' AND status = 'DELETED' is always empty.
-            // NOTE: Product also carries @SQLRestriction("product_status <> 'DELETED'"),
-            // so true DELETED recovery still needs a native query bypassing that
-            // restriction; this fix removes the contradictory Specification clause.
+            // Storefront reads only expose sellable products: when no explicit
+            // status is requested, default to ACTIVE rather than "anything not
+            // DELETED". An explicit status (DRAFT/INACTIVE/DELETED for admin
+            // audit) still filters by it alone. Product also carries
+            // @SQLRestriction("product_status <> 'DELETED'").
             if (filter.status() != null) {
                 predicates.add(cb.equal(root.get(Product_.status), filter.status()));
             } else {
-                predicates.add(cb.notEqual(root.get(Product_.status), ProductStatus.DELETED));
+                predicates.add(cb.equal(root.get(Product_.status), ProductStatus.ACTIVE));
             }
             if (filter.keyword() != null && !filter.keyword().isBlank()) {
                 predicates.add(cb.like(cb.lower(root.get(Product_.name)),

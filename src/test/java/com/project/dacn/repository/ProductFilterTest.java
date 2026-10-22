@@ -146,13 +146,18 @@ class ProductFilterTest {
     }
 
     @Test
-    void emptyFilterReturnsAllNonDeleted() {
-        products.save(Product.builder().name("One").description("d").build());
-        products.save(Product.builder().name("Two").description("d").build());
+    void emptyFilterReturnsOnlyActiveProducts() {
+        products.save(Product.builder().name("Active Fish").description("d").build());
+        Product draft = products.save(Product.builder().name("Draft Fish").description("d").build());
+        draft.setStatus(ProductStatus.DRAFT);
+        products.save(draft);
+        Product inactive = products.save(Product.builder().name("Inactive Fish").description("d").build());
+        inactive.setStatus(ProductStatus.INACTIVE);
+        products.save(inactive);
 
         var result = service.search(new ProductFilter(null, null, null), Pageable.unpaged());
 
-        assertThat(result.getContent()).hasSize(2);
+        assertThat(result.getContent()).extracting("name").containsExactly("Active Fish");
     }
 
     @Test
