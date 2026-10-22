@@ -25,7 +25,8 @@ public class VnpaySignatureService {
 
     /**
      * Canonical string VNPay signs: every non-blank vnp_ param except the hash
-     * fields, sorted by name, URL-encoded (space as %20).
+     * fields, sorted by name, URL-encoded with spaces as '+' (VNPay's
+     * URLEncoder format).
      */
     public String canonical(Map<String, String> params) {
         return params.entrySet().stream()
@@ -63,6 +64,6 @@ public class VnpaySignatureService {
     }
 
     private static String encode(String value) {
-        return URLEncoder.encode(value, StandardCharsets.US_ASCII).replace("+", "%20");
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 }

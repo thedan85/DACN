@@ -33,7 +33,7 @@ class VnpaySignatureServiceTest {
         params.put("vnp_SecureHashType", "HmacSHA512");
 
         assertThat(SERVICE.canonical(params))
-                .isEqualTo("vnp_Amount=100&vnp_TxnRef=ORD%201");
+                .isEqualTo("vnp_Amount=100&vnp_TxnRef=ORD+1");
     }
 
     private static VnpayProperties props(String secret) {

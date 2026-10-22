@@ -1,9 +1,10 @@
-package com.project.dacn.entity.order;
+package com.project.dacn.entity.payment;
 
 import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import com.project.dacn.common.constant.PaymentMethod;
 import com.project.dacn.common.constant.PaymentStatus;
+import com.project.dacn.entity.order.Order;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;

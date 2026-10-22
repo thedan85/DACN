@@ -5,6 +5,9 @@ import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.controller.catalog.ProductController;
 import com.project.dacn.dto.request.catalog.ProductFilter;
 import com.project.dacn.dto.response.catalog.ProductResponse;
+import com.project.dacn.repository.auth.UserRepository;
+import com.project.dacn.security.CustomUserDetailsService;
+import com.project.dacn.security.JwtService;
 import com.project.dacn.service.catalog.ProductService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -33,6 +36,17 @@ class ProductControllerTest {
 
     @MockitoBean
     private ProductService service;
+
+    // JwtAuthenticationFilter is a Filter, so the slice instantiates it even with
+    // addFilters = false; these mocks satisfy its constructor.
+    @MockitoBean
+    private JwtService jwtService;
+
+    @MockitoBean
+    private UserRepository userRepository;
+
+    @MockitoBean
+    private CustomUserDetailsService customUserDetailsService;
 
     @Test
     void listBindsPublicFilterParams() throws Exception {

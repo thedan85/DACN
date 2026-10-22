@@ -16,6 +16,7 @@ import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.mapper.cart.CartMapper;
 import com.project.dacn.mapper.order.OrderMapper;
+import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.cart.CartItemRepository;
@@ -25,7 +26,7 @@ import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
-import com.project.dacn.repository.order.PaymentRepository;
+import com.project.dacn.repository.payment.PaymentRepository;
 import com.project.dacn.service.cart.CartService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -66,6 +67,11 @@ class CartServiceTest {
         OrderMapper orderMapper() {
             return Mappers.getMapper(OrderMapper.class);
         }
+
+        @Bean
+        PaymentMapper paymentMapper() {
+            return Mappers.getMapper(PaymentMapper.class);
+        }
     }
 
     @Nested
@@ -97,13 +103,16 @@ class CartServiceTest {
 
         OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
 
+        PaymentMapper paymentMapper = Mappers.getMapper(PaymentMapper.class);
+
         CartService service;
 
         @BeforeEach
         void setUp() {
             service = new CartService(customerRepository, variantRepository,
                     cartRepository, cartItemRepository, mapper,
-                    orderRepository, orderItemRepository, paymentRepository, orderMapper);
+                    orderRepository, orderItemRepository, paymentRepository, orderMapper,
+                    paymentMapper);
         }
 
         @Test
