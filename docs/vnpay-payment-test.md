@@ -61,7 +61,7 @@ VNPAY_IPN_URL=
 ### 3. Start backend
 
 ```powershell
-.\mvnw spring-boot:run "-Dspring-boot.run.profiles=dev"
+./mvnw spring-boot:run "-Dspring-boot.run.profiles=dev"
 ```
 
 ### 4. Kiểm tra
