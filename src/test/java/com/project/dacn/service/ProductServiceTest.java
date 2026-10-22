@@ -67,7 +67,7 @@ class ProductServiceTest {
     void createWithMissingCategoryThrowsNotFound() {
         when(categoryRepo.findByCategoryId("gone")).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.create(
-                new ProductCreateRequest("P", "d", null, "gone", null)))
+                new ProductCreateRequest("P", "d", null, "gone", null, null)))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -162,7 +162,7 @@ class ProductServiceTest {
         when(repo.save(p)).thenReturn(p);
         when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
 
-        service.update("PRD_1", new ProductUpdateRequest(null, null, null, "MED_1", null, null));
+        service.update("PRD_1", new ProductUpdateRequest(null, null, null, "MED_1", null, null, null));
 
         assertThat(p.getThumbnail()).isSameAs(media);
     }
@@ -175,7 +175,7 @@ class ProductServiceTest {
         when(mediaRepo.findByMediaId("MED_x")).thenReturn(Optional.of(foreign));
 
         assertThatThrownBy(() -> service.update("PRD_1",
-                new ProductUpdateRequest(null, null, null, "MED_x", null, null)))
+                new ProductUpdateRequest(null, null, null, "MED_x", null, null, null)))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
@@ -186,7 +186,7 @@ class ProductServiceTest {
         when(mediaRepo.findByMediaId("MED_nope")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.update("PRD_1",
-                new ProductUpdateRequest(null, null, null, "MED_nope", null, null)))
+                new ProductUpdateRequest(null, null, null, "MED_nope", null, null, null)))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 

@@ -30,11 +30,11 @@ class ProductSlugTest {
     private ProductRepository repo;
 
     private static ProductCreateRequest create(String name, String slug) {
-        return new ProductCreateRequest(name, "desc", null, null, slug);
+        return new ProductCreateRequest(name, "desc", null, null, slug, null);
     }
 
     private static ProductUpdateRequest update(String name, String slug) {
-        return new ProductUpdateRequest(name, null, null, null, null, slug);
+        return new ProductUpdateRequest(name, null, null, null, null, slug, null);
     }
 
     @Test

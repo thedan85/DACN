@@ -25,6 +25,7 @@ import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
 import com.project.dacn.security.JwtService;
+import com.project.dacn.security.LoginRateLimiter;
 import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -56,6 +57,7 @@ public class AuthService {
     private final UserMapper userMapper;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final LoginRateLimiter loginRateLimiter;
 
     public UserResponse register(RegisterRequest request) {
         // Normalize email to lowercase
@@ -100,6 +102,7 @@ public class AuthService {
     public LoginResponse login(LoginRequest request, String userAgent, String ip) {
         // Normalize email to lowercase
         String normalizedEmail = request.email().toLowerCase();
+        loginRateLimiter.check((ip == null ? "unknown" : ip) + ":" + normalizedEmail);
 
         // Find user
         User user = userRepository.findByEmail(normalizedEmail)
@@ -150,11 +153,18 @@ public class AuthService {
     }
 
     public RefreshResponse refresh(RefreshRequest request) {
-        // Extract jti from refresh token, wrap in try-catch for invalid tokens
+        // A refresh token must carry type=refresh and a valid jti, otherwise it
+        // is an access token being replayed against the refresh endpoint.
+        if (!jwtService.isRefreshToken(request.refreshToken())) {
+            throw new InvalidTokenException();
+        }
         String jti;
         try {
             jti = jwtService.extractJti(request.refreshToken());
         } catch (JwtException | IllegalArgumentException e) {
+            throw new InvalidTokenException();
+        }
+        if (jti == null || jti.isBlank()) {
             throw new InvalidTokenException();
         }
 
@@ -162,8 +172,17 @@ public class AuthService {
         RefreshToken token = refreshTokenRepository.findByTokenId(jti)
                 .orElseThrow(InvalidTokenException::new);
 
-        // Validate token: not revoked, not expired
-        if (token.getRevoked() || token.getExpiresAt().isBefore(Instant.now())) {
+        // Replay of an already-rotated token: assume theft and revoke the whole
+        // family so the attacker and the legitimate user both must re-login.
+        if (token.getRevoked()) {
+            revokeFamily(token.getUser());
+            throw new InvalidTokenException();
+        }
+
+        // Validate token: not expired, hash matches the presented value
+        if (token.getExpiresAt().isBefore(Instant.now())
+                || !hashMatches(request.refreshToken(), token.getTokenHash())) {
+            revokeFamily(token.getUser());
             throw new InvalidTokenException();
         }
 
@@ -240,6 +259,20 @@ public class AuthService {
                 user.getRole().getName(),
                 permissions
         );
+    }
+
+    private boolean hashMatches(String presentedToken, String storedHash) {
+        if (storedHash == null) {
+            return false;
+        }
+        byte[] presented = hashToken(presentedToken).getBytes(StandardCharsets.UTF_8);
+        return MessageDigest.isEqual(presented, storedHash.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void revokeFamily(User user) {
+        List<RefreshToken> tokens = refreshTokenRepository.findByUser_UserId(user.getUserId());
+        tokens.forEach(t -> t.setRevoked(true));
+        refreshTokenRepository.saveAll(tokens);
     }
 
     private String hashToken(String token) {

@@ -1,5 +1,6 @@
 package com.project.dacn.dto.request.catalog;
 
+import com.project.dacn.common.constant.ProductStatus;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -8,5 +9,6 @@ public record ProductCreateRequest(
         @NotBlank String description,
         String detailDescription,
         String categoryId,
-        @Size(max = 255) String slug) {
+        @Size(max = 255) String slug,
+        ProductStatus status) {
 }

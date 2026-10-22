@@ -1,22 +1,32 @@
 package com.project.dacn.integration.payment.vnpay;
 
+import com.project.dacn.integration.payment.PaymentSettlementService;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class VnpayWebhookControllerTest {
 
     private static final VnpaySignatureService SIGNATURE =
             new VnpaySignatureService(props());
 
-    private final VnpayWebhookController controller = new VnpayWebhookController(SIGNATURE);
+    private final PaymentSettlementService settlement = mock(PaymentSettlementService.class);
+
+    private final VnpayWebhookController controller =
+            new VnpayWebhookController(SIGNATURE, settlement, props());
 
     @Test
     void ipnAcceptsValidSignature() {
         Map<String, String> params = signedParams();
+        when(settlement.settle(any(), any(), anyBoolean(), any()))
+                .thenReturn(PaymentSettlementService.Result.SETTLED);
 
         Map<String, String> body = controller.ipn(params);
 

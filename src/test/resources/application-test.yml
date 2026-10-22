@@ -20,3 +20,6 @@ cloudinary:
   api-key: test-key
   api-secret: test-secret
   secure: true
+
+jwt:
+  secret: test-secret-key-please-change-min-256-bits-hs256-algorithm-requires-this-length

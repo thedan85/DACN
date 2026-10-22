@@ -95,7 +95,7 @@ class RbacIntegrationTest {
 
     @Test
     void publicEndpoint_noToken_200() throws Exception {
-        mockMvc.perform(get("/api/v1/test/public"))
+        mockMvc.perform(get("/api/v1/products"))
                 .andExpect(status().isOk());
     }
 

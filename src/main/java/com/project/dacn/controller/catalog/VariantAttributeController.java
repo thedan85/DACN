@@ -8,6 +8,7 @@ import com.project.dacn.service.catalog.VariantAttributeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,12 +34,14 @@ public class VariantAttributeController {
     }
 
     @PostMapping("/api/v1/variant-attributes")
+    @PreAuthorize("hasAuthority('variant:create')")
     public ApiResponse<VariantAttributeValueResponse> create(
             @Valid @RequestBody VariantAttributeValueCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @DeleteMapping("/api/v1/variant-attributes/{variantValueId}")
+    @PreAuthorize("hasAuthority('variant:delete')")
     public ApiResponse<Void> delete(@PathVariable String variantValueId) {
         service.delete(variantValueId);
         return ApiResponse.ok(null);

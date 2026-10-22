@@ -2,6 +2,7 @@ package com.project.dacn;
 
 import com.project.dacn.controller.cart.CartController;
 import com.project.dacn.dto.response.cart.CartDetailResponse;
+import com.project.dacn.security.CustomerIdentity;
 import com.project.dacn.security.JwtAuthenticationFilter;
 import com.project.dacn.service.cart.CartService;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -35,27 +38,38 @@ class CartControllerTest {
     @MockitoBean
     private CartService service;
 
+    @MockitoBean
+    private CustomerIdentity identity;
+
     @Test
     void getAutoCreatesCart() throws Exception {
         var detail = new CartDetailResponse("cart-1", 42L, "Jane", List.of(),
                 0, BigDecimal.ZERO, null, null);
+        when(identity.requireCustomerId(any())).thenReturn(42L);
         when(service.getDetail(42L)).thenReturn(detail);
-        mockMvc.perform(get("/api/v1/cart").header("X-Customer-Id", "42"))
+        mockMvc.perform(get("/api/v1/cart"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.cartId").value("cart-1"));
     }
 
     @Test
-    void patchInvalidQtyIs400() throws Exception {
-        mockMvc.perform(patch("/api/v1/cart/items/7").header("X-Customer-Id", "42")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"quantity\":0}"))
-                .andExpect(status().isBadRequest());
+    void clientSuppliedCustomerHeaderIsIgnored() throws Exception {
+        when(identity.requireCustomerId(any())).thenReturn(42L);
+        when(service.getDetail(42L)).thenReturn(new CartDetailResponse(
+                "cart-1", 42L, "Jane", List.of(), 0, BigDecimal.ZERO, null, null));
+
+        mockMvc.perform(get("/api/v1/cart").header("X-Customer-Id", "999"))
+                .andExpect(status().isOk());
+
+        verify(service).getDetail(42L);
     }
 
     @Test
-    void nonNumericCustomerHeaderIs400() throws Exception {
-        mockMvc.perform(get("/api/v1/cart").header("X-Customer-Id", "CUS_x"))
+    void patchInvalidQtyIs400() throws Exception {
+        when(identity.requireCustomerId(any())).thenReturn(42L);
+        mockMvc.perform(patch("/api/v1/cart/items/7")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"quantity\":0}"))
                 .andExpect(status().isBadRequest());
     }
 }

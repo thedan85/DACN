@@ -9,6 +9,7 @@ import com.project.dacn.service.catalog.AttributeValueService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -41,24 +42,28 @@ public class AttributeValueController {
     }
 
     @PostMapping("/api/v1/attribute-values")
+    @PreAuthorize("hasAuthority('attribute:create')")
     public ApiResponse<AttributeValueResponse> create(
             @Valid @RequestBody AttributeValueCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @PutMapping("/api/v1/attribute-values/{attributeValueId}")
+    @PreAuthorize("hasAuthority('attribute:update')")
     public ApiResponse<AttributeValueResponse> replace(@PathVariable String attributeValueId,
             @Valid @RequestBody AttributeValueUpdateRequest request) {
         return ApiResponse.ok(service.replace(attributeValueId, request));
     }
 
     @PatchMapping("/api/v1/attribute-values/{attributeValueId}")
+    @PreAuthorize("hasAuthority('attribute:update')")
     public ApiResponse<AttributeValueResponse> patch(@PathVariable String attributeValueId,
             @Valid @RequestBody AttributeValueUpdateRequest request) {
         return ApiResponse.ok(service.update(attributeValueId, request));
     }
 
     @DeleteMapping("/api/v1/attribute-values/{attributeValueId}")
+    @PreAuthorize("hasAuthority('attribute:delete')")
     public ApiResponse<Void> delete(@PathVariable String attributeValueId) {
         service.delete(attributeValueId);
         return ApiResponse.ok(null);

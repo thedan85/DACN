@@ -144,6 +144,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(403, message, null));
     }
 
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ApiResponse<?>> handleRateLimit(RateLimitExceededException ex) {
+        return ResponseEntity.status(429)
+                .body(ApiResponse.of(429, ex.getMessage(), null));
+    }
+
     @ExceptionHandler(InvalidTokenException.class)
     public ResponseEntity<ApiResponse<?>> handleInvalidToken(InvalidTokenException ex) {
         String message = messageSource.getMessage("error.token.invalid", null,

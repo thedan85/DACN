@@ -10,6 +10,7 @@ import com.project.dacn.service.catalog.VariantService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,23 +46,27 @@ public class VariantController {
     }
 
     @PostMapping("/api/v1/variants")
+    @PreAuthorize("hasAuthority('variant:create')")
     public ApiResponse<VariantResponse> create(@Valid @RequestBody VariantCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @PutMapping("/api/v1/variants/{variantId}")
+    @PreAuthorize("hasAuthority('variant:update')")
     public ApiResponse<VariantResponse> replace(@PathVariable String variantId,
             @Valid @RequestBody VariantUpdateRequest request) {
         return ApiResponse.ok(service.replace(variantId, request));
     }
 
     @PatchMapping("/api/v1/variants/{variantId}")
+    @PreAuthorize("hasAuthority('variant:update')")
     public ApiResponse<VariantResponse> patch(@PathVariable String variantId,
             @Valid @RequestBody VariantUpdateRequest request) {
         return ApiResponse.ok(service.update(variantId, request));
     }
 
     @DeleteMapping("/api/v1/variants/{variantId}")
+    @PreAuthorize("hasAuthority('variant:delete')")
     public ApiResponse<Void> delete(@PathVariable String variantId) {
         service.delete(variantId);
         return ApiResponse.ok(null);

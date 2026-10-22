@@ -54,7 +54,23 @@ class UploadServiceTest {
     UploadService service;
 
     private static MockMultipartFile jpg(String name, byte[] content) {
-        return new MockMultipartFile("file", name, "image/jpeg", content);
+        byte[] bytes = content.length >= 3 ? content.clone() : new byte[3];
+        bytes[0] = (byte) 0xFF;
+        bytes[1] = (byte) 0xD8;
+        bytes[2] = (byte) 0xFF;
+        return new MockMultipartFile("file", name, "image/jpeg", bytes);
+    }
+
+    @Test
+    void contentNotMatchingDeclaredTypeRejected() {
+        Product product = Product.builder().productId("p").name("P").build();
+        when(productRepo.findByProductId("p")).thenReturn(Optional.of(product));
+
+        byte[] png = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+        assertThatThrownBy(() -> service.uploadProductThumbnail("p",
+                new MockMultipartFile("file", "fake.jpg", "image/jpeg", png)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("does not match");
     }
 
     @Test
@@ -162,7 +178,8 @@ class UploadServiceTest {
                 .mediaId("MED_1").url("https://x/u.jpg").product(product).build());
 
         UploadResponse response = service.uploadProductThumbnail("p",
-                new MockMultipartFile("file", "PHOTO.JPG", "image/JPEG", new byte[] {1}));
+                new MockMultipartFile("file", "PHOTO.JPG", "image/JPEG",
+                        new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF}));
 
         assertThat(response.url()).isEqualTo("https://x/u.jpg");
     }

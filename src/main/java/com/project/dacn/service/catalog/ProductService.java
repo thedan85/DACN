@@ -143,6 +143,9 @@ public class ProductService {
         entity.setName(normalizeName(request.name()));
         entity.setSlug(resolveCreateSlug(request.slug(), entity.getName()));
         entity.setCategory(category);
+        if (entity.getStatus() == null) {
+            entity.setStatus(ProductStatus.ACTIVE);
+        }
 
         // product_id is PRD_<id>, and the identity id only exists after the
         // insert. @PrePersist assigns a throwaway PRD_<hex> so the NOT NULL
@@ -157,8 +160,10 @@ public class ProductService {
 
     public ProductResponse update(String productId, ProductUpdateRequest request) {
         Product entity = require(productId);
+        ProductStatus previousStatus = entity.getStatus();
 
         mapper.updateProduct(request, entity);
+        entity.setStatus(request.status() == null ? previousStatus : request.status());
         if (request.name() != null) {
             entity.setName(normalizeName(request.name()));
         }
@@ -182,8 +187,10 @@ public class ProductService {
      */
     public ProductResponse replace(String productId, ProductUpdateRequest request) {
         Product entity = require(productId);
+        ProductStatus previousStatus = entity.getStatus();
 
         mapper.updateProduct(request, entity);
+        entity.setStatus(request.status() == null ? previousStatus : request.status());
         if (request.name() != null) {
             entity.setName(normalizeName(request.name()));
         }
