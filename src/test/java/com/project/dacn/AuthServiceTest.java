@@ -258,6 +258,26 @@ class AuthServiceTest {
     }
 
     @Test
+    void me_customer_returnsProfileName() throws Exception {
+        authService.register(registerRequest("me-customer@test.com"));
+
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new LoginRequest("me-customer@test.com", "password123"))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String accessToken = objectMapper.readTree(loginResult.getResponse().getContentAsString())
+                .get("data").get("accessToken").asText();
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("Test User"));
+    }
+
+    @Test
     void me_noToken_401() throws Exception {
         mockMvc.perform(get("/api/v1/auth/me"))
                 .andExpect(status().isUnauthorized())

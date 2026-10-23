@@ -253,9 +253,14 @@ public class AuthService {
                 .map(rp -> rp.getPermission().getCode())
                 .toList();
 
+        String name = customerRepository.findByUser_UserId(user.getUserId())
+                .map(customer -> customer.getName())
+                .orElse(user.getEmail());
+
         return new MeResponse(
                 user.getUserId(),
                 user.getEmail(),
+                name,
                 user.getRole().getCode(),
                 user.getRole().getName(),
                 permissions
