@@ -1,7 +1,8 @@
 -- =========================================================
--- V9: Seed RBAC — roles, permissions, role_permissions
--- (renamed from V8 on 2026-10-16: V8 already taken by V8__seed_cart_demo.sql,
--- Flyway requires a unique version per migration)
+-- V16: Seed RBAC — roles, permissions, role_permissions
+-- (renamed from V8 to V9, then to V16 on 2026-10-22: V9 was already taken by
+-- V9__lowercase_product_names.sql on this branch, and Flyway requires a unique
+-- version per migration)
 --
 -- Huong B (2026-10-16): khong viet cung role_id. V8 da seed 3 roles
 -- lowercase (role-customer/role-admin/role-employee); V9 chi bo sung
@@ -84,8 +85,8 @@ ON CONFLICT DO NOTHING;
 INSERT INTO role_permissions (role_permission_id, role_id, permission_id, granted_at)
 SELECT
   'rp-' || lower(r.role_code) || '-' || p.permission_code,
-  r.role_id,
-  p.permission_id,
+  r.id,
+  p.id,
   now()
 FROM roles r
 CROSS JOIN permissions p
@@ -96,8 +97,8 @@ ON CONFLICT DO NOTHING;
 INSERT INTO role_permissions (role_permission_id, role_id, permission_id, granted_at)
 SELECT
   'rp-' || lower(r.role_code) || '-' || p.permission_code,
-  r.role_id,
-  p.permission_id,
+  r.id,
+  p.id,
   now()
 FROM roles r
 JOIN permissions p ON p.permission_code IN (
@@ -112,5 +113,5 @@ WHERE lower(r.role_code) = 'customer'
 ON CONFLICT DO NOTHING;
 
 -- =========================================================
--- End of V9
+-- End of V16
 -- =========================================================

@@ -12,26 +12,38 @@ import com.project.dacn.security.AuthenticationEntryPoint;
 import com.project.dacn.security.CustomAccessDeniedHandler;
 import com.project.dacn.security.CustomUserDetailsService;
 import com.project.dacn.security.JwtService;
+import com.project.dacn.security.RefreshTokenCookie;
+import com.project.dacn.security.TrustedOriginValidator;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.service.auth.AuthService;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(AuthController.class)
-@Import({SecurityConfig.class, AuthenticationEntryPoint.class, CustomAccessDeniedHandler.class})
+@Import({
+        SecurityConfig.class,
+        AuthenticationEntryPoint.class,
+        CustomAccessDeniedHandler.class,
+        RefreshTokenCookie.class,
+        TrustedOriginValidator.class
+})
 class AuthControllerTest {
 
     @Autowired
@@ -122,21 +134,38 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.accessToken").value("access-token"));
+                .andExpect(jsonPath("$.data.accessToken").value("access-token"))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("refresh_token=")));
     }
 
     @Test
-    void login_invalidCredentials_401() throws Exception {
-        LoginRequest request = new LoginRequest("wrong@example.com", "wrongpass");
+    void login_accountNotFound_404() throws Exception {
+        LoginRequest request = new LoginRequest("missing@example.com", "password123");
 
         when(authService.login(any(LoginRequest.class), any(), any()))
-                .thenThrow(new com.project.dacn.common.exception.InvalidCredentialsException());
+                .thenThrow(new com.project.dacn.common.exception.AccountNotFoundException());
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(404))
+                .andExpect(jsonPath("$.message").value("The account does not exist"));
+    }
+
+    @Test
+    void login_invalidPassword_401() throws Exception {
+        LoginRequest request = new LoginRequest("user@example.com", "wrongpass");
+
+        when(authService.login(any(LoginRequest.class), any(), any()))
+                .thenThrow(new com.project.dacn.common.exception.InvalidPasswordException());
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value(401));
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.message").value("Invalid password"));
     }
 
     @Test
@@ -155,14 +184,6 @@ class AuthControllerTest {
 
     @Test
     void refresh_success_200() throws Exception {
-        RefreshRequest request = new RefreshRequest("valid-refresh-token");
-        LoginResponse response = new LoginResponse(
-                "new-access-token",
-                "new-refresh-token",
-                900,
-                "Bearer"
-        );
-
         when(authService.refresh(any(RefreshRequest.class))).thenReturn(
                 new com.project.dacn.dto.response.auth.RefreshResponse(
                         "new-access-token",
@@ -173,22 +194,36 @@ class AuthControllerTest {
         );
 
         mockMvc.perform(post("/api/v1/auth/refresh")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
+                        .cookie(new Cookie(RefreshTokenCookie.NAME, "valid-refresh-token")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200));
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.accessToken").value("new-access-token"))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("refresh_token=")));
+    }
+
+    @Test
+    void refresh_missingCookie_401() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/refresh"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
+    }
+
+    @Test
+    void refresh_untrustedOrigin_401() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(new Cookie(RefreshTokenCookie.NAME, "valid-refresh-token"))
+                        .header("Origin", "https://evil.example"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
     void logout_success_200() throws Exception {
-        RefreshRequest request = new RefreshRequest("refresh-token");
-
         doNothing().when(authService).logout(any(RefreshRequest.class));
 
         mockMvc.perform(post("/api/v1/auth/logout")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(request)))
+                        .cookie(new Cookie(RefreshTokenCookie.NAME, "refresh-token")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200));
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")));
     }
 }
