@@ -18,6 +18,7 @@ public record ProductResponse(
         String categoryName,
         BigDecimal minPrice,
         BigDecimal maxPrice,
+        Integer stock,
         Instant createdAt,
         Instant updatedAt) {
 }

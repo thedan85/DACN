@@ -7,11 +7,12 @@ import com.project.dacn.dto.request.cart.CartItemUpdateRequest;
 import com.project.dacn.dto.response.cart.CartDetailResponse;
 import com.project.dacn.dto.response.cart.CartItemResponse;
 import com.project.dacn.dto.response.order.OrderResponse;
-import com.project.dacn.service.auth.CurrentCustomerService;
+import com.project.dacn.security.CustomerIdentity;
 import com.project.dacn.service.cart.CartService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -28,39 +29,45 @@ import org.springframework.web.bind.annotation.RestController;
 public class CartController {
 
     private final CartService service;
-    private final CurrentCustomerService currentCustomer;
+    private final CustomerIdentity identity;
 
     @GetMapping
-    public ApiResponse<CartDetailResponse> get() {
-        return ApiResponse.ok(service.getDetail(currentCustomer.requireCustomerId()));
+    public ApiResponse<CartDetailResponse> get(Authentication auth) {
+        return ApiResponse.ok(service.getDetail(identity.requireCustomerId(auth)));
     }
 
     @DeleteMapping
-    public ApiResponse<Void> clear() {
-        service.clear(currentCustomer.requireCustomerId());
+    public ApiResponse<Void> clear(Authentication auth) {
+        service.clear(identity.requireCustomerId(auth));
         return ApiResponse.ok(null);
     }
 
     @PostMapping("/items")
-    public ApiResponse<CartItemResponse> add(@Valid @RequestBody CartItemAddRequest request) {
-        return ApiResponse.ok(service.addItem(currentCustomer.requireCustomerId(), request));
+    public ApiResponse<CartItemResponse> add(
+            Authentication auth,
+            @Valid @RequestBody CartItemAddRequest request) {
+        return ApiResponse.ok(service.addItem(identity.requireCustomerId(auth), request));
     }
 
     @PatchMapping("/items/{cartItemId}")
     public ApiResponse<CartItemResponse> patch(
+            Authentication auth,
             @PathVariable Long cartItemId,
             @Valid @RequestBody CartItemUpdateRequest request) {
-        return ApiResponse.ok(service.setQuantity(currentCustomer.requireCustomerId(), cartItemId, request));
+        return ApiResponse.ok(service.setQuantity(
+                identity.requireCustomerId(auth), cartItemId, request));
     }
 
     @DeleteMapping("/items/{cartItemId}")
-    public ApiResponse<Void> remove(@PathVariable Long cartItemId) {
-        service.removeItem(currentCustomer.requireCustomerId(), cartItemId);
+    public ApiResponse<Void> remove(Authentication auth, @PathVariable Long cartItemId) {
+        service.removeItem(identity.requireCustomerId(auth), cartItemId);
         return ApiResponse.ok(null);
     }
 
     @PostMapping("/checkout")
-    public ApiResponse<OrderResponse> checkout(@Valid @RequestBody CartCheckoutRequest request) {
-        return ApiResponse.ok(service.checkout(currentCustomer.requireCustomerId(), request));
+    public ApiResponse<OrderResponse> checkout(
+            Authentication auth,
+            @Valid @RequestBody CartCheckoutRequest request) {
+        return ApiResponse.ok(service.checkout(identity.requireCustomerId(auth), request));
     }
 }

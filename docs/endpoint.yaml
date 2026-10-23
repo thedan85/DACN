@@ -459,7 +459,8 @@ paths:
       summary: Danh sách biến thể của sản phẩm
       description: >-
         Công khai. Tra cứu sản phẩm theo `product_slug`; biến thể đã xóa mềm
-        và sản phẩm `DELETED` không xuất hiện.
+        không xuất hiện. Sản phẩm `DELETED` trả 404; `DRAFT`/`INACTIVE` trả 404
+        trừ khi gửi token có quyền `product:create`.
       security:
         - {}
         - bearerAuth: []
@@ -1085,7 +1086,7 @@ components:
 
     ProductSummary:
       type: object
-      required: [product_id, product_slug, product_name, product_status, min_price, max_price]
+      required: [product_id, product_slug, product_name, product_status, min_price, max_price, stock]
       properties:
         product_id:
           type: string
@@ -1115,6 +1116,10 @@ components:
           type: number
           description: Giá variant cao nhất
           example: 199000
+        stock:
+          type: integer
+          description: Tổng tồn kho của tất cả variant chưa xóa. 0 nghĩa là hết hàng.
+          example: 50
         created_at:
           type: string
           format: date-time

@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -38,23 +39,27 @@ public class CategoryController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('category:create')")
     public ApiResponse<CategoryResponse> create(@Valid @RequestBody CategoryCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @PutMapping("/{categoryId}")
+    @PreAuthorize("hasAuthority('category:update')")
     public ApiResponse<CategoryResponse> replace(@PathVariable String categoryId,
             @Valid @RequestBody CategoryUpdateRequest request) {
         return ApiResponse.ok(service.replace(categoryId, request));
     }
 
     @PatchMapping("/{categoryId}")
+    @PreAuthorize("hasAuthority('category:update')")
     public ApiResponse<CategoryResponse> patch(@PathVariable String categoryId,
             @Valid @RequestBody CategoryUpdateRequest request) {
         return ApiResponse.ok(service.update(categoryId, request));
     }
 
     @DeleteMapping("/{categoryId}")
+    @PreAuthorize("hasAuthority('category:delete')")
     public ApiResponse<Void> delete(@PathVariable String categoryId) {
         service.delete(categoryId);
         return ApiResponse.ok(null);

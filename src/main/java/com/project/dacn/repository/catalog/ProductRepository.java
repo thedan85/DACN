@@ -39,9 +39,7 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     long countBySlugIncludingDeletedAndIdNot(
             @Param("slug") String slug, @Param("id") Long id);
 
-    List<Product> findByStatusNot(ProductStatus status);
-
-    Page<Product> findByStatusNot(ProductStatus status, Pageable pageable);
+    Page<Product> findByStatus(ProductStatus status, Pageable pageable);
 
     /**
      * Admin/audit path bypassing {@code @SQLRestriction("product_status <> 'DELETED'")}.

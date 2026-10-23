@@ -21,6 +21,17 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    private static final String[] PUBLIC_GETS = {
+            "/api/v1/products/**",
+            "/api/v1/categories/**",
+            "/api/v1/variants/**",
+            "/api/v1/attributes/**",
+            "/api/v1/attribute-values/**",
+            "/api/v1/product-attributes/**",
+            "/api/v1/variant-attributes/**",
+            "/api/v1/media/**"
+    };
+
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final AuthenticationEntryPoint authenticationEntryPoint;
     private final CustomAccessDeniedHandler accessDeniedHandler;
@@ -33,38 +44,24 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .cors(Customizer.withDefaults())
                 .csrf(AbstractHttpConfigurer::disable)
+                .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
-                        // CORS preflight must never require a token.
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-
-                        // Auth: only /me requires a token; login/register/refresh/logout are public.
+                        // /me requires authentication (must come BEFORE /auth/** permitAll)
                         .requestMatchers("/api/v1/auth/me").authenticated()
+                        // Auth endpoints public
                         .requestMatchers("/api/v1/auth/**").permitAll()
-
-                        // VNPay calls IPN/return server-to-server; authenticity is enforced by
-                        // the HMAC-SHA512 signature and amount check inside the webhook.
-                        .requestMatchers("/api/v1/webhooks/**").permitAll()
-
-                        // Ops/docs endpoints.
-                        .requestMatchers("/api/v1/health", "/api/v1/health/**").permitAll()
+                        // Swagger/actuator public
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
-
-                        // Public catalog reads.
-                        .requestMatchers(HttpMethod.GET,
-                                "/api/v1/products", "/api/v1/products/**",
-                                "/api/v1/categories", "/api/v1/categories/**",
-                                "/api/v1/variants", "/api/v1/variants/**",
-                                "/api/v1/attributes", "/api/v1/attributes/**",
-                                "/api/v1/attribute-values", "/api/v1/attribute-values/**",
-                                "/api/v1/media", "/api/v1/media/**",
-                                "/api/v1/product-attributes", "/api/v1/product-attributes/**",
-                                "/api/v1/variant-attributes", "/api/v1/variant-attributes/**"
-                        ).permitAll()
+                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers("/error").permitAll()
+                        // Payment provider callbacks: public, signature verified in each handler
+                        .requestMatchers("/api/v1/webhooks/**", "/api/webhooks/**").permitAll()
+                        // Storefront catalog reads are public; writes fall through to
+                        // .authenticated() and then to @PreAuthorize on the handler.
+                        .requestMatchers(HttpMethod.GET, PUBLIC_GETS).permitAll()
 
                         // Nested catalog writes (must be declared before the generic per-resource rules).
                         .requestMatchers(HttpMethod.POST, "/api/v1/products/*/media")
@@ -76,7 +73,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/uploads/**")
                         .hasAuthority("media:create")
 
-                        // Catalog writes require the matching RBAC permission.
+                        // Catalog writes require the matching RBAC permission. This
+                        // runs before request-body validation, so customers get 403.
                         .requestMatchers(HttpMethod.POST, "/api/v1/products", "/api/v1/products/**")
                         .hasAuthority("product:create")
                         .requestMatchers(HttpMethod.PUT, "/api/v1/products/**")
@@ -141,19 +139,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/variant-attributes/**")
                         .hasAuthority("variant:update")
 
-                        // Shop owner/employee order management. Permissions are
-                        // seeded in V17; customers must not reach these routes.
+                        // Staff order management. Permissions are seeded in V17;
+                        // customers must not reach these routes.
                         .requestMatchers(HttpMethod.GET, "/api/v1/staff/orders", "/api/v1/staff/orders/**")
                         .hasAuthority("order:read")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/staff/orders/**")
                         .hasAuthority("order:update")
-
-                        // Customer-scoped endpoints: identity comes from the JWT.
-                        .requestMatchers("/api/v1/cart", "/api/v1/cart/**").authenticated()
-                        .requestMatchers("/api/v1/orders", "/api/v1/orders/**").authenticated()
-                        .requestMatchers("/api/v1/payments", "/api/v1/payments/**").authenticated()
-
-                        // Anything else is private by default.
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(ex -> ex

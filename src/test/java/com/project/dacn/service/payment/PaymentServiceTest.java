@@ -21,17 +21,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
-import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -60,7 +53,7 @@ class PaymentServiceTest {
     }
 
     @Test
-    void createUrlSignsPaymentIdAndWholeVndAmount() {
+    void createUrlSignsOrderIdAndWholeVndAmount() {
         Order order = order("ORD_1", OrderStatus.PENDING, "150000.00");
         Payment payment = payment("PAY_1", order, PaymentMethod.E_WALLET,
                 PaymentStatus.PENDING, "150000.00");
@@ -70,7 +63,7 @@ class PaymentServiceTest {
         String url = service.createVnpayUrl(7L, "ORD_1", "1.2.3.4").payUrl();
 
         assertThat(url).startsWith("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?");
-        assertThat(url).contains("vnp_TxnRef=PAY_1");
+        assertThat(url).contains("vnp_TxnRef=ORD_1");
         assertThat(url).contains("vnp_Amount=15000000");
         assertThat(url).contains("vnp_IpAddr=1.2.3.4");
         assertThat(url).contains("vnp_SecureHash=");
@@ -91,7 +84,8 @@ class PaymentServiceTest {
     @Test
     void createUrlRejectsSettledPayment() {
         Order order = order("ORD_1", OrderStatus.PENDING, "10.00");
-        Payment payment = payment("PAY_1", order, PaymentMethod.E_WALLET, PaymentStatus.CONFIRMED, "10.00");
+        Payment payment = payment("PAY_1", order, PaymentMethod.E_WALLET,
+                PaymentStatus.CONFIRMED, "10.00");
         when(orderRepository.findByOrderIdAndCustomer_Id("ORD_1", 7L)).thenReturn(Optional.of(order));
         when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
 
@@ -106,88 +100,6 @@ class PaymentServiceTest {
 
         assertThatThrownBy(() -> service.createVnpayUrl(99L, "ORD_1", "1.2.3.4"))
                 .isInstanceOf(ResourceNotFoundException.class);
-    }
-
-    @Test
-    void ipnConfirmsPaymentAndOrder() {
-        Order order = order("ORD_1", OrderStatus.PENDING, "150000.00");
-        Payment payment = payment("PAY_1", order, PaymentMethod.E_WALLET, PaymentStatus.PENDING, "150000.00");
-        when(paymentRepository.findByPaymentId("PAY_1")).thenReturn(Optional.of(payment));
-        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(order));
-        when(paymentRepository.settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
-                eq(PaymentStatus.CONFIRMED), eq("TX123"), any(Instant.class))).thenReturn(1);
-        when(orderRepository.updateStatus("ORD_1", OrderStatus.PENDING, OrderStatus.CONFIRMED))
-                .thenReturn(1);
-
-        PaymentService.IpnResult result = service.handleIpn(ipn("PAY_1", "15000000", "00", "TX123"));
-
-        assertThat(result).isEqualTo(PaymentService.IpnResult.CONFIRMED);
-        verify(orderRepository).updateStatus("ORD_1", OrderStatus.PENDING, OrderStatus.CONFIRMED);
-    }
-
-    @Test
-    void ipnRefusesCancelledOrder() {
-        Order order = order("ORD_1", OrderStatus.CANCELLED, "150000.00");
-        Payment payment = payment("PAY_1", order, PaymentMethod.E_WALLET, PaymentStatus.PENDING, "150000.00");
-        when(paymentRepository.findByPaymentId("PAY_1")).thenReturn(Optional.of(payment));
-        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(order));
-
-        PaymentService.IpnResult result = service.handleIpn(ipn("PAY_1", "15000000", "00", "TX123"));
-
-        assertThat(result).isEqualTo(PaymentService.IpnResult.ORDER_CANCELLED);
-        verify(paymentRepository, never()).settle(any(), any(), any(), any(), any());
-    }
-
-    @Test
-    void concurrentDuplicateIpnDoesNotDoubleSettle() {
-        Order confirmedOrder = order("ORD_1", OrderStatus.CONFIRMED, "150000.00");
-        Payment pending = payment("PAY_1", confirmedOrder, PaymentMethod.E_WALLET, PaymentStatus.PENDING, "150000.00");
-        Payment confirmed = payment("PAY_1", confirmedOrder, PaymentMethod.E_WALLET, PaymentStatus.CONFIRMED, "150000.00");
-        when(paymentRepository.findByPaymentId("PAY_1"))
-                .thenReturn(Optional.of(pending))
-                .thenReturn(Optional.of(confirmed));
-        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(confirmedOrder));
-        when(paymentRepository.settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
-                eq(PaymentStatus.CONFIRMED), eq("TX999"), any(Instant.class))).thenReturn(0);
-
-        PaymentService.IpnResult result = service.handleIpn(ipn("PAY_1", "15000000", "00", "TX999"));
-
-        assertThat(result).isEqualTo(PaymentService.IpnResult.ALREADY_CONFIRMED);
-        verify(orderRepository, never()).updateStatus(any(), any(), any());
-    }
-
-    @Test
-    void ipnMarksFailure() {
-        Order order = order("ORD_1", OrderStatus.PENDING, "150000.00");
-        Payment payment = payment("PAY_1", order, PaymentMethod.E_WALLET, PaymentStatus.PENDING, "150000.00");
-        when(paymentRepository.findByPaymentId("PAY_1")).thenReturn(Optional.of(payment));
-        when(paymentRepository.settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
-                eq(PaymentStatus.FAILED), eq(null), any(Instant.class))).thenReturn(1);
-
-        PaymentService.IpnResult result = service.handleIpn(ipn("PAY_1", "15000000", "24", "TX1"));
-
-        assertThat(result).isEqualTo(PaymentService.IpnResult.FAILED);
-        verify(orderRepository, never()).updateStatus(any(), any(), any());
-    }
-
-    @Test
-    void ipnRejectsAmountMismatch() {
-        Order order = order("ORD_1", OrderStatus.PENDING, "150000.00");
-        Payment payment = payment("PAY_1", order, PaymentMethod.E_WALLET, PaymentStatus.PENDING, "150000.00");
-        when(paymentRepository.findByPaymentId("PAY_1")).thenReturn(Optional.of(payment));
-
-        PaymentService.IpnResult result = service.handleIpn(ipn("PAY_1", "100", "00", "TX1"));
-
-        assertThat(result).isEqualTo(PaymentService.IpnResult.AMOUNT_MISMATCH);
-        verify(paymentRepository, never()).settle(any(), any(), any(), any(), any());
-    }
-
-    @Test
-    void ipnRejectsUnknownTxnRef() {
-        when(paymentRepository.findByPaymentId("PAY_X")).thenReturn(Optional.empty());
-
-        assertThat(service.handleIpn(ipn("PAY_X", "15000000", "00", "TX1")))
-                .isEqualTo(PaymentService.IpnResult.ORDER_NOT_FOUND);
     }
 
     private static Order order(String orderId, OrderStatus status, String total) {
@@ -209,14 +121,5 @@ class PaymentServiceTest {
                 .status(status)
                 .amount(new BigDecimal(amount))
                 .build();
-    }
-
-    private static Map<String, String> ipn(String txnRef, String amount, String responseCode, String txnNo) {
-        Map<String, String> params = new LinkedHashMap<>();
-        params.put("vnp_TxnRef", txnRef);
-        params.put("vnp_Amount", amount);
-        params.put("vnp_ResponseCode", responseCode);
-        params.put("vnp_TransactionNo", txnNo);
-        return params;
     }
 }

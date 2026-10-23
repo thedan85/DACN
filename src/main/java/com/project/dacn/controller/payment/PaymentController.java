@@ -3,11 +3,12 @@ package com.project.dacn.controller.payment;
 import com.project.dacn.common.response.ApiResponse;
 import com.project.dacn.dto.response.payment.PaymentResponse;
 import com.project.dacn.dto.response.payment.PaymentUrlResponse;
-import com.project.dacn.service.auth.CurrentCustomerService;
+import com.project.dacn.security.CustomerIdentity;
 import com.project.dacn.service.payment.PaymentService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,19 +22,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class PaymentController {
 
     private final PaymentService service;
-    private final CurrentCustomerService currentCustomer;
+    private final CustomerIdentity identity;
 
     @PostMapping("/vnpay/{orderId}")
     public ApiResponse<PaymentUrlResponse> createVnpayUrl(
+            Authentication auth,
             @PathVariable String orderId,
             HttpServletRequest request) {
         return ApiResponse.ok(service.createVnpayUrl(
-                currentCustomer.requireCustomerId(), orderId, clientIp(request)));
+                identity.requireCustomerId(auth), orderId, clientIp(request)));
     }
 
     @GetMapping("/orders/{orderId}")
-    public ApiResponse<PaymentResponse> get(@PathVariable String orderId) {
-        return ApiResponse.ok(service.get(currentCustomer.requireCustomerId(), orderId));
+    public ApiResponse<PaymentResponse> get(Authentication auth, @PathVariable String orderId) {
+        return ApiResponse.ok(service.get(identity.requireCustomerId(auth), orderId));
     }
 
     /** VNPay rejects IPv6 loopback; map it so local sandbox runs still pass. */

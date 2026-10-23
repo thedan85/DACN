@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,12 +35,14 @@ public class ProductAttributeController {
     }
 
     @PostMapping("/api/v1/product-attributes")
+    @PreAuthorize("hasAuthority('attribute:create')")
     public ApiResponse<ProductAttributeValueResponse> create(
             @Valid @RequestBody ProductAttributeValueCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @DeleteMapping("/api/v1/product-attributes/{productValueId}")
+    @PreAuthorize("hasAuthority('attribute:delete')")
     public ApiResponse<Void> delete(@PathVariable String productValueId) {
         service.delete(productValueId);
         return ApiResponse.ok(null);

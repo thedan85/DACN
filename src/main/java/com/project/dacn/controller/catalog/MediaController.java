@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -49,23 +50,27 @@ public class MediaController {
     }
 
     @PostMapping("/api/v1/media")
+    @PreAuthorize("hasAuthority('media:create')")
     public ApiResponse<MediaResponse> create(@Valid @RequestBody MediaCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @PutMapping("/api/v1/media/{mediaId}")
+    @PreAuthorize("hasAuthority('media:update')")
     public ApiResponse<MediaResponse> replace(@PathVariable String mediaId,
             @Valid @RequestBody MediaUpdateRequest request) {
         return ApiResponse.ok(service.replace(mediaId, request));
     }
 
     @PatchMapping("/api/v1/media/{mediaId}")
+    @PreAuthorize("hasAuthority('media:update')")
     public ApiResponse<MediaResponse> patch(@PathVariable String mediaId,
             @Valid @RequestBody MediaUpdateRequest request) {
         return ApiResponse.ok(service.update(mediaId, request));
     }
 
     @DeleteMapping("/api/v1/media/{mediaId}")
+    @PreAuthorize("hasAuthority('media:delete')")
     public ApiResponse<Void> delete(@PathVariable String mediaId) {
         service.delete(mediaId);
         return ApiResponse.ok(null);

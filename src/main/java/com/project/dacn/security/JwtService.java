@@ -13,6 +13,10 @@ import java.util.Date;
 @Service
 public class JwtService {
 
+    public static final String TYPE_ACCESS = "access";
+    public static final String TYPE_REFRESH = "refresh";
+    private static final String CLAIM_TYPE = "type";
+
     @Value("${jwt.secret}")
     private String secret;
 
@@ -26,6 +30,7 @@ public class JwtService {
         return Jwts.builder()
                 .subject(userId)
                 .claim("email", email)
+                .claim(CLAIM_TYPE, TYPE_ACCESS)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + accessTokenExpiration))
                 .signWith(getSigningKey())
@@ -35,7 +40,8 @@ public class JwtService {
     public String generateRefreshToken(String userId, String tokenId) {
         return Jwts.builder()
                 .subject(userId)
-                .claim("jti", tokenId)
+                .id(tokenId)
+                .claim(CLAIM_TYPE, TYPE_REFRESH)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + refreshTokenExpiration))
                 .signWith(getSigningKey())
@@ -54,22 +60,28 @@ public class JwtService {
         }
     }
 
+    /**
+     * Only access tokens may authenticate API calls. Refresh tokens are valid
+     * JWTs too, so the type claim must be checked explicitly.
+     */
+    public boolean validateAccessToken(String token) {
+        return validateToken(token) && TYPE_ACCESS.equals(extractType(token));
+    }
+
+    public boolean isRefreshToken(String token) {
+        return validateToken(token) && TYPE_REFRESH.equals(extractType(token));
+    }
+
     public String extractUserId(String token) {
-        return Jwts.parser()
-                .verifyWith(getSigningKey())
-                .build()
-                .parseSignedClaims(token)
-                .getPayload()
-                .getSubject();
+        return parse(token).getSubject();
     }
 
     public String extractJti(String token) {
-        return Jwts.parser()
-                .verifyWith(getSigningKey())
-                .build()
-                .parseSignedClaims(token)
-                .getPayload()
-                .get("jti", String.class);
+        return parse(token).get("jti", String.class);
+    }
+
+    public String extractType(String token) {
+        return parse(token).get(CLAIM_TYPE, String.class);
     }
 
     public long getAccessTokenExpirationSeconds() {
@@ -78,6 +90,14 @@ public class JwtService {
 
     public long getRefreshTokenExpirationMs() {
         return refreshTokenExpiration;
+    }
+
+    private io.jsonwebtoken.Claims parse(String token) {
+        return Jwts.parser()
+                .verifyWith(getSigningKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
     }
 
     private SecretKey getSigningKey() {

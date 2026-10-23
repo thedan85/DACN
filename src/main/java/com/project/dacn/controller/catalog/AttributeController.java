@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -38,23 +39,27 @@ public class AttributeController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('attribute:create')")
     public ApiResponse<AttributeResponse> create(@Valid @RequestBody AttributeCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @PutMapping("/{attributeId}")
+    @PreAuthorize("hasAuthority('attribute:update')")
     public ApiResponse<AttributeResponse> replace(@PathVariable String attributeId,
             @Valid @RequestBody AttributeUpdateRequest request) {
         return ApiResponse.ok(service.replace(attributeId, request));
     }
 
     @PatchMapping("/{attributeId}")
+    @PreAuthorize("hasAuthority('attribute:update')")
     public ApiResponse<AttributeResponse> patch(@PathVariable String attributeId,
             @Valid @RequestBody AttributeUpdateRequest request) {
         return ApiResponse.ok(service.update(attributeId, request));
     }
 
     @DeleteMapping("/{attributeId}")
+    @PreAuthorize("hasAuthority('attribute:delete')")
     public ApiResponse<Void> delete(@PathVariable String attributeId) {
         service.delete(attributeId);
         return ApiResponse.ok(null);

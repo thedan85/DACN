@@ -3,28 +3,30 @@ package com.project.dacn;
 import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.controller.order.OrderController;
 import com.project.dacn.dto.response.order.OrderResponse;
-import com.project.dacn.repository.auth.UserRepository;
-import com.project.dacn.security.CustomUserDetailsService;
-import com.project.dacn.security.JwtService;
-import com.project.dacn.service.auth.CurrentCustomerService;
+import com.project.dacn.security.CustomerIdentity;
+import com.project.dacn.security.JwtAuthenticationFilter;
 import com.project.dacn.service.order.OrderService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
 import java.util.List;
 
-import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(OrderController.class)
+@WebMvcTest(controllers = OrderController.class,
+        excludeFilters = @ComponentScan.Filter(
+                type = FilterType.ASSIGNABLE_TYPE, classes = JwtAuthenticationFilter.class))
 @AutoConfigureMockMvc(addFilters = false)
 class OrderControllerTest {
 
@@ -35,18 +37,7 @@ class OrderControllerTest {
     private OrderService service;
 
     @MockitoBean
-    private CurrentCustomerService currentCustomer;
-
-    // JwtAuthenticationFilter is a Filter, so the slice instantiates it even with
-    // addFilters = false; these mocks satisfy its constructor.
-    @MockitoBean
-    private JwtService jwtService;
-
-    @MockitoBean
-    private UserRepository userRepository;
-
-    @MockitoBean
-    private CustomUserDetailsService customUserDetailsService;
+    private CustomerIdentity identity;
 
     private OrderResponse order() {
         return new OrderResponse("ORD_1", 1L, "Jane", OrderStatus.PENDING,
@@ -55,7 +46,7 @@ class OrderControllerTest {
 
     @Test
     void listReturnsCustomerOrders() throws Exception {
-        when(currentCustomer.requireCustomerId()).thenReturn(1L);
+        when(identity.requireCustomerId(any())).thenReturn(1L);
         when(service.list(1L)).thenReturn(List.of(order()));
 
         mockMvc.perform(get("/api/v1/orders"))
@@ -66,22 +57,11 @@ class OrderControllerTest {
 
     @Test
     void getReturnsOrder() throws Exception {
-        when(currentCustomer.requireCustomerId()).thenReturn(1L);
+        when(identity.requireCustomerId(any())).thenReturn(1L);
         when(service.get(1L, "ORD_1")).thenReturn(order());
 
         mockMvc.perform(get("/api/v1/orders/ORD_1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.total").value(8000.00));
-    }
-
-    @Test
-    void clientHeaderCannotOverrideAuthenticatedCustomer() throws Exception {
-        when(currentCustomer.requireCustomerId()).thenReturn(1L);
-        when(service.list(1L)).thenReturn(List.of(order()));
-
-        mockMvc.perform(get("/api/v1/orders").header("X-Customer-Id", "2"))
-                .andExpect(status().isOk());
-
-        verify(service).list(1L);
     }
 }

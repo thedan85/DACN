@@ -76,19 +76,21 @@ public class UploadService {
     }
 
     private byte[] readAndValidate(MultipartFile file) {
-        validateImage(file);
+        byte[] bytes;
         try {
-            return file.getBytes();
+            bytes = file == null ? new byte[0] : file.getBytes();
         } catch (IOException e) {
             throw new CloudinaryException("failed to read upload", e);
         }
+        validateImage(file, bytes);
+        return bytes;
     }
 
-    private void validateImage(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
+    private void validateImage(MultipartFile file, byte[] bytes) {
+        if (file == null || bytes.length == 0) {
             throw new IllegalArgumentException("file must not be empty");
         }
-        if (file.getSize() > MAX_SIZE) {
+        if (bytes.length > MAX_SIZE) {
             throw new IllegalArgumentException("file too large: max 10MB");
         }
         String contentType = file.getContentType() != null
@@ -103,5 +105,42 @@ public class UploadService {
         if (!ALLOWED_EXTENSIONS.contains(ext)) {
             throw new IllegalArgumentException("unsupported image extension: " + filename);
         }
+        // Content-Type and extension are client-controlled, so require a
+        // matching magic-byte signature before handing bytes to Cloudinary.
+        String detected = detectImageType(bytes);
+        if (detected == null || !detected.equals(contentType)) {
+            throw new IllegalArgumentException("file content does not match declared image type");
+        }
+    }
+
+    private static String detectImageType(byte[] b) {
+        if (b.length >= 3 && (b[0] & 0xFF) == 0xFF && (b[1] & 0xFF) == 0xD8
+                && (b[2] & 0xFF) == 0xFF) {
+            return "image/jpeg";
+        }
+        if (b.length >= 8 && (b[0] & 0xFF) == 0x89 && b[1] == 'P' && b[2] == 'N'
+                && b[3] == 'G' && (b[4] & 0xFF) == 0x0D && (b[5] & 0xFF) == 0x0A
+                && (b[6] & 0xFF) == 0x1A && (b[7] & 0xFF) == 0x0A) {
+            return "image/png";
+        }
+        if (b.length >= 6 && (startsWith(b, 0, "GIF87a") || startsWith(b, 0, "GIF89a"))) {
+            return "image/gif";
+        }
+        if (b.length >= 12 && startsWith(b, 0, "RIFF") && startsWith(b, 8, "WEBP")) {
+            return "image/webp";
+        }
+        return null;
+    }
+
+    private static boolean startsWith(byte[] bytes, int offset, String ascii) {
+        if (bytes.length < offset + ascii.length()) {
+            return false;
+        }
+        for (int i = 0; i < ascii.length(); i++) {
+            if (bytes[offset + i] != (byte) ascii.charAt(i)) {
+                return false;
+            }
+        }
+        return true;
     }
 }

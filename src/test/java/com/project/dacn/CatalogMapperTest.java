@@ -22,7 +22,7 @@ class CatalogMapperTest {
     @Test
     void productCreateIgnoresBusinessIdAndCategory() {
         assertThat(mapper.toProduct(
-                new ProductCreateRequest("P", "d", "detail", "cat-1", null)).getProductId())
+                new ProductCreateRequest("P", "d", "detail", "cat-1", null, null)).getProductId())
                 .isNull();
     }
 
@@ -32,10 +32,11 @@ class CatalogMapperTest {
                 .productId("PRD_1").name("P").description("d").build();
 
         ProductResponse response = mapper.toProductResponse(
-                product, new BigDecimal("179000"), new BigDecimal("199000"));
+                product, new BigDecimal("179000"), new BigDecimal("199000"), 12);
 
         assertThat(response.minPrice()).isEqualByComparingTo("179000");
         assertThat(response.maxPrice()).isEqualByComparingTo("199000");
+        assertThat(response.stock()).isEqualTo(12);
     }
 
     @Test

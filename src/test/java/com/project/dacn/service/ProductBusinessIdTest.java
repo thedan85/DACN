@@ -25,7 +25,7 @@ class ProductBusinessIdTest {
     private ProductRepository productRepo;
 
     private static ProductCreateRequest create(String name) {
-        return new ProductCreateRequest(name, "desc", null, null, null);
+        return new ProductCreateRequest(name, "desc", null, null, null, null);
     }
 
     @Test

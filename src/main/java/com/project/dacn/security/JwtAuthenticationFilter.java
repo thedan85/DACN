@@ -38,7 +38,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = authHeader.substring(7);
 
         try {
-            if (jwtService.validateToken(token)) {
+            if (jwtService.validateAccessToken(token)) {
                 String userId = jwtService.extractUserId(token);
 
                 // Load user by userId to get email (single query)

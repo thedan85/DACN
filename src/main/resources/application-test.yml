@@ -9,3 +9,6 @@ spring:
       ddl-auto: create-drop
   flyway:
     enabled: false
+
+jwt:
+  secret: test-secret-key-please-change-min-256-bits-hs256-algorithm-requires-this-length
