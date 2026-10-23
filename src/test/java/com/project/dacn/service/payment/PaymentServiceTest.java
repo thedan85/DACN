@@ -113,8 +113,11 @@ class PaymentServiceTest {
         Order order = order("ORD_1", OrderStatus.PENDING, "150000.00");
         Payment payment = payment("PAY_1", order, PaymentMethod.E_WALLET, PaymentStatus.PENDING, "150000.00");
         when(paymentRepository.findByPaymentId("PAY_1")).thenReturn(Optional.of(payment));
+        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(order));
         when(paymentRepository.settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
                 eq(PaymentStatus.CONFIRMED), eq("TX123"), any(Instant.class))).thenReturn(1);
+        when(orderRepository.updateStatus("ORD_1", OrderStatus.PENDING, OrderStatus.CONFIRMED))
+                .thenReturn(1);
 
         PaymentService.IpnResult result = service.handleIpn(ipn("PAY_1", "15000000", "00", "TX123"));
 
@@ -123,13 +126,27 @@ class PaymentServiceTest {
     }
 
     @Test
+    void ipnRefusesCancelledOrder() {
+        Order order = order("ORD_1", OrderStatus.CANCELLED, "150000.00");
+        Payment payment = payment("PAY_1", order, PaymentMethod.E_WALLET, PaymentStatus.PENDING, "150000.00");
+        when(paymentRepository.findByPaymentId("PAY_1")).thenReturn(Optional.of(payment));
+        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(order));
+
+        PaymentService.IpnResult result = service.handleIpn(ipn("PAY_1", "15000000", "00", "TX123"));
+
+        assertThat(result).isEqualTo(PaymentService.IpnResult.ORDER_CANCELLED);
+        verify(paymentRepository, never()).settle(any(), any(), any(), any(), any());
+    }
+
+    @Test
     void concurrentDuplicateIpnDoesNotDoubleSettle() {
-        Order order = order("ORD_1", OrderStatus.PENDING, "150000.00");
-        Payment pending = payment("PAY_1", order, PaymentMethod.E_WALLET, PaymentStatus.PENDING, "150000.00");
-        Payment confirmed = payment("PAY_1", order, PaymentMethod.E_WALLET, PaymentStatus.CONFIRMED, "150000.00");
+        Order confirmedOrder = order("ORD_1", OrderStatus.CONFIRMED, "150000.00");
+        Payment pending = payment("PAY_1", confirmedOrder, PaymentMethod.E_WALLET, PaymentStatus.PENDING, "150000.00");
+        Payment confirmed = payment("PAY_1", confirmedOrder, PaymentMethod.E_WALLET, PaymentStatus.CONFIRMED, "150000.00");
         when(paymentRepository.findByPaymentId("PAY_1"))
                 .thenReturn(Optional.of(pending))
                 .thenReturn(Optional.of(confirmed));
+        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(confirmedOrder));
         when(paymentRepository.settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
                 eq(PaymentStatus.CONFIRMED), eq("TX999"), any(Instant.class))).thenReturn(0);
 

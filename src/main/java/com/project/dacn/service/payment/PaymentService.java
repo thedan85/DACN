@@ -87,6 +87,14 @@ public class PaymentService {
             log.info("VNPay payment {} failed (response {})", txnRef, params.get("vnp_ResponseCode"));
             return updated == 1 ? IpnResult.FAILED : alreadySettled(txnRef, IpnResult.FAILED);
         }
+        // Lock the order before settling so a concurrent staff rejection cannot
+        // cancel an order that is being paid (and vice versa).
+        Order order = orderRepository.findWithLockByOrderId(orderId)
+                .orElseThrow(() -> new IllegalStateException("order missing for payment " + txnRef));
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            log.warn("VNPay IPN for cancelled order {} payment {}", orderId, txnRef);
+            return IpnResult.ORDER_CANCELLED;
+        }
         int updated = paymentRepository.settle(txnRef, PaymentStatus.PENDING, PaymentStatus.CONFIRMED,
                 params.get("vnp_TransactionNo"), Instant.now());
         if (updated == 0) {
@@ -132,6 +140,6 @@ public class PaymentService {
     }
 
     public enum IpnResult {
-        CONFIRMED, ALREADY_CONFIRMED, FAILED, ALREADY_FAILED, ORDER_NOT_FOUND, AMOUNT_MISMATCH
+        CONFIRMED, ALREADY_CONFIRMED, FAILED, ALREADY_FAILED, ORDER_NOT_FOUND, ORDER_CANCELLED, AMOUNT_MISMATCH
     }
 }

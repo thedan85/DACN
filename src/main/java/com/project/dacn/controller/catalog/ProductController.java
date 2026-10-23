@@ -11,6 +11,7 @@ import com.project.dacn.dto.response.catalog.ProductResponse;
 import com.project.dacn.service.catalog.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -39,7 +40,7 @@ public class ProductController {
             @RequestParam(name = "min_price", required = false) BigDecimal minPrice,
             @RequestParam(name = "max_price", required = false) BigDecimal maxPrice,
             @RequestParam(required = false, defaultValue = "newest") ProductSort sort,
-            Pageable pageable) {
+            @ParameterObject Pageable pageable) {
         ProductFilter filter = new ProductFilter(
                 keyword, null, categoryId, minPrice, maxPrice, sort);
         return ApiResponse.ok(service.search(filter, pageable));
@@ -50,7 +51,7 @@ public class ProductController {
             @RequestParam(required = false) String name,
             @RequestParam(required = false) ProductStatus status,
             @RequestParam(required = false) String categoryId,
-            Pageable pageable) {
+            @ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.search(new ProductFilter(name, status, categoryId), pageable));
     }
 

@@ -141,6 +141,13 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/variant-attributes/**")
                         .hasAuthority("variant:update")
 
+                        // Shop owner/employee order management. Permissions are
+                        // seeded in V17; customers must not reach these routes.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/staff/orders", "/api/v1/staff/orders/**")
+                        .hasAuthority("order:read")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/staff/orders/**")
+                        .hasAuthority("order:update")
+
                         // Customer-scoped endpoints: identity comes from the JWT.
                         .requestMatchers("/api/v1/cart", "/api/v1/cart/**").authenticated()
                         .requestMatchers("/api/v1/orders", "/api/v1/orders/**").authenticated()
