@@ -1,8 +1,9 @@
 package com.project.dacn.service.auth;
 
 import com.project.dacn.common.constant.UserStatus;
+import com.project.dacn.common.exception.AccountNotFoundException;
 import com.project.dacn.common.exception.EmailAlreadyExistsException;
-import com.project.dacn.common.exception.InvalidCredentialsException;
+import com.project.dacn.common.exception.InvalidPasswordException;
 import com.project.dacn.common.exception.InvalidTokenException;
 import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.common.exception.UserLockedException;
@@ -103,11 +104,11 @@ public class AuthService {
 
         // Find user
         User user = userRepository.findByEmail(normalizedEmail)
-                .orElseThrow(InvalidCredentialsException::new);
+                .orElseThrow(AccountNotFoundException::new);
 
         // Validate password
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
-            throw new InvalidCredentialsException();
+            throw new InvalidPasswordException();
         }
 
         // Check user status
@@ -115,7 +116,7 @@ public class AuthService {
             throw new UserLockedException();
         }
         if (user.getStatus() == UserStatus.DELETED) {
-            throw new InvalidCredentialsException();
+            throw new AccountNotFoundException();
         }
 
         // Update last login

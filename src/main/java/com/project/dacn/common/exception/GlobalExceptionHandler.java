@@ -115,10 +115,18 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(409, message, null));
     }
 
-    @ExceptionHandler(InvalidCredentialsException.class)
-    public ResponseEntity<ApiResponse<?>> handleInvalidCredentials(InvalidCredentialsException ex) {
-        String message = messageSource.getMessage("error.invalid.credentials", null,
-                "Invalid credentials", LocaleContextHolder.getLocale());
+    @ExceptionHandler(AccountNotFoundException.class)
+    public ResponseEntity<ApiResponse<?>> handleAccountNotFound(AccountNotFoundException ex) {
+        String message = messageSource.getMessage("error.account.not.found", null,
+                "The account does not exist", LocaleContextHolder.getLocale());
+        return ResponseEntity.status(404)
+                .body(ApiResponse.of(404, message, null));
+    }
+
+    @ExceptionHandler(InvalidPasswordException.class)
+    public ResponseEntity<ApiResponse<?>> handleInvalidPassword(InvalidPasswordException ex) {
+        String message = messageSource.getMessage("error.password.invalid", null,
+                "Invalid password", LocaleContextHolder.getLocale());
         return ResponseEntity.status(401)
                 .body(ApiResponse.of(401, message, null));
     }

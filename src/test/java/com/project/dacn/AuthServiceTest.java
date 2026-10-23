@@ -2,7 +2,9 @@ package com.project.dacn;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project.dacn.common.constant.UserStatus;
+import com.project.dacn.common.exception.AccountNotFoundException;
 import com.project.dacn.common.exception.EmailAlreadyExistsException;
+import com.project.dacn.common.exception.InvalidPasswordException;
 import com.project.dacn.common.exception.InvalidTokenException;
 import com.project.dacn.common.exception.UserLockedException;
 import com.project.dacn.dto.request.auth.LoginRequest;
@@ -176,6 +178,37 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.login(
                 new LoginRequest("locked@test.com", "password123"), null, null))
                 .isInstanceOf(UserLockedException.class);
+    }
+
+    @Test
+    void unknownEmail_cannotLogin_accountNotFound() {
+        assertThatThrownBy(() -> authService.login(
+                new LoginRequest("missing@test.com", "password123"), null, null))
+                .isInstanceOf(AccountNotFoundException.class)
+                .hasMessage("The account does not exist");
+    }
+
+    @Test
+    void wrongPassword_cannotLogin_invalidPassword() {
+        authService.register(registerRequest("wrong-password@test.com"));
+
+        assertThatThrownBy(() -> authService.login(
+                new LoginRequest("wrong-password@test.com", "not-the-password"), null, null))
+                .isInstanceOf(InvalidPasswordException.class)
+                .hasMessage("Invalid password");
+    }
+
+    @Test
+    void deletedUser_cannotLogin_accountNotFound() {
+        authService.register(registerRequest("deleted@test.com"));
+        User user = userRepository.findByEmail("deleted@test.com").orElseThrow();
+        user.setStatus(UserStatus.DELETED);
+        userRepository.save(user);
+
+        assertThatThrownBy(() -> authService.login(
+                new LoginRequest("deleted@test.com", "password123"), null, null))
+                .isInstanceOf(AccountNotFoundException.class)
+                .hasMessage("The account does not exist");
     }
 
     @Test
