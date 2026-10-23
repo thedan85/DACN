@@ -60,7 +60,8 @@ public class VnpayWebhookController {
                 orderId, params.get("vnp_ResponseCode"), result);
 
         return switch (result) {
-            case NOT_FOUND -> Map.of("RspCode", "01", "Message", "Order not found");
+            case NOT_FOUND, ORDER_CANCELLED ->
+                    Map.of("RspCode", "01", "Message", "Order not found");
             case AMOUNT_MISMATCH -> Map.of("RspCode", "04", "Message", "Invalid amount");
             case SETTLED, ALREADY_SETTLED ->
                     Map.of("RspCode", "00", "Message", "Confirm Success");

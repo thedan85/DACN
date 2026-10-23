@@ -140,6 +140,13 @@ class RbacIntegrationTest {
                         .header("Authorization", "Bearer " + loginResponse.accessToken()))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403));
+
+        // CUSTOMER may read the catalog but must not write to it.
+        mockMvc.perform(post("/api/v1/products")
+                        .header("Authorization", "Bearer " + loginResponse.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -173,5 +180,12 @@ class RbacIntegrationTest {
         mockMvc.perform(get("/api/v1/test/protected")
                         .header("Authorization", "Bearer " + loginResponse.accessToken()))
                 .andExpect(status().isOk());
+
+        // EMPLOYEE passes the security rule; the empty body then fails validation (400).
+        mockMvc.perform(post("/api/v1/products")
+                        .header("Authorization", "Bearer " + loginResponse.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
     }
 }

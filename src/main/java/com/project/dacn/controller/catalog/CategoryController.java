@@ -8,6 +8,7 @@ import com.project.dacn.dto.response.catalog.CategoryResponse;
 import com.project.dacn.service.catalog.CategoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -28,7 +29,7 @@ public class CategoryController {
     private final CategoryService service;
 
     @GetMapping
-    public ApiResponse<PageResponse<CategoryResponse>> list(Pageable pageable) {
+    public ApiResponse<PageResponse<CategoryResponse>> list(@ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.list(pageable));
     }
 

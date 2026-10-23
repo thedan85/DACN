@@ -7,7 +7,7 @@ import com.project.dacn.dto.request.cart.CartCheckoutRequest;
 import com.project.dacn.dto.request.cart.CartItemAddRequest;
 import com.project.dacn.dto.request.cart.CartItemUpdateRequest;
 import com.project.dacn.dto.request.order.OrderCreateRequest;
-import com.project.dacn.dto.request.order.PaymentCreateRequest;
+import com.project.dacn.dto.request.payment.PaymentCreateRequest;
 import com.project.dacn.dto.response.cart.CartDetailResponse;
 import com.project.dacn.dto.response.cart.CartItemResponse;
 import com.project.dacn.dto.response.order.OrderItemResponse;
@@ -18,16 +18,17 @@ import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.order.OrderItem;
-import com.project.dacn.entity.order.Payment;
+import com.project.dacn.entity.payment.Payment;
 import com.project.dacn.mapper.cart.CartMapper;
 import com.project.dacn.mapper.order.OrderMapper;
+import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.cart.CartItemRepository;
 import com.project.dacn.repository.cart.CartRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
-import com.project.dacn.repository.order.PaymentRepository;
+import com.project.dacn.repository.payment.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -55,6 +56,7 @@ public class CartService {
     private final OrderItemRepository orderItemRepository;
     private final PaymentRepository paymentRepository;
     private final OrderMapper orderMapper;
+    private final PaymentMapper paymentMapper;
 
     public CartDetailResponse getDetail(Long customerId) {
         Cart cart = getOrCreate(customerId);
@@ -177,7 +179,7 @@ public class CartService {
                     .build());
         }
         List<OrderItem> savedLines = orderItemRepository.saveAll(lines);
-        Payment payment = orderMapper.toPayment(new PaymentCreateRequest(
+        Payment payment = paymentMapper.toPayment(new PaymentCreateRequest(
                 saved.getOrderId(), req.method(), total, null));
         payment.setOrder(saved);
         paymentRepository.save(payment);

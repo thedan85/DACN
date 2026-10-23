@@ -61,6 +61,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(409, ex.getMessage(), null));
     }
 
+    @ExceptionHandler(InvalidOrderStateException.class)
+    public ResponseEntity<ApiResponse<?>> handleInvalidOrderState(InvalidOrderStateException ex) {
+        return ResponseEntity.status(409)
+                .body(ApiResponse.of(409, ex.getMessage(), null));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<?>> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()

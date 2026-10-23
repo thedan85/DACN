@@ -1,4 +1,4 @@
-package com.project.dacn.dto.request.order;
+package com.project.dacn.dto.request.payment;
 
 import com.project.dacn.common.constant.PaymentStatus;
 

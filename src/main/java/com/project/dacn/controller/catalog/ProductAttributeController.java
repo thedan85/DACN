@@ -7,6 +7,7 @@ import com.project.dacn.dto.response.catalog.ProductAttributeValueResponse;
 import com.project.dacn.service.catalog.ProductAttributeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -24,7 +25,7 @@ public class ProductAttributeController {
 
     @GetMapping("/api/v1/products/{productId}/attributes")
     public ApiResponse<PageResponse<ProductAttributeValueResponse>> listByProduct(
-            @PathVariable String productId, Pageable pageable) {
+            @PathVariable String productId, @ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.listByProduct(productId, pageable));
     }
 

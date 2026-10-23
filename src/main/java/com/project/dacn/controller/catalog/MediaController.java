@@ -8,6 +8,7 @@ import com.project.dacn.dto.response.catalog.MediaResponse;
 import com.project.dacn.service.catalog.MediaService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -27,7 +28,7 @@ public class MediaController {
     private final MediaService service;
 
     @GetMapping("/api/v1/media")
-    public ApiResponse<PageResponse<MediaResponse>> list(Pageable pageable) {
+    public ApiResponse<PageResponse<MediaResponse>> list(@ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.list(pageable));
     }
 
@@ -38,13 +39,13 @@ public class MediaController {
 
     @GetMapping("/api/v1/products/{productId}/media")
     public ApiResponse<PageResponse<MediaResponse>> listByProduct(@PathVariable String productId,
-            Pageable pageable) {
+            @ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.listByProduct(productId, pageable));
     }
 
     @GetMapping("/api/v1/variants/{variantId}/media")
     public ApiResponse<PageResponse<MediaResponse>> listByVariant(@PathVariable String variantId,
-            Pageable pageable) {
+            @ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.listByVariant(variantId, pageable));
     }
 

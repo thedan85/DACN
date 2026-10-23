@@ -9,6 +9,7 @@ import com.project.dacn.security.Permissions;
 import com.project.dacn.service.catalog.VariantService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -29,7 +30,7 @@ public class VariantController {
     private final VariantService service;
 
     @GetMapping("/api/v1/variants")
-    public ApiResponse<PageResponse<VariantResponse>> list(Pageable pageable,
+    public ApiResponse<PageResponse<VariantResponse>> list(@ParameterObject Pageable pageable,
             Authentication auth) {
         return ApiResponse.ok(service.list(pageable, canViewHidden(auth)));
     }
@@ -41,7 +42,7 @@ public class VariantController {
 
     @GetMapping("/api/v1/products/{slug}/variants")
     public ApiResponse<PageResponse<VariantResponse>> listByProduct(@PathVariable String slug,
-            Pageable pageable, Authentication auth) {
+            @ParameterObject Pageable pageable, Authentication auth) {
         return ApiResponse.ok(service.listByProductSlug(slug, pageable, canViewHidden(auth)));
     }
 

@@ -1,3 +1,9 @@
+management:
+  health:
+    mail:
+      # Dev has no local SMTP (MailHog on :1025); don't fail /actuator/health.
+      enabled: false
+
 spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/ecom_dev}

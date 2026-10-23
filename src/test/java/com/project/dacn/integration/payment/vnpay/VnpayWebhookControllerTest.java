@@ -34,6 +34,15 @@ class VnpayWebhookControllerTest {
     }
 
     @Test
+    void ipnRejectsCancelledOrder() {
+        Map<String, String> params = signedParams();
+        when(settlement.settle(any(), any(), anyBoolean(), any()))
+                .thenReturn(PaymentSettlementService.Result.ORDER_CANCELLED);
+
+        assertThat(controller.ipn(params)).containsEntry("RspCode", "01");
+    }
+
+    @Test
     void ipnRejectsTamperedSignature() {
         Map<String, String> params = signedParams();
         params.put("vnp_Amount", "999");

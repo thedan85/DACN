@@ -25,7 +25,7 @@ class VnpayUrlBuilderTest {
         assertThat(url).startsWith(PROPS.getPayUrl() + "?");
         assertThat(url).contains("vnp_Amount=15000000");
         assertThat(url).contains("vnp_TxnRef=ORD_abc");
-        assertThat(url).contains("vnp_OrderInfo=Thanh%20toan%20don%20hang");
+        assertThat(url).contains("vnp_OrderInfo=Thanh+toan+don+hang");
 
         Map<String, String> params = queryParams(url);
         assertThat(params).containsEntry("vnp_TmnCode", "TMN01")

@@ -7,6 +7,7 @@ import com.project.dacn.dto.response.catalog.VariantAttributeValueResponse;
 import com.project.dacn.service.catalog.VariantAttributeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -24,7 +25,7 @@ public class VariantAttributeController {
 
     @GetMapping("/api/v1/variants/{variantId}/attributes")
     public ApiResponse<PageResponse<VariantAttributeValueResponse>> listByVariant(
-            @PathVariable String variantId, Pageable pageable) {
+            @PathVariable String variantId, @ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.listByVariant(variantId, pageable));
     }
 

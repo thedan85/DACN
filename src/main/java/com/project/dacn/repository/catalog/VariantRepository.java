@@ -38,6 +38,10 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
     @Modifying
     @Query("update Variant v set v.stock = v.stock - :quantity where v.id = :id and v.stock >= :quantity")
     int decrementStock(@Param("id") Long id, @Param("quantity") int quantity);
+
+    @Modifying
+    @Query("update Variant v set v.stock = v.stock + :quantity where v.id = :id")
+    int incrementStock(@Param("id") Long id, @Param("quantity") int quantity);
     /**
      * One query for a whole product page: min/max price and total stock per
      * product across active variants. Soft-deleted variants are excluded

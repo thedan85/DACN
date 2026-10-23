@@ -62,6 +62,89 @@ public class SecurityConfig {
                         // Storefront catalog reads are public; writes fall through to
                         // .authenticated() and then to @PreAuthorize on the handler.
                         .requestMatchers(HttpMethod.GET, PUBLIC_GETS).permitAll()
+
+                        // Nested catalog writes (must be declared before the generic per-resource rules).
+                        .requestMatchers(HttpMethod.POST, "/api/v1/products/*/media")
+                        .hasAuthority("media:create")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/products/*/attributes")
+                        .hasAuthority("product:update")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/variants/*/attributes")
+                        .hasAuthority("variant:update")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/uploads/**")
+                        .hasAuthority("media:create")
+
+                        // Catalog writes require the matching RBAC permission. This
+                        // runs before request-body validation, so customers get 403.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/products", "/api/v1/products/**")
+                        .hasAuthority("product:create")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/products/**")
+                        .hasAuthority("product:update")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/products/**")
+                        .hasAuthority("product:update")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/products/**")
+                        .hasAuthority("product:delete")
+
+                        .requestMatchers(HttpMethod.POST, "/api/v1/categories", "/api/v1/categories/**")
+                        .hasAuthority("category:create")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/categories/**")
+                        .hasAuthority("category:update")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/categories/**")
+                        .hasAuthority("category:update")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/categories/**")
+                        .hasAuthority("category:delete")
+
+                        .requestMatchers(HttpMethod.POST, "/api/v1/variants", "/api/v1/variants/**")
+                        .hasAuthority("variant:create")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/variants/**")
+                        .hasAuthority("variant:update")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/variants/**")
+                        .hasAuthority("variant:update")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/variants/**")
+                        .hasAuthority("variant:delete")
+
+                        .requestMatchers(HttpMethod.POST, "/api/v1/attributes", "/api/v1/attributes/**")
+                        .hasAuthority("attribute:create")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/attributes/**")
+                        .hasAuthority("attribute:update")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/attributes/**")
+                        .hasAuthority("attribute:update")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/attributes/**")
+                        .hasAuthority("attribute:delete")
+
+                        .requestMatchers(HttpMethod.POST, "/api/v1/attribute-values", "/api/v1/attribute-values/**")
+                        .hasAuthority("attribute-value:create")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/attribute-values/**")
+                        .hasAuthority("attribute-value:update")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/attribute-values/**")
+                        .hasAuthority("attribute-value:update")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/attribute-values/**")
+                        .hasAuthority("attribute-value:delete")
+
+                        .requestMatchers(HttpMethod.POST, "/api/v1/media", "/api/v1/media/**")
+                        .hasAuthority("media:create")
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/media/**")
+                        .hasAuthority("media:update")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/media/**")
+                        .hasAuthority("media:update")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/media/**")
+                        .hasAuthority("media:delete")
+
+                        .requestMatchers(HttpMethod.POST, "/api/v1/product-attributes", "/api/v1/product-attributes/**")
+                        .hasAuthority("product:update")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/product-attributes/**")
+                        .hasAuthority("product:update")
+
+                        .requestMatchers(HttpMethod.POST, "/api/v1/variant-attributes", "/api/v1/variant-attributes/**")
+                        .hasAuthority("variant:update")
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/variant-attributes/**")
+                        .hasAuthority("variant:update")
+
+                        // Staff order management. Permissions are seeded in V17;
+                        // customers must not reach these routes.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/staff/orders", "/api/v1/staff/orders/**")
+                        .hasAuthority("order:read")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/staff/orders/**")
+                        .hasAuthority("order:update")
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(ex -> ex

@@ -3,8 +3,9 @@ package com.project.dacn.integration.payment;
 import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.common.constant.PaymentStatus;
 import com.project.dacn.entity.order.Order;
-import com.project.dacn.entity.order.Payment;
-import com.project.dacn.repository.order.PaymentRepository;
+import com.project.dacn.entity.payment.Payment;
+import com.project.dacn.repository.order.OrderRepository;
+import com.project.dacn.repository.payment.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,10 +22,11 @@ import java.time.Instant;
 public class PaymentSettlementService {
 
     public enum Result {
-        SETTLED, ALREADY_SETTLED, NOT_FOUND, AMOUNT_MISMATCH
+        SETTLED, ALREADY_SETTLED, NOT_FOUND, ORDER_CANCELLED, AMOUNT_MISMATCH
     }
 
     private final PaymentRepository paymentRepository;
+    private final OrderRepository orderRepository;
 
     @Transactional
     public Result settle(String orderId, BigDecimal amount, boolean success, String transactionId) {
@@ -35,20 +37,32 @@ public class PaymentSettlementService {
         if (payment.getStatus() != PaymentStatus.PENDING) {
             return Result.ALREADY_SETTLED;
         }
-        if (success && amount != null && payment.getAmount().compareTo(amount) != 0) {
+        if (success && (amount == null || payment.getAmount().compareTo(amount) != 0)) {
             return Result.AMOUNT_MISMATCH;
         }
 
-        payment.setStatus(success ? PaymentStatus.CONFIRMED : PaymentStatus.FAILED);
-        payment.setTransactionId(transactionId);
         if (success) {
-            payment.setPaidAt(Instant.now());
+            // Serialize with staff cancellation: a cancelled order must never be
+            // confirmed by a late IPN.
+            Order order = orderRepository.findWithLockByOrderId(orderId).orElse(null);
+            if (order == null || order.getStatus() == OrderStatus.CANCELLED) {
+                return Result.ORDER_CANCELLED;
+            }
         }
-        paymentRepository.save(payment);
+
+        // Conditional UPDATE so duplicate/concurrent IPNs settle at most once.
+        int updated = paymentRepository.settle(
+                payment.getPaymentId(),
+                PaymentStatus.PENDING,
+                success ? PaymentStatus.CONFIRMED : PaymentStatus.FAILED,
+                transactionId,
+                success ? Instant.now() : null);
+        if (updated == 0) {
+            return Result.ALREADY_SETTLED;
+        }
 
         if (success) {
-            Order order = payment.getOrder();
-            order.setStatus(OrderStatus.CONFIRMED);
+            orderRepository.updateStatus(orderId, OrderStatus.PENDING, OrderStatus.CONFIRMED);
         }
         return Result.SETTLED;
     }

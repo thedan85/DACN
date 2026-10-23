@@ -12,6 +12,7 @@ import com.project.dacn.security.Permissions;
 import com.project.dacn.service.catalog.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -45,7 +46,7 @@ public class ProductController {
             @RequestParam(name = "max_price", required = false) BigDecimal maxPrice,
             @RequestParam(required = false) ProductStatus status,
             @RequestParam(required = false, defaultValue = "newest") ProductSort sort,
-            Pageable pageable,
+            @ParameterObject Pageable pageable,
             Authentication auth) {
         ProductFilter filter = new ProductFilter(
                 keyword, visibleStatus(status, auth), categoryId, minPrice, maxPrice, sort);
@@ -57,7 +58,7 @@ public class ProductController {
             @RequestParam(required = false) String name,
             @RequestParam(required = false) ProductStatus status,
             @RequestParam(required = false) String categoryId,
-            Pageable pageable,
+            @ParameterObject Pageable pageable,
             Authentication auth) {
         return ApiResponse.ok(service.search(
                 new ProductFilter(name, visibleStatus(status, auth), categoryId), pageable));
