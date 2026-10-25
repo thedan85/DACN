@@ -3,6 +3,8 @@ package com.project.dacn.controller.auth;
 import com.project.dacn.common.exception.InvalidTokenException;
 import com.project.dacn.common.response.ApiResponse;
 import com.project.dacn.dto.request.auth.LoginRequest;
+import com.project.dacn.dto.request.auth.ChangePasswordRequest;
+import com.project.dacn.dto.request.auth.ProfileUpdateRequest;
 import com.project.dacn.dto.request.auth.RefreshRequest;
 import com.project.dacn.dto.request.auth.RegisterRequest;
 import com.project.dacn.dto.response.auth.LoginResponse;
@@ -19,6 +21,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -87,5 +90,19 @@ public class AuthController {
     public ResponseEntity<ApiResponse<MeResponse>> me() {
         MeResponse response = authService.me();
         return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    @PatchMapping("/me")
+    public ResponseEntity<ApiResponse<MeResponse>> updateProfile(
+            @Valid @RequestBody ProfileUpdateRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(authService.updateProfile(request)));
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @Valid @RequestBody ChangePasswordRequest request,
+            @CookieValue(name = RefreshTokenCookie.NAME, required = false) String refreshToken) {
+        authService.changePassword(request, refreshToken);
+        return ResponseEntity.ok(ApiResponse.ok(null));
     }
 }

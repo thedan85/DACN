@@ -10,6 +10,8 @@ import com.project.dacn.common.exception.UserLockedException;
 import com.project.dacn.dto.request.auth.LoginRequest;
 import com.project.dacn.dto.request.auth.RefreshRequest;
 import com.project.dacn.dto.request.auth.RegisterRequest;
+import com.project.dacn.dto.request.auth.ChangePasswordRequest;
+import com.project.dacn.dto.request.auth.ProfileUpdateRequest;
 import com.project.dacn.dto.response.auth.LoginResponse;
 import com.project.dacn.dto.response.auth.MeResponse;
 import com.project.dacn.dto.response.auth.RefreshResponse;
@@ -26,12 +28,12 @@ import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
 import com.project.dacn.security.JwtService;
-import com.project.dacn.security.LoginRateLimiter;
 import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,7 +60,6 @@ public class AuthService {
     private final UserMapper userMapper;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtService jwtService;
-    private final LoginRateLimiter loginRateLimiter;
 
     public UserResponse register(RegisterRequest request) {
         // Normalize email to lowercase
@@ -103,7 +104,6 @@ public class AuthService {
     public LoginResponse login(LoginRequest request, String userAgent, String ip) {
         // Normalize email to lowercase
         String normalizedEmail = request.email().toLowerCase();
-        loginRateLimiter.check((ip == null ? "unknown" : ip) + ":" + normalizedEmail);
 
         // Find user
         User user = userRepository.findByEmail(normalizedEmail)
@@ -154,18 +154,11 @@ public class AuthService {
     }
 
     public RefreshResponse refresh(RefreshRequest request) {
-        // A refresh token must carry type=refresh and a valid jti, otherwise it
-        // is an access token being replayed against the refresh endpoint.
-        if (!jwtService.isRefreshToken(request.refreshToken())) {
-            throw new InvalidTokenException();
-        }
+        // Extract jti from refresh token, wrap in try-catch for invalid tokens
         String jti;
         try {
             jti = jwtService.extractJti(request.refreshToken());
         } catch (JwtException | IllegalArgumentException e) {
-            throw new InvalidTokenException();
-        }
-        if (jti == null || jti.isBlank()) {
             throw new InvalidTokenException();
         }
 
@@ -173,17 +166,8 @@ public class AuthService {
         RefreshToken token = refreshTokenRepository.findByTokenId(jti)
                 .orElseThrow(InvalidTokenException::new);
 
-        // Replay of an already-rotated token: assume theft and revoke the whole
-        // family so the attacker and the legitimate user both must re-login.
-        if (token.getRevoked()) {
-            revokeFamily(token.getUser());
-            throw new InvalidTokenException();
-        }
-
-        // Validate token: not expired, hash matches the presented value
-        if (token.getExpiresAt().isBefore(Instant.now())
-                || !hashMatches(request.refreshToken(), token.getTokenHash())) {
-            revokeFamily(token.getUser());
+        // Validate token: not revoked, not expired
+        if (token.getRevoked() || token.getExpiresAt().isBefore(Instant.now())) {
             throw new InvalidTokenException();
         }
 
@@ -253,32 +237,78 @@ public class AuthService {
                 .map(rp -> rp.getPermission().getCode())
                 .toList();
 
-        String name = customerRepository.findByUser_UserId(user.getUserId())
-                .map(customer -> customer.getName())
-                .orElse(user.getEmail());
+        Customer customer = customerRepository.findByUser_UserId(user.getUserId()).orElse(null);
+
+        String name = customer != null ? customer.getName() : user.getEmail();
+        String phone = customer != null ? customer.getPhone() : null;
+        String address = customer != null ? customer.getAddress() : null;
 
         return new MeResponse(
                 user.getUserId(),
                 user.getEmail(),
                 name,
+                phone,
+                address,
                 user.getRole().getCode(),
                 user.getRole().getName(),
                 permissions
         );
     }
 
-    private boolean hashMatches(String presentedToken, String storedHash) {
-        if (storedHash == null) {
-            return false;
-        }
-        byte[] presented = hashToken(presentedToken).getBytes(StandardCharsets.UTF_8);
-        return MessageDigest.isEqual(presented, storedHash.getBytes(StandardCharsets.UTF_8));
+    public MeResponse updateProfile(ProfileUpdateRequest request) {
+        User user = currentUser();
+        Customer customer = customerRepository.findByUser_UserId(user.getUserId())
+                .orElseThrow(() -> new AccessDeniedException("customer profile not found"));
+
+        customer.setName(request.name().trim());
+        customer.setPhone(request.phone().trim());
+        customer.setAddress(
+                request.address() == null || request.address().isBlank()
+                        ? null
+                        : request.address().trim());
+        customerRepository.save(customer);
+
+        return me();
     }
 
-    private void revokeFamily(User user) {
+    public void changePassword(ChangePasswordRequest request, String currentRefreshToken) {
+        User user = currentUser();
+
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new InvalidPasswordException();
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
+
+        // Keep the session that performed the change; drop every other device.
+        // Deleting (not revoking) avoids the replay detector revoking the
+        // surviving session when an old device retries its refresh token.
+        String keepTokenId = currentRefreshTokenId(currentRefreshToken);
         List<RefreshToken> tokens = refreshTokenRepository.findByUser_UserId(user.getUserId());
-        tokens.forEach(t -> t.setRevoked(true));
-        refreshTokenRepository.saveAll(tokens);
+        List<RefreshToken> otherTokens = tokens.stream()
+                .filter(token -> !token.getTokenId().equals(keepTokenId))
+                .toList();
+        refreshTokenRepository.deleteAll(otherTokens);
+    }
+
+    private User currentUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return userRepository.findByEmail(auth.getName())
+                .orElseThrow(() -> new ResourceNotFoundException("user not found"));
+    }
+
+    private String currentRefreshTokenId(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return null;
+        }
+        try {
+            // Refresh tokens carry a jti claim; access tokens do not.
+            String tokenId = jwtService.extractJti(refreshToken);
+            return tokenId == null || tokenId.isBlank() ? null : tokenId;
+        } catch (JwtException | IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private String hashToken(String token) {

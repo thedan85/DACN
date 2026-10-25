@@ -15,11 +15,15 @@ import com.project.dacn.entity.auth.Permission;
 import com.project.dacn.entity.auth.Role;
 import com.project.dacn.entity.auth.RolePermission;
 import com.project.dacn.entity.auth.User;
+import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.repository.auth.PermissionRepository;
 import com.project.dacn.repository.auth.RolePermissionRepository;
 import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
+import com.project.dacn.repository.identity.CustomerRepository;
+import com.project.dacn.security.RefreshTokenCookie;
 import com.project.dacn.service.auth.AuthService;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -68,6 +73,9 @@ class AuthServiceTest {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private CustomerRepository customerRepository;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -284,5 +292,132 @@ class AuthServiceTest {
                 .andExpect(jsonPath("$.code").value(401))
                 .andExpect(jsonPath("$.message").exists())
                 .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    void me_customer_returnsPhoneAndAddress() throws Exception {
+        authService.register(registerRequest("me-contact@test.com"));
+        Customer customer = customerRepository.findByUser_Email("me-contact@test.com").orElseThrow();
+        customer.setAddress("123 Nguyen Trai");
+        customerRepository.save(customer);
+
+        LoginResponse login = authService.login(
+                new LoginRequest("me-contact@test.com", "password123"), null, null);
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + login.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.phone").value("1234567890"))
+                .andExpect(jsonPath("$.data.address").value("123 Nguyen Trai"));
+    }
+
+    @Test
+    void updateProfile_customer_persistsFields() throws Exception {
+        authService.register(registerRequest("profile@test.com"));
+        LoginResponse login = authService.login(
+                new LoginRequest("profile@test.com", "password123"), null, null);
+
+        mockMvc.perform(patch("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + login.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"New Name\",\"phone\":\"0987654321\",\"address\":\"45 Le Loi\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("New Name"))
+                .andExpect(jsonPath("$.data.phone").value("0987654321"))
+                .andExpect(jsonPath("$.data.address").value("45 Le Loi"));
+
+        Customer customer = customerRepository.findByUser_Email("profile@test.com").orElseThrow();
+        assertThat(customer.getName()).isEqualTo("New Name");
+        assertThat(customer.getPhone()).isEqualTo("0987654321");
+        assertThat(customer.getAddress()).isEqualTo("45 Le Loi");
+    }
+
+    @Test
+    void updateProfile_noToken_401() throws Exception {
+        mockMvc.perform(patch("/api/v1/auth/me")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"New Name\",\"phone\":\"0987654321\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void updateProfile_employee_403() throws Exception {
+        Role employeeRole = roleRepository.findByCodeIgnoreCase("EMPLOYEE").orElseThrow();
+        userRepository.save(User.builder()
+                .email("profile-employee@test.com")
+                .passwordHash(passwordEncoder.encode("password123"))
+                .role(employeeRole)
+                .status(UserStatus.ACTIVE)
+                .build());
+
+        LoginResponse login = authService.login(
+                new LoginRequest("profile-employee@test.com", "password123"), null, null);
+
+        mockMvc.perform(patch("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + login.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"New Name\",\"phone\":\"0987654321\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void changePassword_wrongCurrent_401() throws Exception {
+        authService.register(registerRequest("change-wrong@test.com"));
+        LoginResponse login = authService.login(
+                new LoginRequest("change-wrong@test.com", "password123"), null, null);
+
+        mockMvc.perform(post("/api/v1/auth/change-password")
+                        .header("Authorization", "Bearer " + login.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"not-the-password\",\"newPassword\":\"newpassword123\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.message").value("Invalid password"));
+    }
+
+    @Test
+    void changePassword_shortNewPassword_400() throws Exception {
+        authService.register(registerRequest("change-short@test.com"));
+        LoginResponse login = authService.login(
+                new LoginRequest("change-short@test.com", "password123"), null, null);
+
+        mockMvc.perform(post("/api/v1/auth/change-password")
+                        .header("Authorization", "Bearer " + login.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"password123\",\"newPassword\":\"short\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void changePassword_success_revokesOtherSessions_keepsCurrent() throws Exception {
+        authService.register(registerRequest("change-ok@test.com"));
+        LoginResponse current = authService.login(
+                new LoginRequest("change-ok@test.com", "password123"), null, null);
+        LoginResponse other = authService.login(
+                new LoginRequest("change-ok@test.com", "password123"), null, null);
+
+        mockMvc.perform(post("/api/v1/auth/change-password")
+                        .header("Authorization", "Bearer " + current.accessToken())
+                        .cookie(new Cookie(RefreshTokenCookie.NAME, current.refreshToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"password123\",\"newPassword\":\"newpassword123\"}"))
+                .andExpect(status().isOk());
+
+        // Another device is logged out.
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(new Cookie(RefreshTokenCookie.NAME, other.refreshToken())))
+                .andExpect(status().isUnauthorized());
+
+        // The device that changed the password keeps its session.
+        mockMvc.perform(post("/api/v1/auth/refresh")
+                        .cookie(new Cookie(RefreshTokenCookie.NAME, current.refreshToken())))
+                .andExpect(status().isOk());
+
+        // New password works, old one does not.
+        assertThatCode(() -> authService.login(
+                new LoginRequest("change-ok@test.com", "newpassword123"), null, null))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> authService.login(
+                new LoginRequest("change-ok@test.com", "password123"), null, null))
+                .isInstanceOf(InvalidPasswordException.class);
     }
 }
