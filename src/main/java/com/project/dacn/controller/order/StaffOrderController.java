@@ -11,6 +11,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,6 +29,7 @@ public class StaffOrderController {
     private final OrderService service;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('order:read')")
     public ApiResponse<PageResponse<OrderResponse>> list(
             @RequestParam(required = false) OrderStatus status,
             @ParameterObject Pageable pageable) {
@@ -39,6 +41,7 @@ public class StaffOrderController {
      * pending order.
      */
     @PatchMapping("/{orderId}/status")
+    @PreAuthorize("hasAuthority('order:update')")
     public ApiResponse<OrderResponse> updateStatus(
             @PathVariable String orderId,
             @Valid @RequestBody StaffOrderStatusUpdateRequest request) {

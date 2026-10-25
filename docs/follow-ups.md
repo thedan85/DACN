@@ -1,14 +1,26 @@
 # Follow-ups
 
-## Authorization runs after request validation on catalog writes
+## Public route allowlist
 
-- **Tests:** `RbacIntegrationTest.protectedEndpoint_customerToken_403` (expects 403),
-  `SecurityRulesIntegrationTest.catalogWriteRequiresToken` (expects 401).
-- **Symptom:** both receive 400.
-- **Cause:** `POST /api/v1/products` with body `{}` is rejected by request/argument
-  validation before method security runs, so the response is 400 instead of 401/403.
-- **Evidence:** the same assertion (`Status expected:<403> but was:<400>` and
-  `Status expected:<401> but was:<400>`) fails on `9fbff5a` and after the Redis catalog
-  cache branch. Only per-run metadata (tests-run count, elapsed time) differs.
-- **Not fixed with the cache work:** it predates that branch; whether a malformed body
-  should be reported before authentication is a security design decision.
+`SecurityConfig` is default-deny: a request that matches none of the rules below
+requires a valid access token, even if a handler is missing `@PreAuthorize`.
+**Add new public endpoints to this list explicitly**; do not widen a wildcard.
+
+| Method | Path | Reason |
+|---|---|---|
+| OPTIONS | `/**` | CORS preflight carries no credentials |
+| POST | `/api/v1/auth/register`, `/login`, `/refresh`, `/logout` | Session setup and teardown |
+| GET | `/api/v1/products/**` | Storefront catalog |
+| GET | `/api/v1/variants/**` | Storefront catalog |
+| GET | `/api/v1/categories/**` | Storefront catalog |
+| GET | `/api/v1/attributes/**`, `/attribute-values/**` | Product filters |
+| GET | `/api/v1/product-attributes/**`, `/variant-attributes/**` | Product detail |
+| GET | `/api/v1/media/**` | Product and variant images |
+| GET | both methods under `/api/v1/webhooks/vnpay/`; POST `/api/v1/webhooks/momo` | Payment provider callbacks, protected by signature verification |
+| GET | `/actuator/health`, `/api/v1/health/**` | Health checks |
+| GET | `/swagger-ui.html`, `/swagger-ui/**`, `/v3/api-docs`, `/v3/api-docs/**` | API docs |
+| GET | `/error`, `/favicon.ico`, `/static/**`, `/css/**`, `/js/**`, `/images/**`, `/webjars/**` | Error page and static assets |
+
+All catalog writes require the same authority at the URL level and in
+`@PreAuthorize`, so an unauthorized caller is rejected before request-body
+validation. Staff order routes require `order:read` / `order:update`.
