@@ -175,7 +175,8 @@ class SecurityRulesIntegrationTest {
     void publicGetIsReachableAnonymously(String path) throws Exception {
         mockMvc.perform(get(path))
                 .andExpect(result -> assertThat(result.getResponse().getStatus())
-                        .isNotIn(401, 403));
+                        .isNotIn(401, 403)
+                        .isLessThan(500));
     }
 
     @Test

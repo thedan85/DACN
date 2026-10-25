@@ -2,10 +2,13 @@ package com.project.dacn.service.catalog;
 
 import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.common.response.PageResponse;
+import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.dto.request.catalog.MediaCreateRequest;
 import com.project.dacn.dto.request.catalog.MediaUpdateRequest;
 import com.project.dacn.dto.response.catalog.MediaResponse;
 import com.project.dacn.entity.catalog.Media;
+import com.project.dacn.entity.catalog.Product;
+import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.mapper.catalog.CatalogMapper;
 import com.project.dacn.repository.catalog.MediaRepository;
 import com.project.dacn.repository.catalog.ProductRepository;
@@ -27,25 +30,39 @@ public class MediaService {
     private final CatalogMapper mapper;
     private final CatalogCache cache;
 
-    public PageResponse<MediaResponse> list(Pageable pageable) {
-        Page<Media> page = repo.findByDeletedFalse(pageable);
+    public PageResponse<MediaResponse> list(Pageable pageable, boolean includeHidden) {
+        Page<Media> page = includeHidden
+                ? repo.findByDeletedFalse(pageable)
+                : repo.findVisible(ProductStatus.ACTIVE, pageable);
         return PageResponse.from(page, page.map(mapper::toMediaResponse).getContent());
     }
 
-    public PageResponse<MediaResponse> listByProduct(String productId, Pageable pageable) {
-        requireProduct(productId);
+    public PageResponse<MediaResponse> listByProduct(String productId, Pageable pageable,
+            boolean includeHidden) {
+        Product product = requireProduct(productId);
+        if (!includeHidden && product.getStatus() != ProductStatus.ACTIVE) {
+            throw new ResourceNotFoundException("product not found: " + productId);
+        }
         Page<Media> page = repo.findByProduct_ProductId(productId, pageable);
         return PageResponse.from(page, page.map(mapper::toMediaResponse).getContent());
     }
 
-    public PageResponse<MediaResponse> listByVariant(String variantId, Pageable pageable) {
-        requireVariant(variantId);
+    public PageResponse<MediaResponse> listByVariant(String variantId, Pageable pageable,
+            boolean includeHidden) {
+        Variant variant = requireVariant(variantId);
+        if (!includeHidden && variant.getProduct().getStatus() != ProductStatus.ACTIVE) {
+            throw new ResourceNotFoundException("variant not found: " + variantId);
+        }
         Page<Media> page = repo.findByVariant_VariantId(variantId, pageable);
         return PageResponse.from(page, page.map(mapper::toMediaResponse).getContent());
     }
 
-    public MediaResponse get(String mediaId) {
-        return mapper.toMediaResponse(require(mediaId));
+    public MediaResponse get(String mediaId, boolean includeHidden) {
+        Media media = require(mediaId);
+        if (!includeHidden && !hasActiveTarget(media)) {
+            throw new ResourceNotFoundException("media not found: " + mediaId);
+        }
+        return mapper.toMediaResponse(media);
     }
 
     public MediaResponse create(MediaCreateRequest request) {
@@ -99,15 +116,21 @@ public class MediaService {
                 .orElseThrow(() -> new ResourceNotFoundException("media not found: " + mediaId));
     }
 
-    private void requireProduct(String productId) {
-        if (productRepo.findByProductId(productId).isEmpty()) {
-            throw new ResourceNotFoundException("product not found: " + productId);
-        }
+    private Product requireProduct(String productId) {
+        return productRepo.findByProductId(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("product not found: " + productId));
     }
 
-    private void requireVariant(String variantId) {
-        if (variantRepo.findByVariantId(variantId).isEmpty()) {
-            throw new ResourceNotFoundException("variant not found: " + variantId);
+    private Variant requireVariant(String variantId) {
+        return variantRepo.findByVariantId(variantId)
+                .orElseThrow(() -> new ResourceNotFoundException("variant not found: " + variantId));
+    }
+
+    private static boolean hasActiveTarget(Media media) {
+        Product product = media.getProduct();
+        if (product == null && media.getVariant() != null) {
+            product = media.getVariant().getProduct();
         }
+        return product != null && product.getStatus() == ProductStatus.ACTIVE;
     }
 }

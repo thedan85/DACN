@@ -15,12 +15,14 @@ requires a valid access token, even if a handler is missing `@PreAuthorize`.
 | GET | `/api/v1/categories/**` | Storefront catalog |
 | GET | `/api/v1/attributes/**`, `/attribute-values/**` | Product filters |
 | GET | `/api/v1/product-attributes/**`, `/variant-attributes/**` | Product detail |
-| GET | `/api/v1/media/**` | Product and variant images |
+| GET | `/api/v1/media/**` | Product and variant images; public reads only return media attached to an ACTIVE product |
 | GET | both methods under `/api/v1/webhooks/vnpay/`; POST `/api/v1/webhooks/momo` | Payment provider callbacks, protected by signature verification |
 | GET | `/actuator/health`, `/api/v1/health/**` | Health checks |
 | GET | `/swagger-ui.html`, `/swagger-ui/**`, `/v3/api-docs`, `/v3/api-docs/**` | API docs |
 | GET | `/error`, `/favicon.ico`, `/static/**`, `/css/**`, `/js/**`, `/images/**`, `/webjars/**` | Error page and static assets |
 
 All catalog writes require the same authority at the URL level and in
-`@PreAuthorize`, so an unauthorized caller is rejected before request-body
-validation. Staff order routes require `order:read` / `order:update`.
+`@PreAuthorize` (both reference the constants in `security/Permissions`), so an
+unauthorized caller is rejected before request-body validation. Staff order
+routes require `order:read` / `order:update`. Callers holding `product:create`
+also see DRAFT/INACTIVE products and their media.

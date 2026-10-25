@@ -5,6 +5,7 @@ import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.catalog.AttributeCreateRequest;
 import com.project.dacn.dto.request.catalog.AttributeUpdateRequest;
 import com.project.dacn.dto.response.catalog.AttributeResponse;
+import com.project.dacn.security.Permissions;
 import com.project.dacn.service.catalog.AttributeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,27 +40,27 @@ public class AttributeController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('attribute:create')")
+    @PreAuthorize("hasAuthority('" + Permissions.ATTRIBUTE_CREATE + "')")
     public ApiResponse<AttributeResponse> create(@Valid @RequestBody AttributeCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @PutMapping("/{attributeId}")
-    @PreAuthorize("hasAuthority('attribute:update')")
+    @PreAuthorize("hasAuthority('" + Permissions.ATTRIBUTE_UPDATE + "')")
     public ApiResponse<AttributeResponse> replace(@PathVariable String attributeId,
             @Valid @RequestBody AttributeUpdateRequest request) {
         return ApiResponse.ok(service.replace(attributeId, request));
     }
 
     @PatchMapping("/{attributeId}")
-    @PreAuthorize("hasAuthority('attribute:update')")
+    @PreAuthorize("hasAuthority('" + Permissions.ATTRIBUTE_UPDATE + "')")
     public ApiResponse<AttributeResponse> patch(@PathVariable String attributeId,
             @Valid @RequestBody AttributeUpdateRequest request) {
         return ApiResponse.ok(service.update(attributeId, request));
     }
 
     @DeleteMapping("/{attributeId}")
-    @PreAuthorize("hasAuthority('attribute:delete')")
+    @PreAuthorize("hasAuthority('" + Permissions.ATTRIBUTE_DELETE + "')")
     public ApiResponse<Void> delete(@PathVariable String attributeId) {
         service.delete(attributeId);
         return ApiResponse.ok(null);

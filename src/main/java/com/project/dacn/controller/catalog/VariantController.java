@@ -47,27 +47,27 @@ public class VariantController {
     }
 
     @PostMapping("/api/v1/variants")
-    @PreAuthorize("hasAuthority('variant:create')")
+    @PreAuthorize("hasAuthority('" + Permissions.VARIANT_CREATE + "')")
     public ApiResponse<VariantResponse> create(@Valid @RequestBody VariantCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @PutMapping("/api/v1/variants/{variantId}")
-    @PreAuthorize("hasAuthority('variant:update')")
+    @PreAuthorize("hasAuthority('" + Permissions.VARIANT_UPDATE + "')")
     public ApiResponse<VariantResponse> replace(@PathVariable String variantId,
             @Valid @RequestBody VariantUpdateRequest request) {
         return ApiResponse.ok(service.replace(variantId, request));
     }
 
     @PatchMapping("/api/v1/variants/{variantId}")
-    @PreAuthorize("hasAuthority('variant:update')")
+    @PreAuthorize("hasAuthority('" + Permissions.VARIANT_UPDATE + "')")
     public ApiResponse<VariantResponse> patch(@PathVariable String variantId,
             @Valid @RequestBody VariantUpdateRequest request) {
         return ApiResponse.ok(service.update(variantId, request));
     }
 
     @DeleteMapping("/api/v1/variants/{variantId}")
-    @PreAuthorize("hasAuthority('variant:delete')")
+    @PreAuthorize("hasAuthority('" + Permissions.VARIANT_DELETE + "')")
     public ApiResponse<Void> delete(@PathVariable String variantId) {
         service.delete(variantId);
         return ApiResponse.ok(null);

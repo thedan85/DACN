@@ -85,27 +85,27 @@ public class ProductController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('product:create')")
+    @PreAuthorize("hasAuthority('" + Permissions.PRODUCT_CREATE + "')")
     public ApiResponse<ProductResponse> create(@Valid @RequestBody ProductCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @PutMapping("/{productId}")
-    @PreAuthorize("hasAuthority('product:update')")
+    @PreAuthorize("hasAuthority('" + Permissions.PRODUCT_UPDATE + "')")
     public ApiResponse<ProductResponse> replace(@PathVariable String productId,
             @Valid @RequestBody ProductUpdateRequest request) {
         return ApiResponse.ok(service.replace(productId, request));
     }
 
     @PatchMapping("/{productId}")
-    @PreAuthorize("hasAuthority('product:update')")
+    @PreAuthorize("hasAuthority('" + Permissions.PRODUCT_UPDATE + "')")
     public ApiResponse<ProductResponse> patch(@PathVariable String productId,
             @Valid @RequestBody ProductUpdateRequest request) {
         return ApiResponse.ok(service.update(productId, request));
     }
 
     @DeleteMapping("/{productId}")
-    @PreAuthorize("hasAuthority('product:delete')")
+    @PreAuthorize("hasAuthority('" + Permissions.PRODUCT_DELETE + "')")
     public ApiResponse<Void> delete(@PathVariable String productId) {
         service.delete(productId);
         return ApiResponse.ok(null);

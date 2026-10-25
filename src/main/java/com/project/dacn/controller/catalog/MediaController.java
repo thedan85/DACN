@@ -5,12 +5,14 @@ import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.catalog.MediaCreateRequest;
 import com.project.dacn.dto.request.catalog.MediaUpdateRequest;
 import com.project.dacn.dto.response.catalog.MediaResponse;
+import com.project.dacn.security.Permissions;
 import com.project.dacn.service.catalog.MediaService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -28,51 +30,56 @@ public class MediaController {
     private final MediaService service;
 
     @GetMapping("/api/v1/media")
-    public ApiResponse<PageResponse<MediaResponse>> list(@ParameterObject Pageable pageable) {
-        return ApiResponse.ok(service.list(pageable));
+    public ApiResponse<PageResponse<MediaResponse>> list(@ParameterObject Pageable pageable,
+            Authentication auth) {
+        return ApiResponse.ok(service.list(pageable, canViewHidden(auth)));
     }
 
     @GetMapping("/api/v1/media/{mediaId}")
-    public ApiResponse<MediaResponse> get(@PathVariable String mediaId) {
-        return ApiResponse.ok(service.get(mediaId));
+    public ApiResponse<MediaResponse> get(@PathVariable String mediaId, Authentication auth) {
+        return ApiResponse.ok(service.get(mediaId, canViewHidden(auth)));
     }
 
     @GetMapping("/api/v1/products/{productId}/media")
     public ApiResponse<PageResponse<MediaResponse>> listByProduct(@PathVariable String productId,
-            @ParameterObject Pageable pageable) {
-        return ApiResponse.ok(service.listByProduct(productId, pageable));
+            @ParameterObject Pageable pageable, Authentication auth) {
+        return ApiResponse.ok(service.listByProduct(productId, pageable, canViewHidden(auth)));
     }
 
     @GetMapping("/api/v1/variants/{variantId}/media")
     public ApiResponse<PageResponse<MediaResponse>> listByVariant(@PathVariable String variantId,
-            @ParameterObject Pageable pageable) {
-        return ApiResponse.ok(service.listByVariant(variantId, pageable));
+            @ParameterObject Pageable pageable, Authentication auth) {
+        return ApiResponse.ok(service.listByVariant(variantId, pageable, canViewHidden(auth)));
     }
 
     @PostMapping("/api/v1/media")
-    @PreAuthorize("hasAuthority('media:create')")
+    @PreAuthorize("hasAuthority('" + Permissions.MEDIA_CREATE + "')")
     public ApiResponse<MediaResponse> create(@Valid @RequestBody MediaCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @PutMapping("/api/v1/media/{mediaId}")
-    @PreAuthorize("hasAuthority('media:update')")
+    @PreAuthorize("hasAuthority('" + Permissions.MEDIA_UPDATE + "')")
     public ApiResponse<MediaResponse> replace(@PathVariable String mediaId,
             @Valid @RequestBody MediaUpdateRequest request) {
         return ApiResponse.ok(service.replace(mediaId, request));
     }
 
     @PatchMapping("/api/v1/media/{mediaId}")
-    @PreAuthorize("hasAuthority('media:update')")
+    @PreAuthorize("hasAuthority('" + Permissions.MEDIA_UPDATE + "')")
     public ApiResponse<MediaResponse> patch(@PathVariable String mediaId,
             @Valid @RequestBody MediaUpdateRequest request) {
         return ApiResponse.ok(service.update(mediaId, request));
     }
 
     @DeleteMapping("/api/v1/media/{mediaId}")
-    @PreAuthorize("hasAuthority('media:delete')")
+    @PreAuthorize("hasAuthority('" + Permissions.MEDIA_DELETE + "')")
     public ApiResponse<Void> delete(@PathVariable String mediaId) {
         service.delete(mediaId);
         return ApiResponse.ok(null);
+    }
+
+    private static boolean canViewHidden(Authentication auth) {
+        return Permissions.has(auth, Permissions.VIEW_HIDDEN_PRODUCTS);
     }
 }

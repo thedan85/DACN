@@ -4,6 +4,7 @@ import com.project.dacn.common.response.ApiResponse;
 import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.catalog.ProductAttributeValueCreateRequest;
 import com.project.dacn.dto.response.catalog.ProductAttributeValueResponse;
+import com.project.dacn.security.Permissions;
 import com.project.dacn.service.catalog.ProductAttributeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -35,14 +36,14 @@ public class ProductAttributeController {
     }
 
     @PostMapping("/api/v1/product-attributes")
-    @PreAuthorize("hasAuthority('attribute:create')")
+    @PreAuthorize("hasAuthority('" + Permissions.ATTRIBUTE_CREATE + "')")
     public ApiResponse<ProductAttributeValueResponse> create(
             @Valid @RequestBody ProductAttributeValueCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @DeleteMapping("/api/v1/product-attributes/{productValueId}")
-    @PreAuthorize("hasAuthority('attribute:delete')")
+    @PreAuthorize("hasAuthority('" + Permissions.ATTRIBUTE_DELETE + "')")
     public ApiResponse<Void> delete(@PathVariable String productValueId) {
         service.delete(productValueId);
         return ApiResponse.ok(null);

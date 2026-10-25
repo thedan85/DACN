@@ -8,6 +8,7 @@ import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.entity.catalog.ProductAttributeValue;
 import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.catalog.VariantAttributeValue;
+import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.repository.catalog.AttributeRepository;
 import com.project.dacn.repository.catalog.AttributeValueRepository;
 import com.project.dacn.repository.catalog.CategoryRepository;
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
@@ -127,6 +129,35 @@ class CatalogPersistenceTest {
         p.setStatus(com.project.dacn.common.constant.ProductStatus.DELETED);
         productRepository.save(p);
         assertThat(productRepository.findByProductId(p.getProductId())).isEmpty();
+    }
+
+    @Test
+    void visibleMediaQueryFiltersHiddenProductsAndDeletedRows() {
+        Product active = productRepository.save(Product.builder()
+                .name("Media Active").description("d").build());
+        Product draft = productRepository.save(Product.builder()
+                .name("Media Draft").description("d").status(ProductStatus.DRAFT).build());
+        Variant activeVariant = variantRepository.save(Variant.builder().product(active)
+                .sku("VIS-A").price(BigDecimal.ONE).stock(1).build());
+        Variant draftVariant = variantRepository.save(Variant.builder().product(draft)
+                .sku("VIS-D").price(BigDecimal.ONE).stock(1).build());
+
+        Media directActive = mediaRepository.save(
+                Media.builder().url("a").product(active).build());
+        Media directDraft = mediaRepository.save(
+                Media.builder().url("d").product(draft).build());
+        Media variantActive = mediaRepository.save(
+                Media.builder().url("va").variant(activeVariant).build());
+        Media variantDraft = mediaRepository.save(
+                Media.builder().url("vd").variant(draftVariant).build());
+        Media deleted = mediaRepository.save(
+                Media.builder().url("x").product(active).deleted(true).build());
+
+        assertThat(mediaRepository.findVisible(ProductStatus.ACTIVE, Pageable.unpaged()).getContent())
+                .extracting(Media::getMediaId)
+                .containsExactlyInAnyOrder(directActive.getMediaId(), variantActive.getMediaId())
+                .doesNotContain(directDraft.getMediaId(), variantDraft.getMediaId(),
+                        deleted.getMediaId());
     }
 
     @Test

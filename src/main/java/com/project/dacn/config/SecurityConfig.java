@@ -3,6 +3,7 @@ package com.project.dacn.config;
 import com.project.dacn.security.AuthenticationEntryPoint;
 import com.project.dacn.security.CustomAccessDeniedHandler;
 import com.project.dacn.security.JwtAuthenticationFilter;
+import com.project.dacn.security.Permissions;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -66,47 +67,47 @@ public class SecurityConfig {
 
                         // Writes are checked here as well as with @PreAuthorize so a caller
                         // without the permission is rejected before MVC validates the body.
-                        .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasAuthority("product:create")
-                        .requestMatchers(HttpMethod.PUT, "/api/v1/products/**").hasAuthority("product:update")
-                        .requestMatchers(HttpMethod.PATCH, "/api/v1/products/**").hasAuthority("product:update")
-                        .requestMatchers(HttpMethod.DELETE, "/api/v1/products/**").hasAuthority("product:delete")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasAuthority(Permissions.PRODUCT_CREATE)
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/products/**").hasAuthority(Permissions.PRODUCT_UPDATE)
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/products/**").hasAuthority(Permissions.PRODUCT_UPDATE)
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/products/**").hasAuthority(Permissions.PRODUCT_DELETE)
 
-                        .requestMatchers(HttpMethod.POST, "/api/v1/variants/**").hasAuthority("variant:create")
-                        .requestMatchers(HttpMethod.PUT, "/api/v1/variants/**").hasAuthority("variant:update")
-                        .requestMatchers(HttpMethod.PATCH, "/api/v1/variants/**").hasAuthority("variant:update")
-                        .requestMatchers(HttpMethod.DELETE, "/api/v1/variants/**").hasAuthority("variant:delete")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/variants/**").hasAuthority(Permissions.VARIANT_CREATE)
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/variants/**").hasAuthority(Permissions.VARIANT_UPDATE)
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/variants/**").hasAuthority(Permissions.VARIANT_UPDATE)
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/variants/**").hasAuthority(Permissions.VARIANT_DELETE)
 
-                        .requestMatchers(HttpMethod.POST, "/api/v1/categories/**").hasAuthority("category:create")
-                        .requestMatchers(HttpMethod.PUT, "/api/v1/categories/**").hasAuthority("category:update")
-                        .requestMatchers(HttpMethod.PATCH, "/api/v1/categories/**").hasAuthority("category:update")
-                        .requestMatchers(HttpMethod.DELETE, "/api/v1/categories/**").hasAuthority("category:delete")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/categories/**").hasAuthority(Permissions.CATEGORY_CREATE)
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/categories/**").hasAuthority(Permissions.CATEGORY_UPDATE)
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/categories/**").hasAuthority(Permissions.CATEGORY_UPDATE)
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/categories/**").hasAuthority(Permissions.CATEGORY_DELETE)
 
                         .requestMatchers(HttpMethod.POST, "/api/v1/attributes/**",
                                 "/api/v1/attribute-values/**", "/api/v1/product-attributes/**")
-                        .hasAuthority("attribute:create")
+                        .hasAuthority(Permissions.ATTRIBUTE_CREATE)
                         .requestMatchers(HttpMethod.PUT, "/api/v1/attributes/**",
                                 "/api/v1/attribute-values/**")
-                        .hasAuthority("attribute:update")
+                        .hasAuthority(Permissions.ATTRIBUTE_UPDATE)
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/attributes/**",
                                 "/api/v1/attribute-values/**")
-                        .hasAuthority("attribute:update")
+                        .hasAuthority(Permissions.ATTRIBUTE_UPDATE)
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/attributes/**",
                                 "/api/v1/attribute-values/**", "/api/v1/product-attributes/**")
-                        .hasAuthority("attribute:delete")
+                        .hasAuthority(Permissions.ATTRIBUTE_DELETE)
 
                         .requestMatchers(HttpMethod.POST, "/api/v1/variant-attributes/**")
-                        .hasAuthority("variant:create")
+                        .hasAuthority(Permissions.VARIANT_CREATE)
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/variant-attributes/**")
-                        .hasAuthority("variant:delete")
+                        .hasAuthority(Permissions.VARIANT_DELETE)
 
                         .requestMatchers(HttpMethod.POST, "/api/v1/media/**", "/api/v1/uploads/**")
-                        .hasAuthority("media:create")
-                        .requestMatchers(HttpMethod.PUT, "/api/v1/media/**").hasAuthority("media:update")
-                        .requestMatchers(HttpMethod.PATCH, "/api/v1/media/**").hasAuthority("media:update")
-                        .requestMatchers(HttpMethod.DELETE, "/api/v1/media/**").hasAuthority("media:delete")
+                        .hasAuthority(Permissions.MEDIA_CREATE)
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/media/**").hasAuthority(Permissions.MEDIA_UPDATE)
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/media/**").hasAuthority(Permissions.MEDIA_UPDATE)
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/media/**").hasAuthority(Permissions.MEDIA_DELETE)
 
-                        .requestMatchers(HttpMethod.GET, "/api/v1/staff/orders/**").hasAuthority("order:read")
-                        .requestMatchers(HttpMethod.PATCH, "/api/v1/staff/orders/**").hasAuthority("order:update")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/staff/orders/**").hasAuthority(Permissions.ORDER_READ)
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/staff/orders/**").hasAuthority(Permissions.ORDER_UPDATE)
 
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex

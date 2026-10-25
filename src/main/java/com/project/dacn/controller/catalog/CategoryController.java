@@ -5,6 +5,7 @@ import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.catalog.CategoryCreateRequest;
 import com.project.dacn.dto.request.catalog.CategoryUpdateRequest;
 import com.project.dacn.dto.response.catalog.CategoryResponse;
+import com.project.dacn.security.Permissions;
 import com.project.dacn.service.catalog.CategoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,27 +40,27 @@ public class CategoryController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('category:create')")
+    @PreAuthorize("hasAuthority('" + Permissions.CATEGORY_CREATE + "')")
     public ApiResponse<CategoryResponse> create(@Valid @RequestBody CategoryCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @PutMapping("/{categoryId}")
-    @PreAuthorize("hasAuthority('category:update')")
+    @PreAuthorize("hasAuthority('" + Permissions.CATEGORY_UPDATE + "')")
     public ApiResponse<CategoryResponse> replace(@PathVariable String categoryId,
             @Valid @RequestBody CategoryUpdateRequest request) {
         return ApiResponse.ok(service.replace(categoryId, request));
     }
 
     @PatchMapping("/{categoryId}")
-    @PreAuthorize("hasAuthority('category:update')")
+    @PreAuthorize("hasAuthority('" + Permissions.CATEGORY_UPDATE + "')")
     public ApiResponse<CategoryResponse> patch(@PathVariable String categoryId,
             @Valid @RequestBody CategoryUpdateRequest request) {
         return ApiResponse.ok(service.update(categoryId, request));
     }
 
     @DeleteMapping("/{categoryId}")
-    @PreAuthorize("hasAuthority('category:delete')")
+    @PreAuthorize("hasAuthority('" + Permissions.CATEGORY_DELETE + "')")
     public ApiResponse<Void> delete(@PathVariable String categoryId) {
         service.delete(categoryId);
         return ApiResponse.ok(null);

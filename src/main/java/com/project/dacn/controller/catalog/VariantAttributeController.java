@@ -4,6 +4,7 @@ import com.project.dacn.common.response.ApiResponse;
 import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.catalog.VariantAttributeValueCreateRequest;
 import com.project.dacn.dto.response.catalog.VariantAttributeValueResponse;
+import com.project.dacn.security.Permissions;
 import com.project.dacn.service.catalog.VariantAttributeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -35,14 +36,14 @@ public class VariantAttributeController {
     }
 
     @PostMapping("/api/v1/variant-attributes")
-    @PreAuthorize("hasAuthority('variant:create')")
+    @PreAuthorize("hasAuthority('" + Permissions.VARIANT_CREATE + "')")
     public ApiResponse<VariantAttributeValueResponse> create(
             @Valid @RequestBody VariantAttributeValueCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @DeleteMapping("/api/v1/variant-attributes/{variantValueId}")
-    @PreAuthorize("hasAuthority('variant:delete')")
+    @PreAuthorize("hasAuthority('" + Permissions.VARIANT_DELETE + "')")
     public ApiResponse<Void> delete(@PathVariable String variantValueId) {
         service.delete(variantValueId);
         return ApiResponse.ok(null);

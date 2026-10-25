@@ -5,6 +5,7 @@ import com.project.dacn.common.response.ApiResponse;
 import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.order.StaffOrderStatusUpdateRequest;
 import com.project.dacn.dto.response.order.OrderResponse;
+import com.project.dacn.security.Permissions;
 import com.project.dacn.service.order.OrderService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -29,7 +30,7 @@ public class StaffOrderController {
     private final OrderService service;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('order:read')")
+    @PreAuthorize("hasAuthority('" + Permissions.ORDER_READ + "')")
     public ApiResponse<PageResponse<OrderResponse>> list(
             @RequestParam(required = false) OrderStatus status,
             @ParameterObject Pageable pageable) {
@@ -41,7 +42,7 @@ public class StaffOrderController {
      * pending order.
      */
     @PatchMapping("/{orderId}/status")
-    @PreAuthorize("hasAuthority('order:update')")
+    @PreAuthorize("hasAuthority('" + Permissions.ORDER_UPDATE + "')")
     public ApiResponse<OrderResponse> updateStatus(
             @PathVariable String orderId,
             @Valid @RequestBody StaffOrderStatusUpdateRequest request) {

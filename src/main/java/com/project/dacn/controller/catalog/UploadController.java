@@ -2,6 +2,7 @@ package com.project.dacn.controller.catalog;
 
 import com.project.dacn.common.response.ApiResponse;
 import com.project.dacn.dto.response.catalog.UploadResponse;
+import com.project.dacn.security.Permissions;
 import com.project.dacn.service.catalog.UploadService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,14 +22,14 @@ public class UploadController {
     private final UploadService service;
 
     @PostMapping(value = "/products/{productId}/thumbnail", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAuthority('media:create')")
+    @PreAuthorize("hasAuthority('" + Permissions.MEDIA_CREATE + "')")
     public ApiResponse<UploadResponse> uploadThumbnail(@PathVariable String productId,
             @RequestParam("file") MultipartFile file) {
         return ApiResponse.ok(service.uploadProductThumbnail(productId, file));
     }
 
     @PostMapping(value = "/variants/{variantId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasAuthority('media:create')")
+    @PreAuthorize("hasAuthority('" + Permissions.MEDIA_CREATE + "')")
     public ApiResponse<UploadResponse> uploadVariantImage(@PathVariable String variantId,
             @RequestParam("file") MultipartFile file) {
         return ApiResponse.ok(service.uploadVariantImage(variantId, file));

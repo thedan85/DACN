@@ -5,6 +5,7 @@ import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.catalog.AttributeValueCreateRequest;
 import com.project.dacn.dto.request.catalog.AttributeValueUpdateRequest;
 import com.project.dacn.dto.response.catalog.AttributeValueResponse;
+import com.project.dacn.security.Permissions;
 import com.project.dacn.service.catalog.AttributeValueService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -43,28 +44,28 @@ public class AttributeValueController {
     }
 
     @PostMapping("/api/v1/attribute-values")
-    @PreAuthorize("hasAuthority('attribute:create')")
+    @PreAuthorize("hasAuthority('" + Permissions.ATTRIBUTE_CREATE + "')")
     public ApiResponse<AttributeValueResponse> create(
             @Valid @RequestBody AttributeValueCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
     @PutMapping("/api/v1/attribute-values/{attributeValueId}")
-    @PreAuthorize("hasAuthority('attribute:update')")
+    @PreAuthorize("hasAuthority('" + Permissions.ATTRIBUTE_UPDATE + "')")
     public ApiResponse<AttributeValueResponse> replace(@PathVariable String attributeValueId,
             @Valid @RequestBody AttributeValueUpdateRequest request) {
         return ApiResponse.ok(service.replace(attributeValueId, request));
     }
 
     @PatchMapping("/api/v1/attribute-values/{attributeValueId}")
-    @PreAuthorize("hasAuthority('attribute:update')")
+    @PreAuthorize("hasAuthority('" + Permissions.ATTRIBUTE_UPDATE + "')")
     public ApiResponse<AttributeValueResponse> patch(@PathVariable String attributeValueId,
             @Valid @RequestBody AttributeValueUpdateRequest request) {
         return ApiResponse.ok(service.update(attributeValueId, request));
     }
 
     @DeleteMapping("/api/v1/attribute-values/{attributeValueId}")
-    @PreAuthorize("hasAuthority('attribute:delete')")
+    @PreAuthorize("hasAuthority('" + Permissions.ATTRIBUTE_DELETE + "')")
     public ApiResponse<Void> delete(@PathVariable String attributeValueId) {
         service.delete(attributeValueId);
         return ApiResponse.ok(null);
