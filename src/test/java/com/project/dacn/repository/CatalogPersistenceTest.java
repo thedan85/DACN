@@ -128,4 +128,43 @@ class CatalogPersistenceTest {
         productRepository.save(p);
         assertThat(productRepository.findByProductId(p.getProductId())).isEmpty();
     }
+
+    @Test
+    void stockProjectionsMatchPriceRangeFilterIncludingDeletedVariants() {
+        Product product = productRepository.save(Product.builder()
+                .name("Stock Parity").description("d").build());
+        Variant live = variantRepository.save(Variant.builder().product(product).sku("PAR-LIVE")
+                .price(new BigDecimal("179000")).stock(4).build());
+        Variant deleted = variantRepository.save(Variant.builder().product(product).sku("PAR-DEL")
+                .price(new BigDecimal("99000")).stock(9).deleted(true).build());
+
+        long missPathStock = variantRepository
+                .findPriceRangesByProductIds(List.of(product.getId())).get(0).totalStock();
+        assertThat(missPathStock).isEqualTo(4);
+
+        VariantRepository.ProductStockView byProduct =
+                variantRepository.findStockByProductId(product.getProductId()).orElseThrow();
+        assertThat(byProduct.getTotalStock()).isEqualTo(4);
+
+        assertThat(variantRepository.findStockByProductIdIn(List.of(product.getProductId())))
+                .singleElement()
+                .extracting(VariantRepository.ProductStockView::getTotalStock)
+                .isEqualTo(4L);
+
+        assertThat(variantRepository.findStockByVariantId(live.getVariantId()).orElseThrow().getStock())
+                .isEqualTo(4);
+        assertThat(variantRepository.findStockByVariantId(deleted.getVariantId())).isEmpty();
+        assertThat(variantRepository.findStockByVariantIdIn(
+                List.of(live.getVariantId(), deleted.getVariantId())))
+                .singleElement()
+                .extracting(VariantRepository.VariantStockView::getStock)
+                .isEqualTo(4);
+
+        // No-variant product: both paths have no row, and both callers map that to stock 0.
+        Product noVariants = productRepository.save(Product.builder()
+                .name("Stock Parity Empty").description("d").build());
+        assertThat(variantRepository.findPriceRangesByProductIds(List.of(noVariants.getId()))).isEmpty();
+        assertThat(variantRepository.findStockByProductId(noVariants.getProductId())).isEmpty();
+        assertThat(variantRepository.findStockByProductIdIn(List.of(noVariants.getProductId()))).isEmpty();
+    }
 }

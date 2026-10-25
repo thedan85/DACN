@@ -57,4 +57,54 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
             """)
     List<ProductPriceRange> findPriceRangesByProductIds(
             @Param("productIds") Collection<Long> productIds);
+
+    interface VariantStockView {
+        String getVariantId();
+
+        Integer getStock();
+    }
+
+    interface ProductStockView {
+        String getProductId();
+
+        Long getTotalStock();
+    }
+
+    /**
+     * Cache-hit stock overlay. Uses the same {@code deleted = false} filter as
+     * {@link #findPriceRangesByProductIds}, so hit and miss agree.
+     */
+    @Query("""
+            SELECT v.variantId AS variantId, v.stock AS stock
+            FROM Variant v
+            WHERE v.variantId = :variantId
+              AND v.deleted = false
+            """)
+    Optional<VariantStockView> findStockByVariantId(@Param("variantId") String variantId);
+
+    @Query("""
+            SELECT v.variantId AS variantId, v.stock AS stock
+            FROM Variant v
+            WHERE v.variantId IN :variantIds
+              AND v.deleted = false
+            """)
+    List<VariantStockView> findStockByVariantIdIn(@Param("variantIds") Collection<String> variantIds);
+
+    @Query("""
+            SELECT v.product.productId AS productId, SUM(v.stock) AS totalStock
+            FROM Variant v
+            WHERE v.product.productId = :productId
+              AND v.deleted = false
+            GROUP BY v.product.productId
+            """)
+    Optional<ProductStockView> findStockByProductId(@Param("productId") String productId);
+
+    @Query("""
+            SELECT v.product.productId AS productId, SUM(v.stock) AS totalStock
+            FROM Variant v
+            WHERE v.product.productId IN :productIds
+              AND v.deleted = false
+            GROUP BY v.product.productId
+            """)
+    List<ProductStockView> findStockByProductIdIn(@Param("productIds") Collection<String> productIds);
 }
