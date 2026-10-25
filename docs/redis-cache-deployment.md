@@ -23,3 +23,7 @@ This is safe: a missing counter is re-seeded with epoch millis, so new generatio
 ## Measuring hit vs miss latency
 
 A cache hit costs two Redis round trips (generation + payload) plus the live stock query, so it is not free. Measure a public read on a warm key (hit) against the same read right after deleting the counters (DB miss), and compare p50/p95. If a hit is not clearly cheaper, lower the TTLs or drop caching for that endpoint instead of carrying the invalidation complexity.
+
+## Known limit: cache write inside the DB transaction
+
+On a miss, the cache write happens while the request's DB transaction is still open, so a slow-but-alive Redis can hold a DB connection for up to the command timeout (200 ms default) per miss. Bounded and accepted for a local Redis; revisit (write after commit, or a bounded executor) if Redis becomes remote or the DB pool runs hot during Redis slowness.
