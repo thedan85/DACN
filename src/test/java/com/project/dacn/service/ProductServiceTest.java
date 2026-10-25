@@ -16,6 +16,7 @@ import com.project.dacn.repository.catalog.ProductPriceRange;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.service.catalog.CatalogCache;
+import com.project.dacn.service.catalog.CatalogCacheKeys;
 import com.project.dacn.service.catalog.ProductService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,6 +44,7 @@ import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -70,6 +72,40 @@ class ProductServiceTest {
 
     @InjectMocks
     ProductService service;
+
+    @Test
+    void listCacheHitOverlaysStockAndSkipsRepository() {
+        when(cache.currentGeneration("product")).thenReturn(OptionalLong.of(1));
+        when(cache.get(startsWith("pim:product:list:1:"), any()))
+                .thenReturn(Optional.of(new PageResponse<>(List.of(response(null, null, null)),
+                        0, 20, 1, 1)));
+        VariantRepository.ProductStockView stock = mock(VariantRepository.ProductStockView.class);
+        when(stock.getProductId()).thenReturn("PRD_1");
+        when(stock.getTotalStock()).thenReturn(4L);
+        when(variantRepo.findStockByProductIdIn(List.of("PRD_1"))).thenReturn(List.of(stock));
+
+        PageResponse<ProductResponse> result = service.list(PageRequest.of(0, 20));
+
+        assertThat(result.getContent().get(0).stock()).isEqualTo(4);
+        verify(repo, never()).findByStatus(any(), any());
+    }
+
+    @Test
+    void blankCategoryFilterSharesTheUnfilteredCacheKey() {
+        Page<Product> empty = new PageImpl<>(List.of(), PageRequest.of(0, 20), 0);
+        when(cache.currentGeneration("product")).thenReturn(OptionalLong.of(6));
+        when(cache.get(any(), any())).thenReturn(Optional.empty());
+        when(repo.findAll(any(org.springframework.data.jpa.domain.Specification.class),
+                any(Pageable.class))).thenReturn(empty);
+        ArgumentCaptor<String> keys = ArgumentCaptor.forClass(String.class);
+
+        service.search(new ProductFilter(null, ProductStatus.ACTIVE, "  "), PageRequest.of(0, 20));
+        service.search(new ProductFilter(null, ProductStatus.ACTIVE, null), PageRequest.of(0, 20));
+
+        verify(cache, times(2)).get(keys.capture(), any());
+        assertThat(keys.getAllValues()).containsOnly(CatalogCacheKeys.productSearch(6,
+                new ProductFilter(null, ProductStatus.ACTIVE, null), PageRequest.of(0, 20)));
+    }
 
     @Test
     void getBySlugCacheHitOverlaysLiveStockAndSkipsRepository() {

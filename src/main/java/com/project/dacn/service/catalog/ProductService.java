@@ -91,9 +91,13 @@ public class ProductService {
 
     public PageResponse<ProductResponse> search(ProductFilter filter, Pageable pageable) {
         // Strip before both the query and the cache key, so " a" and "a" agree.
-        ProductFilter effective = filter.keyword() == null ? filter
-                : new ProductFilter(filter.keyword().strip(), filter.status(), filter.categoryId(),
-                        filter.minPrice(), filter.maxPrice(), filter.sort());
+        // Blank categoryId means "no filter"; the key builder collapses it too.
+        String categoryId = filter.categoryId() == null ? null : filter.categoryId().strip();
+        ProductFilter effective = new ProductFilter(
+                filter.keyword() == null ? null : filter.keyword().strip(),
+                filter.status(),
+                categoryId == null || categoryId.isEmpty() ? null : categoryId,
+                filter.minPrice(), filter.maxPrice(), filter.sort());
         validatePriceRange(effective);
         // Sorting is driven by ProductSort inside ProductSpecs. Drop any Sort
         // parsed from the generic `sort` query param by the Pageable resolver,

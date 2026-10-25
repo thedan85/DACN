@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 
 public final class ProductSpecs {
 
@@ -46,7 +47,7 @@ public final class ProductSpecs {
             }
             if (filter.keyword() != null && !filter.keyword().isBlank()) {
                 predicates.add(cb.like(cb.lower(root.get(Product_.name)),
-                        "%" + filter.keyword().toLowerCase() + "%"));
+                        "%" + filter.keyword().toLowerCase(Locale.ROOT) + "%"));
             }
             if (categoryIds != null && !categoryIds.isEmpty()) {
                 predicates.add(root.get(Product_.category)

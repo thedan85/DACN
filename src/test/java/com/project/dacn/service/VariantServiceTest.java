@@ -117,6 +117,23 @@ class VariantServiceTest {
     }
 
     @Test
+    void adminReadNeverTouchesTheCache() {
+        Variant v = Variant.builder().variantId("v").sku("SKU-1")
+                .product(com.project.dacn.entity.catalog.Product.builder()
+                        .productId("p-1").slug("p").name("P").description("d")
+                        .status(com.project.dacn.common.constant.ProductStatus.DRAFT).build())
+                .build();
+        when(repo.findByVariantId("v")).thenReturn(Optional.of(v));
+        when(mapper.toVariantResponse(v)).thenReturn(
+                new VariantResponse(1L, "v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P",
+                        false, null, null));
+
+        service.get("v", true);
+
+        verifyNoInteractions(cache);
+    }
+
+    @Test
     void getVariantOfDraftProductHiddenByDefault() {
         Variant v = Variant.builder().variantId("v").sku("SKU-1")
                 .product(com.project.dacn.entity.catalog.Product.builder()
