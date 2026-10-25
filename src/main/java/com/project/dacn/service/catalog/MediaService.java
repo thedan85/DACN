@@ -25,6 +25,7 @@ public class MediaService {
     private final ProductRepository productRepo;
     private final VariantRepository variantRepo;
     private final CatalogMapper mapper;
+    private final CatalogCache cache;
 
     public PageResponse<MediaResponse> list(Pageable pageable) {
         Page<Media> page = repo.findByDeletedFalse(pageable);
@@ -73,7 +74,9 @@ public class MediaService {
     public MediaResponse update(String mediaId, MediaUpdateRequest request) {
         Media entity = require(mediaId);
         mapper.updateMedia(request, entity);
-        return mapper.toMediaResponse(repo.save(entity));
+        MediaResponse response = mapper.toMediaResponse(repo.save(entity));
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
+        return response;
     }
 
     /**
@@ -88,6 +91,7 @@ public class MediaService {
         Media entity = require(mediaId);
         entity.setDeleted(true);
         repo.save(entity);
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
     }
 
     private Media require(String mediaId) {

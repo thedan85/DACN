@@ -2,11 +2,13 @@ package com.project.dacn.service;
 
 import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.dto.request.catalog.MediaCreateRequest;
+import com.project.dacn.dto.request.catalog.MediaUpdateRequest;
 import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.mapper.catalog.CatalogMapper;
 import com.project.dacn.repository.catalog.MediaRepository;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
+import com.project.dacn.service.catalog.CatalogCache;
 import com.project.dacn.service.catalog.MediaService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,6 +22,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -37,8 +41,32 @@ class MediaServiceTest {
     @Spy
     CatalogMapper mapper = Mappers.getMapper(CatalogMapper.class);
 
+    @Mock
+    CatalogCache cache;
+
     @InjectMocks
     MediaService service;
+
+    @Test
+    void updateBumpsProductGenerationAfterCommit() {
+        Media m = Media.builder().mediaId("m").url("u").build();
+        when(repo.findByMediaId("m")).thenReturn(Optional.of(m));
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.update("m", new MediaUpdateRequest("u2"));
+
+        verify(cache).bumpAfterCommit("product");
+    }
+
+    @Test
+    void deleteBumpsProductGenerationAfterCommit() {
+        Media m = Media.builder().mediaId("m").url("u").build();
+        when(repo.findByMediaId("m")).thenReturn(Optional.of(m));
+
+        service.delete("m");
+
+        verify(cache).bumpAfterCommit("product");
+    }
 
     @Test
     void createWithBothTargetsRejected() {

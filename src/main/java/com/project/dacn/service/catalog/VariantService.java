@@ -113,8 +113,11 @@ public class VariantService {
         String key = CatalogCacheKeys.variantDetail(generation.getAsLong(), variantId);
         Optional<VariantResponse> cached = cache.get(key, VARIANT_RESPONSE);
         if (cached.isPresent()) {
-            // No stock row means no live variant (soft-deleted): send stock as unknown.
-            return withStock(cached.get(), variantStock(variantId));
+            Integer stock = variantStock(variantId);
+            // No stock row means the cached variant is gone: re-read and let the DB decide.
+            if (stock != null) {
+                return withStock(cached.get(), stock);
+            }
         }
         VariantResponse response = mapper.toVariantResponse(requireVisible(variantId, false));
         cache.put(key, withStock(response, null), CatalogCacheKeys.VARIANT_DETAIL_TTL);

@@ -117,6 +117,20 @@ class VariantServiceTest {
     }
 
     @Test
+    void cachedVariantWithMissingStockRowFallsBackToTheDatabase() {
+        when(cache.currentGeneration("variant")).thenReturn(OptionalLong.of(4));
+        when(cache.get(eq("pim:variant:4:v"), any())).thenReturn(Optional.of(
+                new VariantResponse(1L, "v", "SKU-1", new BigDecimal("10.00"), null,
+                        "p-1", "P", false, null, null)));
+        when(repo.findStockByVariantId("v")).thenReturn(Optional.empty());
+        when(repo.findByVariantId("v")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.get("v"))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verify(repo).findByVariantId("v");
+    }
+
+    @Test
     void adminReadNeverTouchesTheCache() {
         Variant v = Variant.builder().variantId("v").sku("SKU-1")
                 .product(com.project.dacn.entity.catalog.Product.builder()
