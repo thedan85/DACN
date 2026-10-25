@@ -25,6 +25,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.type.TypeReference;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -35,6 +36,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
@@ -56,23 +59,71 @@ public class ProductService {
      */
     private static final Set<String> RESERVED_SLUGS = Set.of("search");
 
+    private static final TypeReference<ProductResponse> PRODUCT_RESPONSE = new TypeReference<>() {
+    };
+    private static final TypeReference<PageResponse<ProductResponse>> PRODUCT_PAGE = new TypeReference<>() {
+    };
+
     private final ProductRepository repo;
     private final CategoryRepository categoryRepo;
     private final VariantRepository variantRepo;
     private final MediaRepository mediaRepo;
     private final CatalogMapper mapper;
+    private final CatalogCache cache;
 
     public PageResponse<ProductResponse> list(Pageable pageable) {
-        Page<Product> page = repo.findByStatus(ProductStatus.ACTIVE, pageable);
-        return toPageResponse(page);
+        if (!CatalogCacheKeys.isCacheablePage(pageable)) {
+            return listFromDb(pageable);
+        }
+        OptionalLong generation = cache.currentGeneration(CatalogCacheKeys.PRODUCT_SCOPE);
+        if (generation.isEmpty()) {
+            return listFromDb(pageable);
+        }
+        String key = CatalogCacheKeys.productList(generation.getAsLong(), pageable);
+        Optional<PageResponse<ProductResponse>> cached = cache.get(key, PRODUCT_PAGE);
+        if (cached.isPresent()) {
+            return overlayProductStock(cached.get());
+        }
+        PageResponse<ProductResponse> response = listFromDb(pageable);
+        cache.put(key, scrubProductStock(response), CatalogCacheKeys.PRODUCT_PAGE_TTL);
+        return response;
     }
 
     public PageResponse<ProductResponse> search(ProductFilter filter, Pageable pageable) {
-        validatePriceRange(filter);
+        // Strip before both the query and the cache key, so " a" and "a" agree.
+        ProductFilter effective = filter.keyword() == null ? filter
+                : new ProductFilter(filter.keyword().strip(), filter.status(), filter.categoryId(),
+                        filter.minPrice(), filter.maxPrice(), filter.sort());
+        validatePriceRange(effective);
         // Sorting is driven by ProductSort inside ProductSpecs. Drop any Sort
         // parsed from the generic `sort` query param by the Pageable resolver,
         // otherwise Spring Data appends an invalid property order.
         Pageable cleanPageable = withoutSort(pageable);
+        if (!CatalogCacheKeys.isCacheableSearch(effective, cleanPageable)) {
+            return searchFromDb(effective, cleanPageable);
+        }
+        OptionalLong generation = cache.currentGeneration(CatalogCacheKeys.PRODUCT_SCOPE);
+        if (generation.isEmpty()) {
+            return searchFromDb(effective, cleanPageable);
+        }
+        String key = CatalogCacheKeys.productSearch(generation.getAsLong(), effective, cleanPageable);
+        Optional<PageResponse<ProductResponse>> cached = cache.get(key, PRODUCT_PAGE);
+        if (cached.isPresent()) {
+            return overlayProductStock(cached.get());
+        }
+        PageResponse<ProductResponse> response = searchFromDb(effective, cleanPageable);
+        if (!response.getContent().isEmpty()) {
+            cache.put(key, scrubProductStock(response), CatalogCacheKeys.PRODUCT_PAGE_TTL);
+        }
+        return response;
+    }
+
+    private PageResponse<ProductResponse> listFromDb(Pageable pageable) {
+        Page<Product> page = repo.findByStatus(ProductStatus.ACTIVE, pageable);
+        return toPageResponse(page);
+    }
+
+    private PageResponse<ProductResponse> searchFromDb(ProductFilter filter, Pageable cleanPageable) {
         // A category filter covers the whole subtree: a parent category page
         // must list products filed under any descendant category.
         Set<String> categoryIds = filter.categoryId() == null
@@ -128,7 +179,21 @@ public class ProductService {
      *                      permission; DRAFT/INACTIVE are otherwise 404.
      */
     public ProductResponse getBySlug(String slug, boolean includeHidden) {
-        return toResponse(requireBySlug(slug, includeHidden));
+        if (includeHidden) {
+            return toResponse(requireBySlug(slug, true));
+        }
+        OptionalLong generation = cache.currentGeneration(CatalogCacheKeys.PRODUCT_SCOPE);
+        if (generation.isEmpty()) {
+            return toResponse(requireBySlug(slug, false));
+        }
+        String key = CatalogCacheKeys.productSlug(generation.getAsLong(), slug);
+        Optional<ProductResponse> cached = cache.get(key, PRODUCT_RESPONSE);
+        if (cached.isPresent()) {
+            return withStock(cached.get(), productStock(cached.get().productId()));
+        }
+        ProductResponse response = toResponse(requireBySlug(slug, false));
+        cache.put(key, withStock(response, null), CatalogCacheKeys.PRODUCT_DETAIL_TTL);
+        return response;
     }
 
     public ProductResponse create(ProductCreateRequest request) {
@@ -155,7 +220,9 @@ public class ProductService {
         // A freshly created product has no variants yet, so skip the price
         // lookup here: querying would auto-flush the changed natural id and
         // Hibernate rejects that before the transaction commits.
-        return toResponse(repo.save(entity), null);
+        ProductResponse response = toResponse(repo.save(entity), null);
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE, CatalogCacheKeys.VARIANT_SCOPE);
+        return response;
     }
 
     public ProductResponse update(String productId, ProductUpdateRequest request) {
@@ -177,7 +244,9 @@ public class ProductService {
                             "category not found: " + request.categoryId())));
         }
         // PATCH merge: null categoryId means "not provided", keep existing.
-        return toResponse(repo.save(entity));
+        ProductResponse response = toResponse(repo.save(entity));
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE, CatalogCacheKeys.VARIANT_SCOPE);
+        return response;
     }
 
     /**
@@ -207,13 +276,16 @@ public class ProductService {
         } else {
             entity.setCategory(null);
         }
-        return toResponse(repo.save(entity));
+        ProductResponse response = toResponse(repo.save(entity));
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE, CatalogCacheKeys.VARIANT_SCOPE);
+        return response;
     }
 
     public void delete(String productId) {
         Product entity = require(productId);
         entity.setStatus(ProductStatus.DELETED);
         repo.save(entity);
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE, CatalogCacheKeys.VARIANT_SCOPE);
     }
 
     private PageResponse<ProductResponse> toPageResponse(Page<Product> page) {
@@ -257,6 +329,53 @@ public class ProductService {
                 range == null ? null : range.minPrice(),
                 range == null ? null : range.maxPrice(),
                 range == null ? 0 : range.totalStock().intValue());
+    }
+
+    private int productStock(String productId) {
+        return variantRepo.findStockByProductId(productId)
+                .map(VariantRepository.ProductStockView::getTotalStock)
+                .filter(Objects::nonNull)
+                .map(Long::intValue)
+                .orElse(0);
+    }
+
+    private PageResponse<ProductResponse> scrubProductStock(PageResponse<ProductResponse> page) {
+        return newPageResponse(page, page.getContent().stream()
+                .map(response -> withStock(response, null))
+                .toList());
+    }
+
+    private PageResponse<ProductResponse> overlayProductStock(PageResponse<ProductResponse> page) {
+        List<String> productIds = page.getContent().stream()
+                .map(ProductResponse::productId)
+                .filter(Objects::nonNull)
+                .toList();
+        Map<String, Integer> stockByProduct = new HashMap<>();
+        if (!productIds.isEmpty()) {
+            for (VariantRepository.ProductStockView view
+                    : variantRepo.findStockByProductIdIn(productIds)) {
+                stockByProduct.put(view.getProductId(),
+                        view.getTotalStock() == null ? 0 : view.getTotalStock().intValue());
+            }
+        }
+        return newPageResponse(page, page.getContent().stream()
+                .map(response -> withStock(response,
+                        stockByProduct.getOrDefault(response.productId(), 0)))
+                .toList());
+    }
+
+    private static PageResponse<ProductResponse> newPageResponse(
+            PageResponse<ProductResponse> page, List<ProductResponse> content) {
+        return new PageResponse<>(content, page.getPage(), page.getSize(),
+                page.getTotalElements(), page.getTotalPages());
+    }
+
+    private static ProductResponse withStock(ProductResponse response, Integer stock) {
+        return new ProductResponse(response.productId(), response.slug(), response.name(),
+                response.description(), response.detailDescription(), response.thumbnail(),
+                response.thumbnailMediaId(), response.status(), response.categoryId(),
+                response.categoryName(), response.minPrice(), response.maxPrice(), stock,
+                response.createdAt(), response.updatedAt());
     }
 
     private Product require(String productId) {

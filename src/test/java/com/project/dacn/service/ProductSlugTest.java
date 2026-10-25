@@ -8,12 +8,14 @@ import com.project.dacn.dto.response.catalog.ProductResponse;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.mapper.catalog.CatalogMapperImpl;
 import com.project.dacn.repository.catalog.ProductRepository;
+import com.project.dacn.service.catalog.CatalogCache;
 import com.project.dacn.service.catalog.ProductService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -22,6 +24,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @ActiveProfiles("test")
 @Import({ProductService.class, CatalogMapperImpl.class})
 class ProductSlugTest {
+
+    @MockitoBean
+    CatalogCache cache;
 
     @Autowired
     private ProductService service;

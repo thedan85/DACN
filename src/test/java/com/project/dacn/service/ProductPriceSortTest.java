@@ -8,6 +8,7 @@ import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.mapper.catalog.CatalogMapperImpl;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
+import com.project.dacn.service.catalog.CatalogCache;
 import com.project.dacn.service.catalog.ProductService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +18,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -28,6 +30,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @ActiveProfiles("test")
 @Import({ProductService.class, CatalogMapperImpl.class})
 class ProductPriceSortTest {
+
+    @MockitoBean
+    CatalogCache cache;
 
     @Autowired
     private ProductService service;

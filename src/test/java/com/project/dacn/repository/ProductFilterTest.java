@@ -9,6 +9,7 @@ import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.repository.catalog.CategoryRepository;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
+import com.project.dacn.service.catalog.CatalogCache;
 import com.project.dacn.service.catalog.ProductService;
 import com.project.dacn.dto.request.catalog.ProductFilter;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.math.BigDecimal;
 
@@ -26,6 +28,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 @Import({ProductService.class, com.project.dacn.mapper.catalog.CatalogMapperImpl.class})
 class ProductFilterTest {
+
+    @MockitoBean
+    CatalogCache cache;
 
     @Autowired
     ProductService service;
