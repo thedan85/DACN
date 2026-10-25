@@ -10,6 +10,8 @@ import com.project.dacn.common.exception.UserLockedException;
 import com.project.dacn.dto.request.auth.LoginRequest;
 import com.project.dacn.dto.request.auth.RefreshRequest;
 import com.project.dacn.dto.request.auth.RegisterRequest;
+import com.project.dacn.dto.request.auth.ChangePasswordRequest;
+import com.project.dacn.dto.request.auth.ProfileUpdateRequest;
 import com.project.dacn.dto.response.auth.LoginResponse;
 import com.project.dacn.dto.response.auth.MeResponse;
 import com.project.dacn.dto.response.auth.RefreshResponse;
@@ -31,6 +33,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -234,13 +237,78 @@ public class AuthService {
                 .map(rp -> rp.getPermission().getCode())
                 .toList();
 
+        Customer customer = customerRepository.findByUser_UserId(user.getUserId()).orElse(null);
+
+        String name = customer != null ? customer.getName() : user.getEmail();
+        String phone = customer != null ? customer.getPhone() : null;
+        String address = customer != null ? customer.getAddress() : null;
+
         return new MeResponse(
                 user.getUserId(),
                 user.getEmail(),
+                name,
+                phone,
+                address,
                 user.getRole().getCode(),
                 user.getRole().getName(),
                 permissions
         );
+    }
+
+    public MeResponse updateProfile(ProfileUpdateRequest request) {
+        User user = currentUser();
+        Customer customer = customerRepository.findByUser_UserId(user.getUserId())
+                .orElseThrow(() -> new AccessDeniedException("customer profile not found"));
+
+        customer.setName(request.name().trim());
+        customer.setPhone(request.phone().trim());
+        customer.setAddress(
+                request.address() == null || request.address().isBlank()
+                        ? null
+                        : request.address().trim());
+        customerRepository.save(customer);
+
+        return me();
+    }
+
+    public void changePassword(ChangePasswordRequest request, String currentRefreshToken) {
+        User user = currentUser();
+
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new InvalidPasswordException();
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
+
+        // Keep the session that performed the change; drop every other device.
+        // Deleting (not revoking) avoids the replay detector revoking the
+        // surviving session when an old device retries its refresh token.
+        String keepTokenId = currentRefreshTokenId(currentRefreshToken);
+        List<RefreshToken> tokens = refreshTokenRepository.findByUser_UserId(user.getUserId());
+        List<RefreshToken> otherTokens = tokens.stream()
+                .filter(token -> !token.getTokenId().equals(keepTokenId))
+                .toList();
+        refreshTokenRepository.deleteAll(otherTokens);
+    }
+
+    private User currentUser() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return userRepository.findByEmail(auth.getName())
+                .orElseThrow(() -> new ResourceNotFoundException("user not found"));
+    }
+
+    private String currentRefreshTokenId(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return null;
+        }
+        try {
+            // Refresh tokens carry a jti claim; access tokens do not.
+            String tokenId = jwtService.extractJti(refreshToken);
+            return tokenId == null || tokenId.isBlank() ? null : tokenId;
+        } catch (JwtException | IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private String hashToken(String token) {

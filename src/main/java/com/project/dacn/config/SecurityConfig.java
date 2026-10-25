@@ -6,6 +6,7 @@ import com.project.dacn.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -37,6 +38,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // /me requires authentication (must come BEFORE /auth/** permitAll)
                         .requestMatchers("/api/v1/auth/me").authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/auth/me").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/change-password").authenticated()
                         // Auth endpoints public
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         // Swagger/actuator public
