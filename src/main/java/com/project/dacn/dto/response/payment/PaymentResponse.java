@@ -1,4 +1,4 @@
-package com.project.dacn.dto.response.order;
+package com.project.dacn.dto.response.payment;
 
 import com.project.dacn.common.constant.PaymentMethod;
 import com.project.dacn.common.constant.PaymentStatus;

@@ -1,21 +1,34 @@
 package com.project.dacn.common.exception;
 
 import com.project.dacn.common.response.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @Autowired
+    private MessageSource messageSource;
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiResponse<?>> handleNotFound(ResourceNotFoundException ex) {
@@ -36,8 +49,20 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(409, "resource already exists or is still referenced", null));
     }
 
+    @ExceptionHandler(DuplicateResourceException.class)
+    public ResponseEntity<ApiResponse<?>> handleDuplicate(DuplicateResourceException ex) {
+        return ResponseEntity.status(409)
+                .body(ApiResponse.of(409, ex.getMessage(), null));
+    }
+
     @ExceptionHandler(OutOfStockException.class)
     public ResponseEntity<ApiResponse<?>> handleOutOfStock(OutOfStockException ex) {
+        return ResponseEntity.status(409)
+                .body(ApiResponse.of(409, ex.getMessage(), null));
+    }
+
+    @ExceptionHandler(InvalidOrderStateException.class)
+    public ResponseEntity<ApiResponse<?>> handleInvalidOrderState(InvalidOrderStateException ex) {
         return ResponseEntity.status(409)
                 .body(ApiResponse.of(409, ex.getMessage(), null));
     }
@@ -67,6 +92,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(400, ex.getMessage(), null));
     }
 
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<?>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.of(400, "invalid value for " + ex.getName(), null));
+    }
+
     @ExceptionHandler(com.project.dacn.integration.cloudinary.CloudinaryException.class)
     public ResponseEntity<ApiResponse<?>> handleCloudinary(
             com.project.dacn.integration.cloudinary.CloudinaryException ex) {
@@ -92,6 +123,84 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<?>> handleNotReadable(HttpMessageNotReadableException ex) {
         return ResponseEntity.badRequest()
                 .body(ApiResponse.of(400, "malformed request body", null));
+    }
+
+    // Auth-specific exceptions
+    @ExceptionHandler(EmailAlreadyExistsException.class)
+    public ResponseEntity<ApiResponse<?>> handleEmailExists(EmailAlreadyExistsException ex) {
+        String message = messageSource.getMessage("error.email.exists", null, 
+                "Email already exists", LocaleContextHolder.getLocale());
+        return ResponseEntity.status(409)
+                .body(ApiResponse.of(409, message, null));
+    }
+
+    @ExceptionHandler(AccountNotFoundException.class)
+    public ResponseEntity<ApiResponse<?>> handleAccountNotFound(AccountNotFoundException ex) {
+        String message = messageSource.getMessage("error.account.not.found", null,
+                "The account does not exist", LocaleContextHolder.getLocale());
+        return ResponseEntity.status(404)
+                .body(ApiResponse.of(404, message, null));
+    }
+
+    @ExceptionHandler(InvalidPasswordException.class)
+    public ResponseEntity<ApiResponse<?>> handleInvalidPassword(InvalidPasswordException ex) {
+        String message = messageSource.getMessage("error.password.invalid", null,
+                "Invalid password", LocaleContextHolder.getLocale());
+        return ResponseEntity.status(401)
+                .body(ApiResponse.of(401, message, null));
+    }
+
+    @ExceptionHandler(UserLockedException.class)
+    public ResponseEntity<ApiResponse<?>> handleUserLocked(UserLockedException ex) {
+        String message = messageSource.getMessage("error.user.locked", null,
+                "User account is locked", LocaleContextHolder.getLocale());
+        return ResponseEntity.status(403)
+                .body(ApiResponse.of(403, message, null));
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ApiResponse<?>> handleRateLimit(RateLimitExceededException ex) {
+        return ResponseEntity.status(429)
+                .body(ApiResponse.of(429, ex.getMessage(), null));
+    }
+
+    @ExceptionHandler(InvalidTokenException.class)
+    public ResponseEntity<ApiResponse<?>> handleInvalidToken(InvalidTokenException ex) {
+        String message = messageSource.getMessage("error.token.invalid", null,
+                "Invalid or expired token", LocaleContextHolder.getLocale());
+        return ResponseEntity.status(401)
+                .body(ApiResponse.of(401, message, null));
+    }
+
+    // Security exceptions - prevent @PreAuthorize from becoming 500
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiResponse<?>> handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
+        // Distinguish between anonymous (401) and authenticated but lacking permission (403)
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean isAnonymous = auth == null || !auth.isAuthenticated() 
+                || auth instanceof AnonymousAuthenticationToken;
+        
+        if (isAnonymous) {
+            // User not authenticated -> 401
+            String message = messageSource.getMessage("error.unauthorized", null,
+                    "Unauthorized", LocaleContextHolder.getLocale());
+            return ResponseEntity.status(401)
+                    .body(ApiResponse.of(401, message, null));
+        } else {
+            // User authenticated but lacks permission -> 403
+            String message = messageSource.getMessage("error.forbidden", null,
+                    "Access denied", LocaleContextHolder.getLocale());
+            return ResponseEntity.status(403)
+                    .body(ApiResponse.of(403, message, null));
+        }
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ApiResponse<?>> handleAuthentication(AuthenticationException ex) {
+        String message = messageSource.getMessage("error.unauthorized", null,
+                "Unauthorized", LocaleContextHolder.getLocale());
+        return ResponseEntity.status(401)
+                .body(ApiResponse.of(401, message, null));
     }
 
     @ExceptionHandler(Exception.class)

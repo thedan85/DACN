@@ -1,5 +1,6 @@
 package com.project.dacn.entity.catalog;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -35,7 +36,7 @@ public class Category extends BaseEntity {
     private String slug;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "parent_category_id", referencedColumnName = "category_id",
+    @JoinColumn(name = "parent_category_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_categories_parent"))
     private Category parent;
 
@@ -51,5 +52,15 @@ public class Category extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.categoryId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "CAT";
+    }
+
+    @Override
+    protected String buildBusinessId() {
+        return BusinessId.of("CAT", slug);
     }
 }

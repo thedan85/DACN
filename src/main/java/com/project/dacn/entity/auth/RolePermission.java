@@ -1,5 +1,6 @@
 package com.project.dacn.entity.auth;
 
+import com.project.dacn.common.util.BusinessId;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -19,7 +20,6 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.NaturalId;
 
 import java.time.Instant;
-import java.util.UUID;
 
 @Getter
 @Setter
@@ -39,12 +39,12 @@ public class RolePermission {
     private String rolePermissionId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "role_id", referencedColumnName = "role_id",
+    @JoinColumn(name = "role_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_role_permissions_role"))
     private Role role;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "permission_id", referencedColumnName = "permission_id",
+    @JoinColumn(name = "permission_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_role_permissions_permission"))
     private Permission permission;
 
@@ -61,7 +61,7 @@ public class RolePermission {
     @jakarta.persistence.PrePersist
     protected void generateBusinessId() {
         if (rolePermissionId == null) {
-            rolePermissionId = UUID.randomUUID().toString();
+            rolePermissionId = BusinessId.random("RP");
         }
     }
 }

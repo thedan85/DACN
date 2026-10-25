@@ -4,6 +4,7 @@ import com.project.dacn.dto.response.cart.CartDetailResponse;
 import com.project.dacn.dto.response.cart.CartItemResponse;
 import com.project.dacn.entity.cart.Cart;
 import com.project.dacn.entity.cart.CartItem;
+import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.identity.Customer;
@@ -32,9 +33,9 @@ class CartMapperTest {
 
     @Test
     void detailSumsTotalsNullSafe() {
-        CartItemResponse a = new CartItemResponse("i1", "c", "v1", "S1", 2,
+        CartItemResponse a = new CartItemResponse(1L, "c", 1L, "S1", 2,
                 new BigDecimal("10.00"), new BigDecimal("20.00"), "p", "P", null, 5, null, null);
-        CartItemResponse b = new CartItemResponse("i2", "c", "v2", "S2", 1,
+        CartItemResponse b = new CartItemResponse(2L, "c", 2L, "S2", 1,
                 null, null, "p", "P", null, 3, null, null);
         Cart cart = Cart.builder().customer(Customer.builder().name("C").build()).build();
         CartDetailResponse detail = mapper.toDetail(cart, List.of(a, b));
@@ -43,7 +44,8 @@ class CartMapperTest {
     }
 
     private CartItem item(BigDecimal price, int qty, int stock) {
-        Product product = Product.builder().name("P").description("d").thumbnail("t").build();
+        Product product = Product.builder().name("P").description("d")
+                .thumbnail(Media.builder().url("t").build()).build();
         Variant variant = Variant.builder().product(product).sku("S1").price(price).stock(stock).build();
         Cart cart = Cart.builder().build();
         return CartItem.builder().cart(cart).variant(variant).quantity(qty).build();

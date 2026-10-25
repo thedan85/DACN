@@ -1,8 +1,10 @@
-package com.project.dacn.entity.order;
+package com.project.dacn.entity.payment;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import com.project.dacn.common.constant.PaymentMethod;
 import com.project.dacn.common.constant.PaymentStatus;
+import com.project.dacn.entity.order.Order;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -34,7 +36,7 @@ public class Payment extends BaseEntity {
     private String paymentId;
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "order_id", referencedColumnName = "order_id", unique = true,
+    @JoinColumn(name = "order_id", referencedColumnName = "id", unique = true,
             foreignKey = @ForeignKey(name = "fk_payments_order"))
     private Order order;
 
@@ -64,5 +66,17 @@ public class Payment extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.paymentId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "PAY";
+    }
+
+    @Override
+    protected String buildBusinessId() {
+        return order != null && order.getOrderId() != null
+                ? BusinessId.child("PAY", order.getOrderId())
+                : BusinessId.random("PAY");
     }
 }

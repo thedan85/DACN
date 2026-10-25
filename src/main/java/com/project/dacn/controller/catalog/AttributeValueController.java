@@ -10,6 +10,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -25,41 +26,45 @@ public class AttributeValueController {
 
     private final AttributeValueService service;
 
-    @GetMapping("/api/attribute-values")
+    @GetMapping("/api/v1/attribute-values")
     public ApiResponse<PageResponse<AttributeValueResponse>> list(@ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.list(pageable));
     }
 
-    @GetMapping("/api/attribute-values/{attributeValueId}")
+    @GetMapping("/api/v1/attribute-values/{attributeValueId}")
     public ApiResponse<AttributeValueResponse> get(@PathVariable String attributeValueId) {
         return ApiResponse.ok(service.get(attributeValueId));
     }
 
-    @GetMapping("/api/attributes/{attributeId}/values")
+    @GetMapping("/api/v1/attributes/{attributeId}/values")
     public ApiResponse<PageResponse<AttributeValueResponse>> listByAttribute(
             @PathVariable String attributeId, @ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.listByAttribute(attributeId, pageable));
     }
 
-    @PostMapping("/api/attribute-values")
+    @PostMapping("/api/v1/attribute-values")
+    @PreAuthorize("hasAuthority('attribute:create')")
     public ApiResponse<AttributeValueResponse> create(
             @Valid @RequestBody AttributeValueCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
-    @PutMapping("/api/attribute-values/{attributeValueId}")
+    @PutMapping("/api/v1/attribute-values/{attributeValueId}")
+    @PreAuthorize("hasAuthority('attribute:update')")
     public ApiResponse<AttributeValueResponse> replace(@PathVariable String attributeValueId,
             @Valid @RequestBody AttributeValueUpdateRequest request) {
         return ApiResponse.ok(service.replace(attributeValueId, request));
     }
 
-    @PatchMapping("/api/attribute-values/{attributeValueId}")
+    @PatchMapping("/api/v1/attribute-values/{attributeValueId}")
+    @PreAuthorize("hasAuthority('attribute:update')")
     public ApiResponse<AttributeValueResponse> patch(@PathVariable String attributeValueId,
             @Valid @RequestBody AttributeValueUpdateRequest request) {
         return ApiResponse.ok(service.update(attributeValueId, request));
     }
 
-    @DeleteMapping("/api/attribute-values/{attributeValueId}")
+    @DeleteMapping("/api/v1/attribute-values/{attributeValueId}")
+    @PreAuthorize("hasAuthority('attribute:delete')")
     public ApiResponse<Void> delete(@PathVariable String attributeValueId) {
         service.delete(attributeValueId);
         return ApiResponse.ok(null);

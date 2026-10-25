@@ -1,12 +1,12 @@
 package com.project.dacn.entity.catalog;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.JoinColumns;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
@@ -31,39 +31,18 @@ public class VariantAttributeValue extends BaseEntity {
     private String variantValueId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "variant_id", referencedColumnName = "variant_id",
+    @JoinColumn(name = "variant_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_variant_attribute_values_variant"))
     private Variant variant;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "attribute_id", referencedColumnName = "attribute_id")
+    @JoinColumn(name = "attribute_id", referencedColumnName = "id")
     private Attribute attribute;
 
-    @Column(name = "attribute_value_id", nullable = false)
-    private String attributeValueId;
-
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumns(value = {
-            @JoinColumn(name = "attribute_id", referencedColumnName = "attribute_id",
-                    insertable = false, updatable = false),
-            @JoinColumn(name = "attribute_value_id", referencedColumnName = "attribute_value_id",
-                    insertable = false, updatable = false,
-                    foreignKey = @ForeignKey(name = "fk_variant_attribute_values_attr_pair"))
-    })
+    @JoinColumn(name = "attribute_value_id", referencedColumnName = "id",
+            foreignKey = @ForeignKey(name = "fk_variant_attribute_values_attr_pair"))
     private AttributeValue attributeValue;
-
-    public void setAttributeValue(AttributeValue attributeValue) {
-        this.attributeValue = attributeValue;
-        this.attributeValueId = attributeValue != null ? attributeValue.getAttributeValueId() : null;
-    }
-
-    @jakarta.persistence.PrePersist
-    @jakarta.persistence.PreUpdate
-    private void syncAttributeValueId() {
-        if (attributeValue != null && attributeValue.getAttributeValueId() != null) {
-            this.attributeValueId = attributeValue.getAttributeValueId();
-        }
-    }
 
     @Override
     protected String getBusinessId() {
@@ -73,5 +52,23 @@ public class VariantAttributeValue extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.variantValueId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "VAV";
+    }
+
+    /**
+     * Matches the seeded IDs: {@code <variantId>-<attributeId>}, e.g.
+     * {@code devil-tetra-red-color}.
+     */
+    @Override
+    protected String buildBusinessId() {
+        if (variant != null && variant.getVariantId() != null
+                && attribute != null && attribute.getAttributeId() != null) {
+            return variant.getVariantId() + "-" + attribute.getAttributeId();
+        }
+        return BusinessId.randomToken();
     }
 }

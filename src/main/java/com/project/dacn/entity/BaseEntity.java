@@ -1,5 +1,6 @@
 package com.project.dacn.entity;
 
+import com.project.dacn.common.util.BusinessId;
 import jakarta.persistence.Column;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -14,7 +15,6 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
-import java.util.UUID;
 
 @Getter
 @Setter
@@ -35,14 +35,29 @@ public abstract class BaseEntity {
     @UpdateTimestamp
     protected Instant updatedAt;
 
-    protected abstract String getBusinessId();
+    protected String getBusinessId() {
+        return null;
+    }
 
-    protected abstract void setBusinessId(String businessId);
+    protected void setBusinessId(String businessId) {
+    }
+
+    protected String getBusinessIdPrefix() {
+        return null;
+    }
+
+    /**
+     * Default: {@code PREFIX_<8 hex>}. Entities with a unique natural key
+     * override this to produce a readable ID.
+     */
+    protected String buildBusinessId() {
+        return BusinessId.random(getBusinessIdPrefix());
+    }
 
     @PrePersist
     protected void generateBusinessId() {
-        if (getBusinessId() == null) {
-            setBusinessId(UUID.randomUUID().toString());
+        if (getBusinessId() == null && getBusinessIdPrefix() != null) {
+            setBusinessId(buildBusinessId());
         }
     }
 }

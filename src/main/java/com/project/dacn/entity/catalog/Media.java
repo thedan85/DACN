@@ -32,12 +32,12 @@ public class Media extends BaseEntity {
     private String url;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "product_id", referencedColumnName = "product_id",
+    @JoinColumn(name = "product_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_media_product"))
     private Product product;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "variant_id", referencedColumnName = "variant_id",
+    @JoinColumn(name = "variant_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_media_variant"))
     private Variant variant;
 
@@ -53,5 +53,10 @@ public class Media extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.mediaId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "MED";
     }
 }

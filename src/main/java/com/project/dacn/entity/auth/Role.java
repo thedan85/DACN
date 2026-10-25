@@ -1,5 +1,6 @@
 package com.project.dacn.entity.auth;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -49,5 +50,15 @@ public class Role extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.roleId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "ROLE";
+    }
+
+    @Override
+    protected String buildBusinessId() {
+        return BusinessId.of("ROLE", code);
     }
 }

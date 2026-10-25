@@ -29,12 +29,20 @@ spring:
 
 server:
   port: 8080
+  # Cloudflare tunnel terminates TLS; use X-Forwarded-* so Swagger/redirects
+  # generate https URLs instead of http ones.
+  forward-headers-strategy: framework
   servlet:
     multipart:
       max-file-size: 10MB
       # Slightly above max-file-size: a 10MB file plus multipart overhead
       # must still fit inside the request limit.
       max-request-size: 11MB
+
+jwt:
+  secret: ${JWT_SECRET:dev-secret-key-please-change-min-256-bits-hs256-algorithm-requires-this-length}
+  access-token-expiration-ms: 900000      # 15 minutes
+  refresh-token-expiration-ms: 604800000  # 7 days
 
 cloudinary:
   cloud-name: ${CLOUDINARY_CLOUD_NAME:}
@@ -47,9 +55,16 @@ payment:
     partner-code: ${MOMO_PARTNER_CODE:}
     access-key: ${MOMO_ACCESS_KEY:}
     secret-key: ${MOMO_SECRET_KEY:}
-    endpoint: ${MOMO_ENDPOINT:https://test-payment.momo.vn/v2/gateway/api/create}
-    redirect-url: ${MOMO_REDIRECT_URL:http://localhost:8080/api/webhooks/momo/return}
-    ipn-url: ${MOMO_IPN_URL:http://localhost:8080/api/webhooks/momo}
+    endpoint: ${MOMO_ENDPOINT:}
+    redirect-url: ${MOMO_REDIRECT_URL:}
+    ipn-url: ${MOMO_IPN_URL:}
+
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  auth:
+    # Set true in production (HTTPS). Local dev over http must stay false.
+    cookie-secure: ${AUTH_COOKIE_SECURE:false}
 
 shipping:
   ghtk:

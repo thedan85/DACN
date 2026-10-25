@@ -16,6 +16,7 @@ import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.mapper.cart.CartMapper;
 import com.project.dacn.mapper.order.OrderMapper;
+import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.cart.CartItemRepository;
@@ -25,7 +26,7 @@ import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
-import com.project.dacn.repository.order.PaymentRepository;
+import com.project.dacn.repository.payment.PaymentRepository;
 import com.project.dacn.service.cart.CartService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -66,6 +67,11 @@ class CartServiceTest {
         OrderMapper orderMapper() {
             return Mappers.getMapper(OrderMapper.class);
         }
+
+        @Bean
+        PaymentMapper paymentMapper() {
+            return Mappers.getMapper(PaymentMapper.class);
+        }
     }
 
     @Nested
@@ -97,27 +103,30 @@ class CartServiceTest {
 
         OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
 
+        PaymentMapper paymentMapper = Mappers.getMapper(PaymentMapper.class);
+
         CartService service;
 
         @BeforeEach
         void setUp() {
             service = new CartService(customerRepository, variantRepository,
                     cartRepository, cartItemRepository, mapper,
-                    orderRepository, orderItemRepository, paymentRepository, orderMapper);
+                    orderRepository, orderItemRepository, paymentRepository, orderMapper,
+                    paymentMapper);
         }
 
         @Test
         void addBumpsExistingQty() {
             givenCart();
             Variant v = variant(10);
-            when(variantRepository.findWithProductByVariantId("v")).thenReturn(Optional.of(v));
+            when(variantRepository.findWithProductById(20L)).thenReturn(Optional.of(v));
             CartItem existing = item(cart(customer()), v, 2);
-            when(cartItemRepository.findByCart_CartIdAndVariant_VariantId("cart-1", "v"))
+            when(cartItemRepository.findByCart_IdAndVariant_Id(10L, 20L))
                     .thenReturn(Optional.of(existing));
             when(cartItemRepository.save(any(CartItem.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
 
-            CartItemResponse result = service.addItem("cust", new CartItemAddRequest("v", 3));
+            CartItemResponse result = service.addItem(1L, new CartItemAddRequest(20L, 3));
 
             assertThat(result.quantity()).isEqualTo(5);
         }
@@ -127,10 +136,10 @@ class CartServiceTest {
             givenCart();
             Variant v = variant(10);
             CartItem existing = item(cart(customer()), v, 2);
-            when(cartItemRepository.findByCartItemId("item-1")).thenReturn(Optional.of(existing));
-            when(variantRepository.findWithProductByVariantId("v")).thenReturn(Optional.of(v));
+            when(cartItemRepository.findById(100L)).thenReturn(Optional.of(existing));
+            when(variantRepository.findWithProductById(20L)).thenReturn(Optional.of(v));
 
-            assertThatThrownBy(() -> service.setQuantity("cust", "item-1", new CartItemUpdateRequest(99)))
+            assertThatThrownBy(() -> service.setQuantity(1L, 100L, new CartItemUpdateRequest(99)))
                     .isInstanceOf(OutOfStockException.class);
         }
 
@@ -139,13 +148,13 @@ class CartServiceTest {
             givenCart();
             Product product = Product.builder().productId("p").name("P")
                     .description("d").status(ProductStatus.INACTIVE).build();
-            Variant stale = Variant.builder().variantId("v").sku("SKU-1")
+            Variant stale = Variant.builder().id(20L).variantId("v").sku("SKU-1")
                     .price(new BigDecimal("10.00")).stock(10).product(product).build();
             CartItem existing = item(cart(customer()), stale, 2);
-            when(cartItemRepository.findByCartItemId("item-1")).thenReturn(Optional.of(existing));
-            when(variantRepository.findWithProductByVariantId("v")).thenReturn(Optional.of(stale));
+            when(cartItemRepository.findById(100L)).thenReturn(Optional.of(existing));
+            when(variantRepository.findWithProductById(20L)).thenReturn(Optional.of(stale));
 
-            assertThatThrownBy(() -> service.setQuantity("cust", "item-1", new CartItemUpdateRequest(1)))
+            assertThatThrownBy(() -> service.setQuantity(1L, 100L, new CartItemUpdateRequest(1)))
                     .isInstanceOf(ResourceNotFoundException.class);
         }
 
@@ -154,10 +163,10 @@ class CartServiceTest {
             givenCart();
             Variant v = variant(10);
             CartItem existing = item(cart(customer()), v, 2);
-            when(cartItemRepository.findWithDetailsByCart_CartId("cart-1"))
+            when(cartItemRepository.findWithDetailsByCart_Id(10L))
                     .thenReturn(List.of(existing));
 
-            CartDetailResponse detail = service.getDetail("cust");
+            CartDetailResponse detail = service.getDetail(1L);
 
             assertThat(detail.totalQuantity()).isEqualTo(2);
             assertThat(detail.totalAmount()).isEqualByComparingTo(new BigDecimal("20.00"));
@@ -166,23 +175,23 @@ class CartServiceTest {
         @Test
         void otherCustomersItemThrows404() {
             givenCart();
-            Cart otherCart = Cart.builder().cartId("cart-2").customer(customer()).build();
-            CartItem foreign = CartItem.builder().cartItemId("item-9")
+            Cart otherCart = Cart.builder().id(20L).cartId("cart-2").customer(customer()).build();
+            CartItem foreign = CartItem.builder().id(999L).cartItemId("item-9")
                     .cart(otherCart).variant(variant(10)).quantity(1).build();
-            when(cartItemRepository.findByCartItemId("item-9")).thenReturn(Optional.of(foreign));
+            when(cartItemRepository.findById(999L)).thenReturn(Optional.of(foreign));
 
-            assertThatThrownBy(() -> service.removeItem("cust", "item-9"))
+            assertThatThrownBy(() -> service.removeItem(1L, 999L))
                     .isInstanceOf(ResourceNotFoundException.class);
         }
 
         @Test
         void softDeletedVariantThrows404() {
-            when(customerRepository.findByCustomerId("cust")).thenReturn(Optional.of(customer()));
+            when(customerRepository.findById(1L)).thenReturn(Optional.of(customer()));
             Variant v = variant(10);
             v.setDeleted(true);
-            when(variantRepository.findWithProductByVariantId("v")).thenReturn(Optional.of(v));
+            when(variantRepository.findWithProductById(20L)).thenReturn(Optional.of(v));
 
-            assertThatThrownBy(() -> service.addItem("cust", new CartItemAddRequest("v", 1)))
+            assertThatThrownBy(() -> service.addItem(1L, new CartItemAddRequest(20L, 1)))
                     .isInstanceOf(ResourceNotFoundException.class);
         }
 
@@ -190,26 +199,26 @@ class CartServiceTest {
         void concurrentInsertRaceMergesAsBump() {
             givenCart();
             Variant v = variant(10);
-            when(variantRepository.findWithProductByVariantId("v")).thenReturn(Optional.of(v));
+            when(variantRepository.findWithProductById(20L)).thenReturn(Optional.of(v));
             CartItem raced = item(cart(customer()), v, 2);
-            when(cartItemRepository.findByCart_CartIdAndVariant_VariantId("cart-1", "v"))
+            when(cartItemRepository.findByCart_IdAndVariant_Id(10L, 20L))
                     .thenReturn(Optional.empty())
                     .thenReturn(Optional.of(raced));
             when(cartItemRepository.save(any(CartItem.class)))
                     .thenThrow(new DataIntegrityViolationException("uq_cart_variant"))
                     .thenAnswer(inv -> inv.getArgument(0));
 
-            CartItemResponse result = service.addItem("cust", new CartItemAddRequest("v", 3));
+            CartItemResponse result = service.addItem(1L, new CartItemAddRequest(20L, 3));
 
             assertThat(result.quantity()).isEqualTo(2 + 3);
         }
 
         @Test
         void invalidVariantCreatesNoCart() {
-            when(customerRepository.findByCustomerId("cust")).thenReturn(Optional.of(customer()));
-            when(variantRepository.findWithProductByVariantId("gone")).thenReturn(Optional.empty());
+            when(customerRepository.findById(1L)).thenReturn(Optional.of(customer()));
+            when(variantRepository.findWithProductById(999L)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.addItem("cust", new CartItemAddRequest("gone", 1)))
+            assertThatThrownBy(() -> service.addItem(1L, new CartItemAddRequest(999L, 1)))
                     .isInstanceOf(ResourceNotFoundException.class);
             verify(cartRepository, never()).save(any(Cart.class));
         }
@@ -217,40 +226,40 @@ class CartServiceTest {
         @Test
         void crossCartRemoveCreatesNoCart() {
             givenCart();
-            Cart otherCart = Cart.builder().cartId("cart-2").customer(customer()).build();
-            CartItem foreign = CartItem.builder().cartItemId("item-9")
+            Cart otherCart = Cart.builder().id(20L).cartId("cart-2").customer(customer()).build();
+            CartItem foreign = CartItem.builder().id(999L).cartItemId("item-9")
                     .cart(otherCart).variant(variant(10)).quantity(1).build();
-            when(cartItemRepository.findByCartItemId("item-9")).thenReturn(Optional.of(foreign));
+            when(cartItemRepository.findById(999L)).thenReturn(Optional.of(foreign));
 
-            assertThatThrownBy(() -> service.removeItem("cust", "item-9"))
+            assertThatThrownBy(() -> service.removeItem(1L, 999L))
                     .isInstanceOf(ResourceNotFoundException.class);
             verify(cartRepository, never()).save(any(Cart.class));
         }
 
         private void givenCart() {
             Customer c = customer();
-            when(customerRepository.findByCustomerId("cust")).thenReturn(Optional.of(c));
-            when(cartRepository.findByCustomer_CustomerId("cust"))
+            when(customerRepository.findById(1L)).thenReturn(Optional.of(c));
+            when(cartRepository.findByCustomer_Id(1L))
                     .thenReturn(Optional.of(cart(c)));
         }
 
         private Customer customer() {
-            return Customer.builder().customerId("cust").name("C").phone("090").build();
+            return Customer.builder().id(1L).customerId("cust").name("C").phone("090").build();
         }
 
         private Cart cart(Customer c) {
-            return Cart.builder().cartId("cart-1").customer(c).build();
+            return Cart.builder().id(10L).cartId("cart-1").customer(c).build();
         }
 
         private Variant variant(int stock) {
             Product product = Product.builder().productId("p").name("P")
                     .description("d").status(ProductStatus.ACTIVE).build();
-            return Variant.builder().variantId("v").sku("SKU-1")
+            return Variant.builder().id(20L).variantId("v").sku("SKU-1")
                     .price(new BigDecimal("10.00")).stock(stock).product(product).build();
         }
 
         private CartItem item(Cart cart, Variant variant, int qty) {
-            return CartItem.builder().cartItemId("item-1")
+            return CartItem.builder().id(100L).cartItemId("item-1")
                     .cart(cart).variant(variant).quantity(qty).build();
         }
     }
@@ -299,7 +308,7 @@ class CartServiceTest {
             cartItemRepository.save(CartItem.builder()
                     .cart(cart).variant(variant).quantity(2).build());
 
-            CartDetailResponse detail = service.getDetail(customer.getCustomerId());
+            CartDetailResponse detail = service.getDetail(customer.getId());
 
             assertThat(detail.items()).hasSize(1);
             assertThat(detail.totalQuantity()).isEqualTo(2);

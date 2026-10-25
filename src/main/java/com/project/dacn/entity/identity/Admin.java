@@ -1,5 +1,6 @@
 package com.project.dacn.entity.identity;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.auth.User;
 import com.project.dacn.entity.BaseEntity;
 import com.project.dacn.common.constant.AdminStatus;
@@ -31,7 +32,7 @@ public class Admin extends BaseEntity {
     private String adminId;
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", referencedColumnName = "user_id", unique = true,
+    @JoinColumn(name = "user_id", referencedColumnName = "id", unique = true,
             foreignKey = @ForeignKey(name = "fk_admins_user"))
     private User user;
 
@@ -51,5 +52,17 @@ public class Admin extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.adminId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "ADM";
+    }
+
+    @Override
+    protected String buildBusinessId() {
+        return user != null && user.getEmail() != null
+                ? BusinessId.of("ADM", user.getEmail())
+                : BusinessId.random("ADM");
     }
 }

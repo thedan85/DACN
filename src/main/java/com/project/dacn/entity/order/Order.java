@@ -33,7 +33,7 @@ public class Order extends BaseEntity {
     private String orderId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "customer_id", referencedColumnName = "customer_id",
+    @JoinColumn(name = "customer_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_orders_customer"))
     private Customer customer;
 
@@ -62,5 +62,10 @@ public class Order extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.orderId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "ORD";
     }
 }

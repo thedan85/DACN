@@ -61,13 +61,13 @@ class CartRepositoryTest {
         Cart cart = seedCartWithOneItem();
         Variant variant = variantRepository.findBySku("REPO-SKU-1").orElseThrow();
         assertThat(cartItemRepository
-                .findByCart_CartIdAndVariant_VariantId(cart.getCartId(), variant.getVariantId())).isPresent();
+                .findByCart_IdAndVariant_Id(cart.getId(), variant.getId())).isPresent();
     }
 
     @Test
     void findWithDetailsFetchesVariantAndProduct() {
         Cart cart = seedCartWithOneItem();
-        List<CartItem> items = cartItemRepository.findWithDetailsByCart_CartId(cart.getCartId());
+        List<CartItem> items = cartItemRepository.findWithDetailsByCart_Id(cart.getId());
         assertThat(items).hasSize(1);
         assertThat(items.get(0).getVariant().getPrice()).isEqualByComparingTo(new BigDecimal("10.00"));
         assertThat(items.get(0).getVariant().getProduct().getName()).isEqualTo("P");
@@ -76,8 +76,8 @@ class CartRepositoryTest {
     @Test
     void deleteByCartIdRemovesAllRows() {
         Cart cart = seedCartWithOneItem();
-        cartItemRepository.deleteByCart_CartId(cart.getCartId());
-        assertThat(cartItemRepository.findByCart_CartId(cart.getCartId())).isEmpty();
+        cartItemRepository.deleteByCart_Id(cart.getId());
+        assertThat(cartItemRepository.findByCart_Id(cart.getId())).isEmpty();
     }
 
     @Test

@@ -35,17 +35,17 @@ public class Review extends BaseEntity {
     private String reviewId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "variant_id", referencedColumnName = "variant_id",
+    @JoinColumn(name = "variant_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_reviews_variant"))
     private Variant variant;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "customer_id", referencedColumnName = "customer_id",
+    @JoinColumn(name = "customer_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_reviews_customer"))
     private Customer customer;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "order_item_id", referencedColumnName = "order_item_id",
+    @JoinColumn(name = "order_item_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_reviews_order_item"))
     private OrderItem orderItem;
 
@@ -63,5 +63,10 @@ public class Review extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.reviewId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "REV";
     }
 }

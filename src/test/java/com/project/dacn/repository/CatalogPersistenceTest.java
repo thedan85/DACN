@@ -23,6 +23,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -69,11 +70,13 @@ class CatalogPersistenceTest {
 
         VariantAttributeValue vav = variantAttributeValueRepository.save(VariantAttributeValue.builder()
                 .variant(variant).attribute(color).attributeValue(red).build());
-        assertThat(vav.getVariantValueId()).isNotNull();
+        assertThat(vav.getVariantValueId())
+                .isEqualTo(variant.getVariantId() + "-" + color.getAttributeId());
 
         ProductAttributeValue pav = productAttributeValueRepository.save(ProductAttributeValue.builder()
                 .product(product).attribute(color).attributeValue(red).build());
-        assertThat(pav.getProductValueId()).isNotNull();
+        assertThat(pav.getProductValueId())
+                .isEqualTo(product.getProductId() + "-" + color.getAttributeId());
 
         Media media = mediaRepository.save(Media.builder()
                 .url("http://img/1.jpg").variant(variant).build());
@@ -96,6 +99,26 @@ class CatalogPersistenceTest {
         assertThatThrownBy(() -> variantRepository.saveAndFlush(Variant.builder()
                 .product(p).sku("SKU-1").price(BigDecimal.ONE).stock(1).build()))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void priceRangeGroupsActiveVariantsOnly() {
+        Product product = productRepository.save(Product.builder()
+                .name("Price Range").description("desc").build());
+
+        variantRepository.save(Variant.builder().product(product).sku("PRICE-1")
+                .price(new BigDecimal("179000")).stock(1).build());
+        variantRepository.save(Variant.builder().product(product).sku("PRICE-2")
+                .price(new BigDecimal("199000")).stock(1).build());
+        variantRepository.save(Variant.builder().product(product).sku("PRICE-DELETED")
+                .price(new BigDecimal("99000")).stock(1).deleted(true).build());
+
+        List<com.project.dacn.repository.catalog.ProductPriceRange> ranges =
+                variantRepository.findPriceRangesByProductIds(List.of(product.getId()));
+
+        assertThat(ranges).hasSize(1);
+        assertThat(ranges.get(0).minPrice()).isEqualByComparingTo("179000");
+        assertThat(ranges.get(0).maxPrice()).isEqualByComparingTo("199000");
     }
 
     @Test

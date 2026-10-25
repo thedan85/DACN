@@ -15,6 +15,7 @@ public interface RoleMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "roleId", ignore = true)
+    @Mapping(target = "deleted", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     Role toEntity(RoleCreateRequest request);

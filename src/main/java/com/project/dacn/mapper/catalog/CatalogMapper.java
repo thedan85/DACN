@@ -37,6 +37,8 @@ import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 
+import java.math.BigDecimal;
+
 @Mapper(componentModel = "spring")
 public interface CatalogMapper {
 
@@ -56,6 +58,7 @@ public interface CatalogMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "categoryId", ignore = true)
     @Mapping(target = "parent", ignore = true)
+    @Mapping(target = "deleted", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     void updateCategory(CategoryUpdateRequest request, @MappingTarget Category category);
@@ -63,20 +66,31 @@ public interface CatalogMapper {
     // ---- Product ----
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "productId", ignore = true)
+    @Mapping(target = "slug", ignore = true)
     @Mapping(target = "category", ignore = true)
     @Mapping(target = "status", constant = "ACTIVE")
+    @Mapping(target = "thumbnail", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     Product toProduct(ProductCreateRequest request);
 
-    @Mapping(source = "category.categoryId", target = "categoryId")
-    @Mapping(source = "category.name", target = "categoryName")
-    ProductResponse toProductResponse(Product product);
+    @Mapping(source = "product.category.categoryId", target = "categoryId")
+    @Mapping(source = "product.category.name", target = "categoryName")
+    @Mapping(source = "product.thumbnail.url", target = "thumbnail")
+    @Mapping(source = "product.thumbnail.mediaId", target = "thumbnailMediaId")
+    @Mapping(source = "minPrice", target = "minPrice")
+    @Mapping(source = "maxPrice", target = "maxPrice")
+    @Mapping(source = "stock", target = "stock")
+    ProductResponse toProductResponse(Product product, BigDecimal minPrice, BigDecimal maxPrice,
+            Integer stock);
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "productId", ignore = true)
+    @Mapping(target = "slug", ignore = true)
     @Mapping(target = "category", ignore = true)
+    @Mapping(target = "thumbnail", ignore = true)
+    @Mapping(target = "status", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     void updateProduct(ProductUpdateRequest request, @MappingTarget Product product);
@@ -94,6 +108,7 @@ public interface CatalogMapper {
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "attributeId", ignore = true)
+    @Mapping(target = "deleted", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     void updateAttribute(AttributeUpdateRequest request, @MappingTarget Attribute attribute);
@@ -143,6 +158,7 @@ public interface CatalogMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "variantId", ignore = true)
     @Mapping(target = "product", ignore = true)
+    @Mapping(target = "deleted", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     void updateVariant(VariantUpdateRequest request, @MappingTarget Variant variant);
@@ -175,6 +191,7 @@ public interface CatalogMapper {
     @Mapping(target = "mediaId", ignore = true)
     @Mapping(target = "product", ignore = true)
     @Mapping(target = "variant", ignore = true)
+    @Mapping(target = "deleted", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     void updateMedia(MediaUpdateRequest request, @MappingTarget Media media);
@@ -185,7 +202,6 @@ public interface CatalogMapper {
     @Mapping(target = "variant", ignore = true)
     @Mapping(target = "attribute", ignore = true)
     @Mapping(target = "attributeValue", ignore = true)
-    @Mapping(target = "attributeValueId", source = "attributeValueId")
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     VariantAttributeValue toVariantAttributeValue(VariantAttributeValueCreateRequest request);
@@ -202,7 +218,6 @@ public interface CatalogMapper {
     @Mapping(target = "product", ignore = true)
     @Mapping(target = "attribute", ignore = true)
     @Mapping(target = "attributeValue", ignore = true)
-    @Mapping(target = "attributeValueId", source = "attributeValueId")
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
     ProductAttributeValue toProductAttributeValue(ProductAttributeValueCreateRequest request);

@@ -1,5 +1,6 @@
 package com.project.dacn.entity.catalog;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -31,7 +32,7 @@ public class AttributeValue extends BaseEntity {
     private String attributeValueId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "attribute_id", referencedColumnName = "attribute_id",
+    @JoinColumn(name = "attribute_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_attribute_values_attribute"))
     private Attribute attribute;
 
@@ -46,5 +47,16 @@ public class AttributeValue extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.attributeValueId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "AV";
+    }
+
+    @Override
+    protected String buildBusinessId() {
+        String attributeName = attribute != null ? attribute.getName() : null;
+        return BusinessId.of("AV", attributeName, value);
     }
 }

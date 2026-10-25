@@ -1,5 +1,6 @@
 package com.project.dacn.entity.identity;
 
+import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.auth.User;
 import com.project.dacn.entity.BaseEntity;
 import jakarta.persistence.Column;
@@ -28,7 +29,7 @@ public class Customer extends BaseEntity {
     private String customerId;
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", referencedColumnName = "user_id", unique = true,
+    @JoinColumn(name = "user_id", referencedColumnName = "id", unique = true,
             foreignKey = @ForeignKey(name = "fk_customers_user"))
     private User user;
 
@@ -49,5 +50,17 @@ public class Customer extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.customerId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "CUS";
+    }
+
+    @Override
+    protected String buildBusinessId() {
+        return user != null && user.getEmail() != null
+                ? BusinessId.of("CUS", user.getEmail())
+                : BusinessId.random("CUS");
     }
 }

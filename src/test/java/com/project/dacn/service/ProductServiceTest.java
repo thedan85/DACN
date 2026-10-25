@@ -4,11 +4,16 @@ import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.catalog.ProductCreateRequest;
+import com.project.dacn.dto.request.catalog.ProductUpdateRequest;
 import com.project.dacn.dto.response.catalog.ProductResponse;
+import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.mapper.catalog.CatalogMapper;
 import com.project.dacn.repository.catalog.CategoryRepository;
+import com.project.dacn.repository.catalog.MediaRepository;
+import com.project.dacn.repository.catalog.ProductPriceRange;
 import com.project.dacn.repository.catalog.ProductRepository;
+import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.service.catalog.ProductService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -19,6 +24,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -38,6 +44,12 @@ class ProductServiceTest {
     CategoryRepository categoryRepo;
 
     @Mock
+    VariantRepository variantRepo;
+
+    @Mock
+    MediaRepository mediaRepo;
+
+    @Mock
     CatalogMapper mapper;
 
     @InjectMocks
@@ -45,7 +57,7 @@ class ProductServiceTest {
 
     @Test
     void deleteSetsStatusDeleted() {
-        Product p = Product.builder().productId("p").name("P").description("d").build();
+        Product p = Product.builder().productId("p").slug("p").name("P").description("d").build();
         when(repo.findByProductId("p")).thenReturn(Optional.of(p));
         service.delete("p");
         assertThat(p.getStatus()).isEqualTo(ProductStatus.DELETED);
@@ -55,26 +67,141 @@ class ProductServiceTest {
     void createWithMissingCategoryThrowsNotFound() {
         when(categoryRepo.findByCategoryId("gone")).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.create(
-                new ProductCreateRequest("P", "d", null, null, "gone")))
+                new ProductCreateRequest("P", "d", null, "gone", null, null)))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
     void getMissingThrowsNotFound() {
-        when(repo.findByProductId("nope")).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.get("nope")).isInstanceOf(ResourceNotFoundException.class);
+        when(repo.findBySlugIgnoreCase("nope")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.getBySlug("nope")).isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
-    void listReturnsPageResponse() {
-        Product p = Product.builder().productId("p").name("P").description("d").build();
+    void getDraftProductHidesIt() {
+        Product p = product(1L);
+        p.setStatus(ProductStatus.DRAFT);
+        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
+
+        assertThatThrownBy(() -> service.getBySlug("ember-tetra"))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void getDraftProductVisibleToCatalogManager() {
+        Product p = product(1L);
+        p.setStatus(ProductStatus.DRAFT);
+        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
+        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
+        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(response(null, null, 0));
+
+        ProductResponse result = service.getBySlug("ember-tetra", true);
+
+        assertThat(result.name()).isEqualTo("P");
+    }
+
+    @Test
+    void listReturnsPageResponseWithoutPricesWhenProductHasNoVariants() {
+        Product p = product(1L);
         Page<Product> page = new PageImpl<>(List.of(p), Pageable.unpaged(), 1);
-        when(repo.findByStatusNot(any(ProductStatus.class), any(Pageable.class))).thenReturn(page);
-        when(mapper.toProductResponse(p)).thenReturn(
-                new ProductResponse("p", "P", "d", null, null, null, null, null, null, null));
+        when(repo.findByStatus(ProductStatus.ACTIVE, Pageable.unpaged())).thenReturn(page);
+        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
+        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(response(null, null, 0));
+
         PageResponse<ProductResponse> result = service.list(Pageable.unpaged());
+
         assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).minPrice()).isNull();
+        assertThat(result.getContent().get(0).maxPrice()).isNull();
+        assertThat(result.getContent().get(0).stock()).isZero();
         assertThat(result.getTotalElements()).isEqualTo(1);
-        verify(repo).findByStatusNot(any(ProductStatus.class), any(Pageable.class));
+        verify(repo).findByStatus(ProductStatus.ACTIVE, Pageable.unpaged());
+    }
+
+    @Test
+    void listIncludesMinAndMaxPriceFromVariants() {
+        Product p = product(1L);
+        Page<Product> page = new PageImpl<>(List.of(p), Pageable.unpaged(), 1);
+        ProductPriceRange range = new ProductPriceRange(
+                1L, new BigDecimal("179000"), new BigDecimal("199000"), 30L);
+        when(repo.findByStatus(ProductStatus.ACTIVE, Pageable.unpaged())).thenReturn(page);
+        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of(range));
+        when(mapper.toProductResponse(p, range.minPrice(), range.maxPrice(), 30))
+                .thenReturn(response(range.minPrice(), range.maxPrice(), 30));
+
+        PageResponse<ProductResponse> result = service.list(Pageable.unpaged());
+
+        assertThat(result.getContent().get(0).minPrice()).isEqualByComparingTo("179000");
+        assertThat(result.getContent().get(0).maxPrice()).isEqualByComparingTo("199000");
+        assertThat(result.getContent().get(0).stock()).isEqualTo(30);
+    }
+
+    @Test
+    void getIncludesMinAndMaxPriceFromVariants() {
+        Product p = product(1L);
+        ProductPriceRange range = new ProductPriceRange(
+                1L, new BigDecimal("179000"), new BigDecimal("199000"), 30L);
+        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
+        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of(range));
+        when(mapper.toProductResponse(p, range.minPrice(), range.maxPrice(), 30))
+                .thenReturn(response(range.minPrice(), range.maxPrice(), 30));
+
+        ProductResponse result = service.getBySlug("ember-tetra");
+
+        assertThat(result.minPrice()).isEqualByComparingTo("179000");
+        assertThat(result.maxPrice()).isEqualByComparingTo("199000");
+        assertThat(result.stock()).isEqualTo(30);
+    }
+
+    @Test
+    void updateAssignsOwnedMediaAsThumbnail() {
+        Product p = product(1L);
+        Media media = Media.builder().mediaId("MED_1").product(p).build();
+        when(repo.findByProductId("PRD_1")).thenReturn(Optional.of(p));
+        when(mediaRepo.findByMediaId("MED_1")).thenReturn(Optional.of(media));
+        when(repo.save(p)).thenReturn(p);
+        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
+
+        service.update("PRD_1", new ProductUpdateRequest(null, null, null, "MED_1", null, null, null));
+
+        assertThat(p.getThumbnail()).isSameAs(media);
+    }
+
+    @Test
+    void updateRejectsMediaOwnedByAnotherProduct() {
+        Product p = product(1L);
+        Media foreign = Media.builder().mediaId("MED_x").product(product(2L)).build();
+        when(repo.findByProductId("PRD_1")).thenReturn(Optional.of(p));
+        when(mediaRepo.findByMediaId("MED_x")).thenReturn(Optional.of(foreign));
+
+        assertThatThrownBy(() -> service.update("PRD_1",
+                new ProductUpdateRequest(null, null, null, "MED_x", null, null, null)))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void updateRejectsUnknownMediaId() {
+        Product p = product(1L);
+        when(repo.findByProductId("PRD_1")).thenReturn(Optional.of(p));
+        when(mediaRepo.findByMediaId("MED_nope")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.update("PRD_1",
+                new ProductUpdateRequest(null, null, null, "MED_nope", null, null, null)))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    private static Product product(Long id) {
+        return Product.builder()
+                .id(id)
+                .productId("PRD_" + id)
+                .slug("ember-tetra")
+                .name("P")
+                .description("d")
+                .build();
+    }
+
+    private static ProductResponse response(BigDecimal minPrice, BigDecimal maxPrice, int stock) {
+        return new ProductResponse("PRD_1", "ember-tetra", "P", "d", null, null, null,
+                ProductStatus.ACTIVE, null, null, minPrice, maxPrice, stock, null, null);
     }
 }

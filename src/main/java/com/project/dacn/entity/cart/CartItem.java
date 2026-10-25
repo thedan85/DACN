@@ -31,12 +31,12 @@ public class CartItem extends BaseEntity {
     private String cartItemId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "cart_id", referencedColumnName = "cart_id",
+    @JoinColumn(name = "cart_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_cart_items_cart"))
     private Cart cart;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "variant_id", referencedColumnName = "variant_id",
+    @JoinColumn(name = "variant_id", referencedColumnName = "id",
             foreignKey = @ForeignKey(name = "fk_cart_items_variant"))
     private Variant variant;
 
@@ -51,5 +51,10 @@ public class CartItem extends BaseEntity {
     @Override
     protected void setBusinessId(String businessId) {
         this.cartItemId = businessId;
+    }
+
+    @Override
+    protected String getBusinessIdPrefix() {
+        return "CI";
     }
 }

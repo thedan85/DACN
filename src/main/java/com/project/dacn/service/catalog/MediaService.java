@@ -48,6 +48,10 @@ public class MediaService {
     }
 
     public MediaResponse create(MediaCreateRequest request) {
+        return mapper.toMediaResponse(createEntity(request));
+    }
+
+    public Media createEntity(MediaCreateRequest request) {
         boolean hasProduct = request.productId() != null;
         boolean hasVariant = request.variantId() != null;
         if (hasProduct == hasVariant) {
@@ -63,7 +67,7 @@ public class MediaService {
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "variant not found: " + request.variantId())));
         }
-        return mapper.toMediaResponse(repo.save(entity));
+        return repo.save(entity);
     }
 
     public MediaResponse update(String mediaId, MediaUpdateRequest request) {

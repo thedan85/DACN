@@ -1,5 +1,6 @@
 package com.project.dacn.service.catalog;
 
+import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.catalog.VariantCreateRequest;
@@ -25,18 +26,33 @@ public class VariantService {
     private final CatalogMapper mapper;
 
     public PageResponse<VariantResponse> list(Pageable pageable) {
-        Page<Variant> page = repo.findByDeletedFalse(pageable);
+        return list(pageable, false);
+    }
+
+    public PageResponse<VariantResponse> list(Pageable pageable, boolean includeHidden) {
+        Page<Variant> page = includeHidden
+                ? repo.findByDeletedFalse(pageable)
+                : repo.findByDeletedFalseAndProduct_Status(ProductStatus.ACTIVE, pageable);
         return PageResponse.from(page, page.map(mapper::toVariantResponse).getContent());
     }
 
-    public PageResponse<VariantResponse> listByProduct(String productId, Pageable pageable) {
-        requireProduct(productId);
-        Page<Variant> page = repo.findByProduct_ProductId(productId, pageable);
+    public PageResponse<VariantResponse> listByProductSlug(String slug, Pageable pageable) {
+        return listByProductSlug(slug, pageable, false);
+    }
+
+    public PageResponse<VariantResponse> listByProductSlug(String slug, Pageable pageable,
+            boolean includeHidden) {
+        requireProductBySlug(slug, includeHidden);
+        Page<Variant> page = repo.findByProduct_SlugIgnoreCase(slug, pageable);
         return PageResponse.from(page, page.map(mapper::toVariantResponse).getContent());
     }
 
     public VariantResponse get(String variantId) {
-        return mapper.toVariantResponse(require(variantId));
+        return get(variantId, false);
+    }
+
+    public VariantResponse get(String variantId, boolean includeHidden) {
+        return mapper.toVariantResponse(requireVisible(variantId, includeHidden));
     }
 
     public VariantResponse create(VariantCreateRequest request) {
@@ -72,9 +88,17 @@ public class VariantService {
                 .orElseThrow(() -> new ResourceNotFoundException("variant not found: " + variantId));
     }
 
-    private void requireProduct(String productId) {
-        if (productRepo.findByProductId(productId).isEmpty()) {
-            throw new ResourceNotFoundException("product not found: " + productId);
+    private Variant requireVisible(String variantId, boolean includeHidden) {
+        Variant variant = require(variantId);
+        if (!includeHidden && variant.getProduct().getStatus() != ProductStatus.ACTIVE) {
+            throw new ResourceNotFoundException("variant not found: " + variantId);
         }
+        return variant;
+    }
+
+    private void requireProductBySlug(String slug, boolean includeHidden) {
+        productRepo.findBySlugIgnoreCase(slug)
+                .filter(product -> includeHidden || product.getStatus() == ProductStatus.ACTIVE)
+                .orElseThrow(() -> new ResourceNotFoundException("product not found: " + slug));
     }
 }

@@ -331,15 +331,16 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
-  /api/v1/products/{product_id}:
+  /api/v1/products/{product_slug}:
     parameters:
-      - $ref: "#/components/parameters/ProductId"
+      - $ref: "#/components/parameters/ProductSlug"
     get:
       tags: [Product]
       operationId: getProduct
       summary: Chi tiết sản phẩm kèm tất cả biến thể
       description: >-
-        Công khai. Trả sản phẩm cùng các variant chưa bị xóa, thuộc tính, ảnh, giá và tồn kho từng variant.
+        Công khai. Tra cứu theo `product_slug` (không phân biệt hoa/thường).
+        Trả sản phẩm cùng các variant chưa bị xóa, thuộc tính, ảnh, giá và tồn kho từng variant.
         Sản phẩm `DELETED` trả 404. Sản phẩm `DRAFT` hoặc `INACTIVE` chỉ xem được khi có token với quyền `product:create`.
       security:
         - {}
@@ -357,6 +358,10 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+
+  /api/v1/products/{product_id}:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
     put:
       tags: [Product]
       operationId: updateProduct
@@ -442,6 +447,34 @@ paths:
               example:
                 code: PRODUCT_IN_USE
                 message: "Sản phẩm đã có trong đơn hàng, chỉ có thể xóa mềm"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/products/{product_slug}/variants:
+    parameters:
+      - $ref: "#/components/parameters/ProductSlug"
+    get:
+      tags: [Product]
+      operationId: listProductVariants
+      summary: Danh sách biến thể của sản phẩm
+      description: >-
+        Công khai. Tra cứu sản phẩm theo `product_slug`; biến thể đã xóa mềm
+        không xuất hiện. Sản phẩm `DELETED` trả 404; `DRAFT`/`INACTIVE` trả 404
+        trừ khi gửi token có quyền `product:create`.
+      security:
+        - {}
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Danh sách biến thể của sản phẩm
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Variant"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
 
@@ -774,7 +807,15 @@ components:
       required: true
       schema:
         type: string
-      example: P001
+      example: PRD_1
+    ProductSlug:
+      name: product_slug
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      example: cong-teo
     VariantId:
       name: variant_id
       in: path
@@ -1045,7 +1086,7 @@ components:
 
     ProductSummary:
       type: object
-      required: [product_id, product_slug, product_name, product_status, min_price, max_price]
+      required: [product_id, product_slug, product_name, product_status, min_price, max_price, stock]
       properties:
         product_id:
           type: string
@@ -1075,6 +1116,10 @@ components:
           type: number
           description: Giá variant cao nhất
           example: 199000
+        stock:
+          type: integer
+          description: Tổng tồn kho của tất cả variant chưa xóa. 0 nghĩa là hết hàng.
+          example: 50
         created_at:
           type: string
           format: date-time

@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,24 +23,26 @@ public class ProductAttributeController {
 
     private final ProductAttributeService service;
 
-    @GetMapping("/api/products/{productId}/attributes")
+    @GetMapping("/api/v1/products/{productId}/attributes")
     public ApiResponse<PageResponse<ProductAttributeValueResponse>> listByProduct(
             @PathVariable String productId, @ParameterObject Pageable pageable) {
         return ApiResponse.ok(service.listByProduct(productId, pageable));
     }
 
-    @GetMapping("/api/product-attributes/{productValueId}")
+    @GetMapping("/api/v1/product-attributes/{productValueId}")
     public ApiResponse<ProductAttributeValueResponse> get(@PathVariable String productValueId) {
         return ApiResponse.ok(service.get(productValueId));
     }
 
-    @PostMapping("/api/product-attributes")
+    @PostMapping("/api/v1/product-attributes")
+    @PreAuthorize("hasAuthority('attribute:create')")
     public ApiResponse<ProductAttributeValueResponse> create(
             @Valid @RequestBody ProductAttributeValueCreateRequest request) {
         return ApiResponse.ok(service.create(request));
     }
 
-    @DeleteMapping("/api/product-attributes/{productValueId}")
+    @DeleteMapping("/api/v1/product-attributes/{productValueId}")
+    @PreAuthorize("hasAuthority('attribute:delete')")
     public ApiResponse<Void> delete(@PathVariable String productValueId) {
         service.delete(productValueId);
         return ApiResponse.ok(null);

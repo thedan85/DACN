@@ -16,9 +16,10 @@ import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.order.OrderItem;
-import com.project.dacn.entity.order.Payment;
+import com.project.dacn.entity.payment.Payment;
 import com.project.dacn.mapper.cart.CartMapper;
 import com.project.dacn.mapper.order.OrderMapper;
+import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.cart.CartItemRepository;
@@ -28,8 +29,9 @@ import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
-import com.project.dacn.repository.order.PaymentRepository;
+import com.project.dacn.repository.payment.PaymentRepository;
 import com.project.dacn.service.cart.CartService;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -68,6 +70,11 @@ class CartCheckoutTest {
         OrderMapper orderMapper() {
             return Mappers.getMapper(OrderMapper.class);
         }
+
+        @Bean
+        PaymentMapper paymentMapper() {
+            return Mappers.getMapper(PaymentMapper.class);
+        }
     }
 
     @Nested
@@ -99,13 +106,16 @@ class CartCheckoutTest {
 
         OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
 
+        PaymentMapper paymentMapper = Mappers.getMapper(PaymentMapper.class);
+
         CartService service;
 
         @BeforeEach
         void setUp() {
             service = new CartService(customerRepository, variantRepository,
                     cartRepository, cartItemRepository, cartMapper,
-                    orderRepository, orderItemRepository, paymentRepository, orderMapper);
+                    orderRepository, orderItemRepository, paymentRepository, orderMapper,
+                    paymentMapper);
         }
 
         @Test
@@ -113,33 +123,34 @@ class CartCheckoutTest {
             givenCart();
             Variant v = variant(10);
             CartItem existing = item(cart(customer()), v, 2);
-            when(cartItemRepository.findWithDetailsByCart_CartId("cart-1"))
+            when(cartItemRepository.findWithDetailsByCart_Id(10L))
                     .thenReturn(List.of(existing))
                     .thenReturn(List.of());
             when(orderRepository.save(any(Order.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
+            when(variantRepository.decrementStock(20L, 2)).thenReturn(1);
             when(orderItemRepository.saveAll(any()))
                     .thenAnswer(inv -> inv.getArgument(0));
             when(paymentRepository.save(any(Payment.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
 
-            OrderResponse o = service.checkout("cust",
+            OrderResponse o = service.checkout(1L,
                     new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD));
 
             assertThat(o.status()).isEqualTo(OrderStatus.PENDING);
             assertThat(o.total()).isEqualByComparingTo(new BigDecimal("20.00"));
-            verify(cartItemRepository).deleteByCart_CartId("cart-1");
+            verify(cartItemRepository).deleteByCart_Id(10L);
             verify(variantRepository, never()).save(any(Variant.class));
-            assertThat(service.getDetail("cust").items()).isEmpty();
+            assertThat(service.getDetail(1L).items()).isEmpty();
         }
 
         @Test
         void checkoutEmptyThrows400() {
             givenCart();
-            when(cartItemRepository.findWithDetailsByCart_CartId("cart-1"))
+            when(cartItemRepository.findWithDetailsByCart_Id(10L))
                     .thenReturn(List.of());
 
-            assertThatThrownBy(() -> service.checkout("cust",
+            assertThatThrownBy(() -> service.checkout(1L,
                     new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
                     .isInstanceOf(IllegalArgumentException.class);
             verify(orderRepository, never()).save(any(Order.class));
@@ -147,17 +158,17 @@ class CartCheckoutTest {
 
         @Test
         void checkoutWithNoCartRowThrows400() {
-            when(customerRepository.findByCustomerId("cust"))
+            when(customerRepository.findById(1L))
                     .thenReturn(Optional.of(customer()));
-            when(cartRepository.findByCustomer_CustomerId("cust"))
+            when(cartRepository.findByCustomer_Id(1L))
                     .thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.checkout("cust",
+            assertThatThrownBy(() -> service.checkout(1L,
                     new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
                     .isInstanceOf(IllegalArgumentException.class);
             verify(orderRepository, never()).save(any(Order.class));
             verify(cartRepository, never()).save(any(Cart.class));
-            verify(cartItemRepository, never()).findWithDetailsByCart_CartId(any());
+            verify(cartItemRepository, never()).findWithDetailsByCart_Id(any());
         }
 
         @Test
@@ -165,40 +176,55 @@ class CartCheckoutTest {
             givenCart();
             Variant v = variant(10);
             CartItem existing = item(cart(customer()), v, 99);
-            when(cartItemRepository.findWithDetailsByCart_CartId("cart-1"))
+            when(cartItemRepository.findWithDetailsByCart_Id(10L))
                     .thenReturn(List.of(existing));
 
-            assertThatThrownBy(() -> service.checkout("cust",
+            assertThatThrownBy(() -> service.checkout(1L,
                     new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
                     .isInstanceOf(OutOfStockException.class);
             verify(orderRepository, never()).save(any(Order.class));
-            verify(cartItemRepository, never()).deleteByCart_CartId(any());
+            verify(cartItemRepository, never()).deleteByCart_Id(any());
+        }
+
+        @Test
+        void checkoutStockRaceThrows409() {
+            givenCart();
+            Variant v = variant(10);
+            CartItem existing = item(cart(customer()), v, 2);
+            when(cartItemRepository.findWithDetailsByCart_Id(10L))
+                    .thenReturn(List.of(existing));
+            when(variantRepository.decrementStock(20L, 2)).thenReturn(0);
+
+            assertThatThrownBy(() -> service.checkout(1L,
+                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
+                    .isInstanceOf(OutOfStockException.class);
+            verify(orderRepository, never()).save(any(Order.class));
         }
 
         private void givenCart() {
             Customer c = customer();
-            when(customerRepository.findByCustomerId("cust")).thenReturn(Optional.of(c));
-            when(cartRepository.findByCustomer_CustomerId("cust"))
+            when(customerRepository.findById(1L)).thenReturn(Optional.of(c));
+            when(cartRepository.findByCustomer_Id(1L))
                     .thenReturn(Optional.of(cart(c)));
         }
 
         private Customer customer() {
-            return Customer.builder().customerId("cust").name("C").phone("090").build();
+            return Customer.builder().id(1L).customerId("cust").name("C").phone("090").build();
         }
 
         private Cart cart(Customer c) {
-            return Cart.builder().cartId("cart-1").customer(c).build();
+            return Cart.builder().id(10L).cartId("cart-1").customer(c).build();
         }
 
         private Variant variant(int stock) {
             Product product = Product.builder().productId("p").name("P")
                     .description("d").status(ProductStatus.ACTIVE).build();
-            return Variant.builder().variantId("v").sku("SKU-1")
+            return Variant.builder().id(20L).variantId("v").sku("SKU-1")
                     .price(new BigDecimal("10.00")).stock(stock).product(product).build();
         }
 
         private CartItem item(Cart cart, Variant variant, int qty) {
-            return CartItem.builder().cartItemId("item-1")
+            return CartItem.builder().id(100L).cartItemId("item-1")
                     .cart(cart).variant(variant).quantity(qty).build();
         }
     }
@@ -242,6 +268,9 @@ class CartCheckoutTest {
         @Autowired
         PaymentRepository paymentRepository;
 
+        @Autowired
+        EntityManager entityManager;
+
         @Test
         void checkoutPersistsPendingOrderAndClearsCart() {
             Role role = roleRepository.save(Role.builder().code("co1").name("R").build());
@@ -256,7 +285,7 @@ class CartCheckoutTest {
             cartItemRepository.save(CartItem.builder()
                     .cart(cart).variant(variant).quantity(2).build());
 
-            OrderResponse o = service.checkout(customer.getCustomerId(),
+            OrderResponse o = service.checkout(customer.getId(),
                     new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD));
 
             assertThat(o.status()).isEqualTo(OrderStatus.PENDING);
@@ -271,8 +300,9 @@ class CartCheckoutTest {
                     .isEqualTo(PaymentStatus.PENDING);
             assertThat(paymentRepository.findByOrder_OrderId(o.orderId()).get().getAmount())
                     .isEqualByComparingTo(new BigDecimal("20.00"));
-            assertThat(service.getDetail(customer.getCustomerId()).items()).isEmpty();
-            assertThat(variantRepository.findById(variant.getId()).get().getStock()).isEqualTo(5);
+            assertThat(service.getDetail(customer.getId()).items()).isEmpty();
+            entityManager.clear();
+            assertThat(variantRepository.findById(variant.getId()).get().getStock()).isEqualTo(3);
         }
     }
 }

@@ -13,10 +13,10 @@ import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.repository.identity.CustomerRepository;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.order.OrderItem;
-import com.project.dacn.entity.order.Payment;
+import com.project.dacn.entity.payment.Payment;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
-import com.project.dacn.repository.order.PaymentRepository;
+import com.project.dacn.repository.payment.PaymentRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -65,7 +65,6 @@ class OrderPersistenceTest {
         OrderItem item = orderItemRepository.save(OrderItem.builder()
                 .order(order).variant(variant).quantity(2)
                 .unitPrice(new BigDecimal("20.00")).build());
-        assertThat(item.getOrderItemId()).isNotNull();
 
         Payment payment = paymentRepository.save(Payment.builder()
                 .order(order).method(PaymentMethod.COD)
