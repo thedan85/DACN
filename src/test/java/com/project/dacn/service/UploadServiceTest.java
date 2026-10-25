@@ -9,6 +9,7 @@ import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.integration.cloudinary.CloudinaryService;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
+import com.project.dacn.service.catalog.CatalogCache;
 import com.project.dacn.service.catalog.MediaService;
 import com.project.dacn.service.catalog.ProductFolderResolver;
 import com.project.dacn.service.catalog.UploadService;
@@ -28,6 +29,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -50,8 +52,43 @@ class UploadServiceTest {
     @Mock
     CloudinaryService cloudinaryService;
 
+    @Mock
+    CatalogCache cache;
+
     @InjectMocks
     UploadService service;
+
+    @Test
+    void productThumbnailUploadBumpsProductAndVariant() {
+        Product product = Product.builder().productId("p").name("P").build();
+        when(productRepo.findByProductId("p")).thenReturn(Optional.of(product));
+        when(folderResolver.resolve(product)).thenReturn("home/p");
+        when(cloudinaryService.uploadAndGetUrl(any(byte[].class), anyString(), anyString()))
+                .thenReturn("https://x/u.jpg");
+        when(mediaService.createEntity(any())).thenReturn(Media.builder()
+                .mediaId("MED_1").url("https://x/u.jpg").product(product).build());
+
+        service.uploadProductThumbnail("p", jpg("a.jpg", new byte[] {1, 2, 3}));
+
+        verify(cache).bumpAfterCommit("product", "variant");
+    }
+
+    @Test
+    void variantImageUploadDoesNotBump() {
+        Product product = Product.builder().productId("p").name("P").build();
+        Variant variant = Variant.builder().variantId("v-1").sku("SKU-1")
+                .price(new java.math.BigDecimal("1000")).product(product).build();
+        when(variantRepo.findByVariantId("v-1")).thenReturn(Optional.of(variant));
+        when(folderResolver.resolve(product)).thenReturn("home/p");
+        when(cloudinaryService.uploadAndGetUrl(any(byte[].class), anyString(), anyString()))
+                .thenReturn("https://x/u.jpg");
+        when(mediaService.create(any())).thenReturn(new MediaResponse("m-1", "https://x/u.jpg",
+                null, "v-1", false, Instant.now(), Instant.now()));
+
+        service.uploadVariantImage("v-1", jpg("a.jpg", new byte[] {1, 2, 3}));
+
+        verifyNoInteractions(cache);
+    }
 
     private static MockMultipartFile jpg(String name, byte[] content) {
         byte[] bytes = content.length >= 3 ? content.clone() : new byte[3];

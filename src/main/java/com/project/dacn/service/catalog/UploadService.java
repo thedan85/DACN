@@ -42,6 +42,7 @@ public class UploadService {
     private final MediaService mediaService;
     private final ProductFolderResolver folderResolver;
     private final CloudinaryService cloudinaryService;
+    private final CatalogCache cache;
 
     public UploadResponse uploadProductThumbnail(String productId, MultipartFile file) {
         Product product = productRepo.findByProductId(productId)
@@ -55,6 +56,7 @@ public class UploadService {
                 new MediaCreateRequest(url, product.getProductId(), null));
         product.setThumbnail(media);
         productRepo.save(product);
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE, CatalogCacheKeys.VARIANT_SCOPE);
         return new UploadResponse(url, folder, product.getProductId(), null, media.getMediaId());
     }
 
