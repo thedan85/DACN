@@ -13,22 +13,62 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.type.TypeReference;
+
+import java.util.Optional;
+import java.util.OptionalLong;
 
 @Service
 @Transactional
 @RequiredArgsConstructor
 public class CategoryService {
 
+    private static final TypeReference<CategoryResponse> CATEGORY_RESPONSE = new TypeReference<>() {
+    };
+    private static final TypeReference<PageResponse<CategoryResponse>> CATEGORY_PAGE =
+            new TypeReference<>() {
+            };
+
     private final CategoryRepository repo;
     private final CatalogMapper mapper;
+    private final CatalogCache cache;
 
     public PageResponse<CategoryResponse> list(Pageable pageable) {
+        if (!CatalogCacheKeys.isCacheablePage(pageable)) {
+            return listFromDb(pageable);
+        }
+        OptionalLong generation = cache.currentGeneration(CatalogCacheKeys.CATEGORY_SCOPE);
+        if (generation.isEmpty()) {
+            return listFromDb(pageable);
+        }
+        String key = CatalogCacheKeys.categoryList(generation.getAsLong(), pageable);
+        Optional<PageResponse<CategoryResponse>> cached = cache.get(key, CATEGORY_PAGE);
+        if (cached.isPresent()) {
+            return cached.get();
+        }
+        PageResponse<CategoryResponse> response = listFromDb(pageable);
+        cache.put(key, response, CatalogCacheKeys.CATEGORY_PAGE_TTL);
+        return response;
+    }
+
+    private PageResponse<CategoryResponse> listFromDb(Pageable pageable) {
         Page<Category> page = repo.findByDeletedFalse(pageable);
         return PageResponse.from(page, page.map(mapper::toCategoryResponse).getContent());
     }
 
     public CategoryResponse get(String categoryId) {
-        return mapper.toCategoryResponse(require(categoryId));
+        OptionalLong generation = cache.currentGeneration(CatalogCacheKeys.CATEGORY_SCOPE);
+        if (generation.isEmpty()) {
+            return mapper.toCategoryResponse(require(categoryId));
+        }
+        String key = CatalogCacheKeys.categoryDetail(generation.getAsLong(), categoryId);
+        Optional<CategoryResponse> cached = cache.get(key, CATEGORY_RESPONSE);
+        if (cached.isPresent()) {
+            return cached.get();
+        }
+        CategoryResponse response = mapper.toCategoryResponse(require(categoryId));
+        cache.put(key, response, CatalogCacheKeys.CATEGORY_DETAIL_TTL);
+        return response;
     }
 
     public CategoryResponse create(CategoryCreateRequest request) {
@@ -36,7 +76,9 @@ public class CategoryService {
         if (request.parentCategoryId() != null) {
             entity.setParent(require(request.parentCategoryId()));
         }
-        return mapper.toCategoryResponse(repo.save(entity));
+        CategoryResponse response = mapper.toCategoryResponse(repo.save(entity));
+        cache.bumpAfterCommit(CatalogCacheKeys.CATEGORY_SCOPE, CatalogCacheKeys.PRODUCT_SCOPE);
+        return response;
     }
 
     public CategoryResponse update(String categoryId, CategoryUpdateRequest request) {
@@ -53,7 +95,9 @@ public class CategoryService {
             // PATCH merge semantics: null means "not provided", keep existing parent.
             mapper.updateCategory(request, entity);
         }
-        return mapper.toCategoryResponse(repo.save(entity));
+        CategoryResponse response = mapper.toCategoryResponse(repo.save(entity));
+        cache.bumpAfterCommit(CatalogCacheKeys.CATEGORY_SCOPE, CatalogCacheKeys.PRODUCT_SCOPE);
+        return response;
     }
 
     /**
@@ -75,7 +119,9 @@ public class CategoryService {
             mapper.updateCategory(request, entity);
             entity.setParent(null);
         }
-        return mapper.toCategoryResponse(repo.save(entity));
+        CategoryResponse response = mapper.toCategoryResponse(repo.save(entity));
+        cache.bumpAfterCommit(CatalogCacheKeys.CATEGORY_SCOPE, CatalogCacheKeys.PRODUCT_SCOPE);
+        return response;
     }
 
     private void assertNoCycle(String categoryId, Category newParent) {
@@ -92,6 +138,7 @@ public class CategoryService {
         Category entity = require(categoryId);
         entity.setDeleted(true);
         repo.save(entity);
+        cache.bumpAfterCommit(CatalogCacheKeys.CATEGORY_SCOPE, CatalogCacheKeys.PRODUCT_SCOPE);
     }
 
     private Category require(String categoryId) {
