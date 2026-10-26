@@ -7,6 +7,7 @@ import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.catalog.ProductCreateRequest;
 import com.project.dacn.dto.request.catalog.ProductFilter;
 import com.project.dacn.dto.request.catalog.ProductUpdateRequest;
+import com.project.dacn.dto.response.catalog.ProductDetailResponse;
 import com.project.dacn.dto.response.catalog.ProductResponse;
 import com.project.dacn.security.Permissions;
 import com.project.dacn.service.catalog.ProductService;
@@ -65,8 +66,8 @@ public class ProductController {
     }
 
     @GetMapping("/{slug}")
-    public ApiResponse<ProductResponse> get(@PathVariable String slug, Authentication auth) {
-        return ApiResponse.ok(service.getBySlug(slug, canViewHidden(auth)));
+    public ApiResponse<ProductDetailResponse> get(@PathVariable String slug, Authentication auth) {
+        return ApiResponse.ok(service.getDetail(slug, canViewHidden(auth)));
     }
 
     /**

@@ -26,7 +26,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
 @ActiveProfiles("test")
-@Import({ProductService.class, com.project.dacn.mapper.catalog.CatalogMapperImpl.class})
+@Import({ProductService.class, com.project.dacn.mapper.catalog.CatalogMapperImpl.class,
+        com.project.dacn.mapper.engagement.EngagementMapperImpl.class})
 class ProductFilterTest {
 
     @MockitoBean
