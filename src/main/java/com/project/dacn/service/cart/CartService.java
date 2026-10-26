@@ -99,16 +99,16 @@ public class CartService {
         }
     }
 
-    public CartItemResponse setQuantity(Long customerId, Long cartItemId, CartItemUpdateRequest req) {
+    public CartItemResponse setQuantity(Long customerId, String cartItemId, CartItemUpdateRequest req) {
         if (req == null || req.quantity() == null || req.quantity() <= 0) {
             throw new IllegalArgumentException("quantity must be between 1 and stock");
         }
         CartItem item = requireOwned(customerId, cartItemId);
         Variant current = item.getVariant();
-        if (current == null || current.getId() == null) {
+        if (current == null || current.getVariantId() == null) {
             throw new ResourceNotFoundException("variant not found: null");
         }
-        Variant variant = requireSellable(current.getId());
+        Variant variant = requireSellable(current.getVariantId());
         if (req.quantity() > variant.getStock()) {
             throw new OutOfStockException(
                     "requested quantity " + req.quantity() + " exceeds stock " + variant.getStock());
@@ -119,7 +119,7 @@ public class CartService {
         return response;
     }
 
-    public void removeItem(Long customerId, Long cartItemId) {
+    public void removeItem(Long customerId, String cartItemId) {
         CartItem item = requireOwned(customerId, cartItemId);
         cartItemRepository.delete(item);
         log.info("Removed cart item {} from customer {}", cartItemId, customerId);
@@ -211,8 +211,8 @@ public class CartService {
         });
     }
 
-    private Variant requireSellable(Long variantId) {
-        Variant variant = variantRepository.findWithProductById(variantId)
+    private Variant requireSellable(String variantId) {
+        Variant variant = variantRepository.findWithProductByVariantId(variantId)
                 .orElseThrow(() -> new ResourceNotFoundException("variant not found: " + variantId));
         if (Boolean.TRUE.equals(variant.getDeleted())
                 || variant.getProduct() == null
@@ -222,9 +222,9 @@ public class CartService {
         return variant;
     }
 
-    private CartItem requireOwned(Long customerId, Long cartItemId) {
+    private CartItem requireOwned(Long customerId, String cartItemId) {
         Cart cart = requireCart(customerId);
-        CartItem item = cartItemRepository.findById(cartItemId)
+        CartItem item = cartItemRepository.findByCartItemId(cartItemId)
                 .orElseThrow(() -> new ResourceNotFoundException("cart item not found: " + cartItemId));
         if (item.getCart() == null || !Objects.equals(cart.getId(), item.getCart().getId())) {
             throw new ResourceNotFoundException("cart item not found: " + cartItemId);

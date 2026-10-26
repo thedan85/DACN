@@ -4,9 +4,9 @@ import java.math.BigDecimal;
 import java.time.Instant;
 
 public record CartItemResponse(
-        Long cartItemId,
+        String cartItemId,
         String cartId,
-        Long variantId,
+        String variantId,
         String sku,
         Integer quantity,
         BigDecimal price,

@@ -473,12 +473,14 @@ class ProductServiceTest {
         when(mapper.toMediaResponse(any())).thenReturn(media);
 
         ReviewResponse review = new ReviewResponse(
-                "REV_1", "VAR_1", "CUS_1", null, 5, "nice", null, null);
-        when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc("PRD_1"))
-                .thenReturn(List.of(Review.builder().build()));
+                "REV_1", "VAR_1", null, "An", null, 5, "nice", null, null);
+        when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc(
+                "PRD_1", PageRequest.of(0, 20)))
+                .thenReturn(new PageImpl<>(List.of(Review.builder().build()),
+                        PageRequest.of(0, 20), 1));
         when(engagementMapper.toReviewResponse(any())).thenReturn(review);
 
-        ProductDetailResponse result = service.getDetail("ember-tetra", false);
+        ProductDetailResponse result = service.getDetail("ember-tetra", false, PageRequest.of(0, 20));
 
         assertThat(result.product()).isSameAs(base);
         assertThat(result.attributes()).containsExactly(productAttribute);
@@ -490,7 +492,33 @@ class ProductServiceTest {
         assertThat(result.variants().get(0).media()).containsExactly(media);
         assertThat(result.variants().get(1).attributes()).isEmpty();
         assertThat(result.variants().get(1).media()).isEmpty();
-        assertThat(result.reviews()).containsExactly(review);
+        assertThat(result.reviews().getContent()).containsExactly(review);
+        assertThat(result.reviews().getTotalElements()).isEqualTo(1);
+        assertThat(result.reviews().getPage()).isZero();
+        verify(engagementMapper, never()).toStaffReviewResponse(any());
+    }
+
+    @Test
+    void detailExposesReviewCustomerIdOnlyToStaff() {
+        Product p = product(1L);
+        ProductResponse base = response(null, null, 0);
+        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
+        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(base);
+        ReviewResponse staffReview = new ReviewResponse(
+                "REV_1", "VAR_1", "CUS_1", "An", null, 5, "nice", null, null);
+        when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc(
+                "PRD_1", PageRequest.of(1, 5)))
+                .thenReturn(new PageImpl<>(List.of(Review.builder().build()),
+                        PageRequest.of(1, 5), 6));
+        when(engagementMapper.toStaffReviewResponse(any())).thenReturn(staffReview);
+
+        ProductDetailResponse result = service.getDetail("ember-tetra", true, PageRequest.of(1, 5));
+
+        assertThat(result.reviews().getContent()).containsExactly(staffReview);
+        assertThat(result.reviews().getPage()).isEqualTo(1);
+        assertThat(result.reviews().getSize()).isEqualTo(5);
+        assertThat(result.reviews().getTotalElements()).isEqualTo(6);
+        verify(engagementMapper, never()).toReviewResponse(any());
     }
 
     private static Product product(Long id) {

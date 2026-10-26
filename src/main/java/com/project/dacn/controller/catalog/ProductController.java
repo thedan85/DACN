@@ -66,8 +66,9 @@ public class ProductController {
     }
 
     @GetMapping("/{slug}")
-    public ApiResponse<ProductDetailResponse> get(@PathVariable String slug, Authentication auth) {
-        return ApiResponse.ok(service.getDetail(slug, canViewHidden(auth)));
+    public ApiResponse<ProductDetailResponse> get(@PathVariable String slug,
+            @ParameterObject Pageable reviewPage, Authentication auth) {
+        return ApiResponse.ok(service.getDetail(slug, canViewHidden(auth), reviewPage));
     }
 
     /**

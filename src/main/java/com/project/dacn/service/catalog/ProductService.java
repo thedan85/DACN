@@ -19,6 +19,7 @@ import com.project.dacn.entity.catalog.Category;
 import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.entity.catalog.Variant;
+import com.project.dacn.entity.engagement.Review;
 import com.project.dacn.mapper.catalog.CatalogMapper;
 import com.project.dacn.mapper.engagement.EngagementMapper;
 import com.project.dacn.repository.catalog.CategoryRepository;
@@ -218,8 +219,9 @@ public class ProductService {
     /**
      * Storefront detail payload: the cached flat product plus its relation
      * lists, which are read fresh so variant price/stock and reviews stay live.
+     * customerId in reviews is only populated for admins/employees.
      */
-    public ProductDetailResponse getDetail(String slug, boolean includeHidden) {
+    public ProductDetailResponse getDetail(String slug, boolean includeHidden, Pageable reviewPage) {
         ProductResponse product = getBySlug(slug, includeHidden);
 
         List<ProductAttributeValueResponse> attributes = productAttributeValueRepo
@@ -241,12 +243,12 @@ public class ProductService {
                         attributesByVariant.getOrDefault(variant.getVariantId(), List.of()),
                         mediaByVariant.getOrDefault(variant.getVariantId(), List.of())))
                 .toList();
-        // shortcut: every review of the product, paginate when review volume grows
-        List<ReviewResponse> reviews = reviewRepo
-                .findByVariant_Product_ProductIdOrderByCreatedAtDesc(product.productId()).stream()
-                .map(engagementMapper::toReviewResponse)
-                .toList();
-        return new ProductDetailResponse(product, attributes, variantDetails, reviews);
+        Function<Review, ReviewResponse> toReview =
+                includeHidden ? engagementMapper::toStaffReviewResponse : engagementMapper::toReviewResponse;
+        Page<Review> reviews = reviewRepo
+                .findByVariant_Product_ProductIdOrderByCreatedAtDesc(product.productId(), reviewPage);
+        return new ProductDetailResponse(product, attributes, variantDetails,
+                PageResponse.from(reviews, reviews.getContent().stream().map(toReview).toList()));
     }
 
     public ProductResponse create(ProductCreateRequest request) {

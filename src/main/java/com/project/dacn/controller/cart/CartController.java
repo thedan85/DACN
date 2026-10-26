@@ -52,14 +52,14 @@ public class CartController {
     @PatchMapping("/items/{cartItemId}")
     public ApiResponse<CartItemResponse> patch(
             Authentication auth,
-            @PathVariable Long cartItemId,
+            @PathVariable String cartItemId,
             @Valid @RequestBody CartItemUpdateRequest request) {
         return ApiResponse.ok(service.setQuantity(
                 identity.requireCustomerId(auth), cartItemId, request));
     }
 
     @DeleteMapping("/items/{cartItemId}")
-    public ApiResponse<Void> remove(Authentication auth, @PathVariable Long cartItemId) {
+    public ApiResponse<Void> remove(Authentication auth, @PathVariable String cartItemId) {
         service.removeItem(identity.requireCustomerId(auth), cartItemId);
         return ApiResponse.ok(null);
     }

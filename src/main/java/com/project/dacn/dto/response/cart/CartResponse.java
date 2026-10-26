@@ -4,7 +4,7 @@ import java.time.Instant;
 
 public record CartResponse(
         String cartId,
-        Long customerId,
+        String customerId,
         String customerName,
         Instant createdAt,
         Instant updatedAt) {

@@ -29,13 +29,15 @@ class CartMapperTest {
         assertThat(res.price()).isEqualByComparingTo(new BigDecimal("10.00"));
         assertThat(res.productName()).isEqualTo("P");
         assertThat(res.stock()).isEqualTo(5);
+        assertThat(res.cartItemId()).isEqualTo("CI_1");
+        assertThat(res.variantId()).isEqualTo("VAR_1");
     }
 
     @Test
     void detailSumsTotalsNullSafe() {
-        CartItemResponse a = new CartItemResponse(1L, "c", 1L, "S1", 2,
+        CartItemResponse a = new CartItemResponse("CI_1", "c", "VAR_1", "S1", 2,
                 new BigDecimal("10.00"), new BigDecimal("20.00"), "p", "P", null, 5, null, null);
-        CartItemResponse b = new CartItemResponse(2L, "c", 2L, "S2", 1,
+        CartItemResponse b = new CartItemResponse("CI_2", "c", "VAR_2", "S2", 1,
                 null, null, "p", "P", null, 3, null, null);
         Cart cart = Cart.builder().customer(Customer.builder().name("C").build()).build();
         CartDetailResponse detail = mapper.toDetail(cart, List.of(a, b));
@@ -46,8 +48,9 @@ class CartMapperTest {
     private CartItem item(BigDecimal price, int qty, int stock) {
         Product product = Product.builder().name("P").description("d")
                 .thumbnail(Media.builder().url("t").build()).build();
-        Variant variant = Variant.builder().product(product).sku("S1").price(price).stock(stock).build();
+        Variant variant = Variant.builder().variantId("VAR_1").product(product).sku("S1")
+                .price(price).stock(stock).build();
         Cart cart = Cart.builder().build();
-        return CartItem.builder().cart(cart).variant(variant).quantity(qty).build();
+        return CartItem.builder().cartItemId("CI_1").cart(cart).variant(variant).quantity(qty).build();
     }
 }
