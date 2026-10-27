@@ -27,7 +27,7 @@ public interface OrderMapper {
     Order toOrder(OrderCreateRequest request);
 
     @Mapping(target = "items", ignore = true)
-    @Mapping(source = "customer.id", target = "customerId")
+    @Mapping(source = "customer.customerId", target = "customerId")
     @Mapping(source = "customer.name", target = "customerName")
     OrderResponse toOrderResponse(Order order);
 
@@ -55,9 +55,8 @@ public interface OrderMapper {
     @Mapping(target = "updatedAt", ignore = true)
     OrderItem toOrderItem(OrderItemCreateRequest request);
 
-    @Mapping(source = "id", target = "orderItemId")
     @Mapping(source = "order.orderId", target = "orderId")
-    @Mapping(source = "variant.id", target = "variantId")
+    @Mapping(source = "variant.variantId", target = "variantId")
     @Mapping(source = "variant.sku", target = "sku")
     OrderItemResponse toOrderItemResponse(OrderItem item);
 

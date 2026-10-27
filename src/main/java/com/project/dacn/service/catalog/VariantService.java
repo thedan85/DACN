@@ -211,7 +211,7 @@ public class VariantService {
     }
 
     private static VariantResponse withStock(VariantResponse response, Integer stock) {
-        return new VariantResponse(response.id(), response.variantId(), response.sku(),
+        return new VariantResponse(response.variantId(), response.sku(),
                 response.price(), stock, response.productId(), response.productName(),
                 response.deleted(), response.createdAt(), response.updatedAt());
     }

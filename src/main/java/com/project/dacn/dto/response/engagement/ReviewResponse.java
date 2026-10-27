@@ -6,7 +6,6 @@ public record ReviewResponse(
         String reviewId,
         String variantId,
         String customerId,
-        Long orderItemId,
         Integer rating,
         String comment,
         Instant createdAt,

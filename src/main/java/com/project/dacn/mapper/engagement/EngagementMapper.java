@@ -28,7 +28,6 @@ public interface EngagementMapper {
 
     @Mapping(source = "variant.variantId", target = "variantId")
     @Mapping(source = "customer.customerId", target = "customerId")
-    @Mapping(source = "orderItem.id", target = "orderItemId")
     ReviewResponse toReviewResponse(Review review);
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)

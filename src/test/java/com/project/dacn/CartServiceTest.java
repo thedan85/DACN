@@ -119,14 +119,14 @@ class CartServiceTest {
         void addBumpsExistingQty() {
             givenCart();
             Variant v = variant(10);
-            when(variantRepository.findWithProductById(20L)).thenReturn(Optional.of(v));
+            when(variantRepository.findWithProductByVariantId("v")).thenReturn(Optional.of(v));
             CartItem existing = item(cart(customer()), v, 2);
             when(cartItemRepository.findByCart_IdAndVariant_Id(10L, 20L))
                     .thenReturn(Optional.of(existing));
             when(cartItemRepository.save(any(CartItem.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
 
-            CartItemResponse result = service.addItem(1L, new CartItemAddRequest(20L, 3));
+            CartItemResponse result = service.addItem(1L, new CartItemAddRequest("v", 3));
 
             assertThat(result.quantity()).isEqualTo(5);
         }
@@ -136,10 +136,10 @@ class CartServiceTest {
             givenCart();
             Variant v = variant(10);
             CartItem existing = item(cart(customer()), v, 2);
-            when(cartItemRepository.findById(100L)).thenReturn(Optional.of(existing));
-            when(variantRepository.findWithProductById(20L)).thenReturn(Optional.of(v));
+            when(cartItemRepository.findByCartItemId("item-1")).thenReturn(Optional.of(existing));
+            when(variantRepository.findWithProductByVariantId("v")).thenReturn(Optional.of(v));
 
-            assertThatThrownBy(() -> service.setQuantity(1L, 100L, new CartItemUpdateRequest(99)))
+            assertThatThrownBy(() -> service.setQuantity(1L, "item-1", new CartItemUpdateRequest(99)))
                     .isInstanceOf(OutOfStockException.class);
         }
 
@@ -151,10 +151,10 @@ class CartServiceTest {
             Variant stale = Variant.builder().id(20L).variantId("v").sku("SKU-1")
                     .price(new BigDecimal("10.00")).stock(10).product(product).build();
             CartItem existing = item(cart(customer()), stale, 2);
-            when(cartItemRepository.findById(100L)).thenReturn(Optional.of(existing));
-            when(variantRepository.findWithProductById(20L)).thenReturn(Optional.of(stale));
+            when(cartItemRepository.findByCartItemId("item-1")).thenReturn(Optional.of(existing));
+            when(variantRepository.findWithProductByVariantId("v")).thenReturn(Optional.of(stale));
 
-            assertThatThrownBy(() -> service.setQuantity(1L, 100L, new CartItemUpdateRequest(1)))
+            assertThatThrownBy(() -> service.setQuantity(1L, "item-1", new CartItemUpdateRequest(1)))
                     .isInstanceOf(ResourceNotFoundException.class);
         }
 
@@ -178,9 +178,9 @@ class CartServiceTest {
             Cart otherCart = Cart.builder().id(20L).cartId("cart-2").customer(customer()).build();
             CartItem foreign = CartItem.builder().id(999L).cartItemId("item-9")
                     .cart(otherCart).variant(variant(10)).quantity(1).build();
-            when(cartItemRepository.findById(999L)).thenReturn(Optional.of(foreign));
+            when(cartItemRepository.findByCartItemId("item-9")).thenReturn(Optional.of(foreign));
 
-            assertThatThrownBy(() -> service.removeItem(1L, 999L))
+            assertThatThrownBy(() -> service.removeItem(1L, "item-9"))
                     .isInstanceOf(ResourceNotFoundException.class);
         }
 
@@ -189,9 +189,9 @@ class CartServiceTest {
             when(customerRepository.findById(1L)).thenReturn(Optional.of(customer()));
             Variant v = variant(10);
             v.setDeleted(true);
-            when(variantRepository.findWithProductById(20L)).thenReturn(Optional.of(v));
+            when(variantRepository.findWithProductByVariantId("v")).thenReturn(Optional.of(v));
 
-            assertThatThrownBy(() -> service.addItem(1L, new CartItemAddRequest(20L, 1)))
+            assertThatThrownBy(() -> service.addItem(1L, new CartItemAddRequest("v", 1)))
                     .isInstanceOf(ResourceNotFoundException.class);
         }
 
@@ -199,7 +199,7 @@ class CartServiceTest {
         void concurrentInsertRaceMergesAsBump() {
             givenCart();
             Variant v = variant(10);
-            when(variantRepository.findWithProductById(20L)).thenReturn(Optional.of(v));
+            when(variantRepository.findWithProductByVariantId("v")).thenReturn(Optional.of(v));
             CartItem raced = item(cart(customer()), v, 2);
             when(cartItemRepository.findByCart_IdAndVariant_Id(10L, 20L))
                     .thenReturn(Optional.empty())
@@ -208,7 +208,7 @@ class CartServiceTest {
                     .thenThrow(new DataIntegrityViolationException("uq_cart_variant"))
                     .thenAnswer(inv -> inv.getArgument(0));
 
-            CartItemResponse result = service.addItem(1L, new CartItemAddRequest(20L, 3));
+            CartItemResponse result = service.addItem(1L, new CartItemAddRequest("v", 3));
 
             assertThat(result.quantity()).isEqualTo(2 + 3);
         }
@@ -216,9 +216,9 @@ class CartServiceTest {
         @Test
         void invalidVariantCreatesNoCart() {
             when(customerRepository.findById(1L)).thenReturn(Optional.of(customer()));
-            when(variantRepository.findWithProductById(999L)).thenReturn(Optional.empty());
+            when(variantRepository.findWithProductByVariantId("missing")).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.addItem(1L, new CartItemAddRequest(999L, 1)))
+            assertThatThrownBy(() -> service.addItem(1L, new CartItemAddRequest("missing", 1)))
                     .isInstanceOf(ResourceNotFoundException.class);
             verify(cartRepository, never()).save(any(Cart.class));
         }
@@ -229,9 +229,9 @@ class CartServiceTest {
             Cart otherCart = Cart.builder().id(20L).cartId("cart-2").customer(customer()).build();
             CartItem foreign = CartItem.builder().id(999L).cartItemId("item-9")
                     .cart(otherCart).variant(variant(10)).quantity(1).build();
-            when(cartItemRepository.findById(999L)).thenReturn(Optional.of(foreign));
+            when(cartItemRepository.findByCartItemId("item-9")).thenReturn(Optional.of(foreign));
 
-            assertThatThrownBy(() -> service.removeItem(1L, 999L))
+            assertThatThrownBy(() -> service.removeItem(1L, "item-9"))
                     .isInstanceOf(ResourceNotFoundException.class);
             verify(cartRepository, never()).save(any(Cart.class));
         }

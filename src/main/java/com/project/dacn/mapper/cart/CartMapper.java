@@ -28,7 +28,7 @@ public interface CartMapper {
     @Mapping(target = "updatedAt", ignore = true)
     Cart toCart(CartCreateRequest request);
 
-    @Mapping(source = "customer.id", target = "customerId")
+    @Mapping(source = "customer.customerId", target = "customerId")
     @Mapping(source = "customer.name", target = "customerName")
     CartResponse toCartResponse(Cart cart);
 
@@ -40,9 +40,9 @@ public interface CartMapper {
     @Mapping(target = "updatedAt", ignore = true)
     CartItem toCartItem(CartItemCreateRequest request);
 
-    @Mapping(source = "id", target = "cartItemId")
+    @Mapping(source = "cartItemId", target = "cartItemId")
     @Mapping(source = "cart.cartId", target = "cartId")
-    @Mapping(source = "variant.id", target = "variantId")
+    @Mapping(source = "variant.variantId", target = "variantId")
     @Mapping(source = "variant.sku", target = "sku")
     @Mapping(source = "variant.price", target = "price")
     @Mapping(source = "variant.product.productId", target = "productId")
@@ -70,8 +70,8 @@ public interface CartMapper {
                 .map(CartItemResponse::lineTotal)
                 .filter(amount -> amount != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        Long customerId = cart != null && cart.getCustomer() != null
-                ? cart.getCustomer().getId() : null;
+        String customerId = cart != null && cart.getCustomer() != null
+                ? cart.getCustomer().getCustomerId() : null;
         String customerName = cart != null && cart.getCustomer() != null
                 ? cart.getCustomer().getName() : null;
         return new CartDetailResponse(

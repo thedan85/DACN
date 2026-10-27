@@ -23,6 +23,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -43,7 +44,7 @@ class CartControllerTest {
 
     @Test
     void getAutoCreatesCart() throws Exception {
-        var detail = new CartDetailResponse("cart-1", 42L, "Jane", List.of(),
+        var detail = new CartDetailResponse("cart-1", "CUS_1", "Jane", List.of(),
                 0, BigDecimal.ZERO, null, null);
         when(identity.requireCustomerId(any())).thenReturn(42L);
         when(service.getDetail(42L)).thenReturn(detail);
@@ -56,7 +57,7 @@ class CartControllerTest {
     void clientSuppliedCustomerHeaderIsIgnored() throws Exception {
         when(identity.requireCustomerId(any())).thenReturn(42L);
         when(service.getDetail(42L)).thenReturn(new CartDetailResponse(
-                "cart-1", 42L, "Jane", List.of(), 0, BigDecimal.ZERO, null, null));
+                "cart-1", "CUS_1", "Jane", List.of(), 0, BigDecimal.ZERO, null, null));
 
         mockMvc.perform(get("/api/v1/cart").header("X-Customer-Id", "999"))
                 .andExpect(status().isOk());
@@ -71,5 +72,25 @@ class CartControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"quantity\":0}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void patchAcceptsBusinessCartItemId() throws Exception {
+        when(identity.requireCustomerId(any())).thenReturn(42L);
+
+        mockMvc.perform(patch("/api/v1/cart/items/CI_1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"quantity\":2}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void addAcceptsBusinessVariantId() throws Exception {
+        when(identity.requireCustomerId(any())).thenReturn(42L);
+
+        mockMvc.perform(post("/api/v1/cart/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"variantId\":\"VAR_1\",\"quantity\":1}"))
+                .andExpect(status().isOk());
     }
 }

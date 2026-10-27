@@ -80,7 +80,7 @@ class StaffOrderControllerTest {
     }
 
     private OrderResponse order(OrderStatus status) {
-        return new OrderResponse("ORD_1", 1L, "Jane", status,
+        return new OrderResponse("ORD_1", "CUS_1", "Jane", status,
                 new BigDecimal("8000.00"), "addr", "Jane", "090", List.of(), null, null);
     }
 }

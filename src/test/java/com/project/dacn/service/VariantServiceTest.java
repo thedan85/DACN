@@ -75,7 +75,7 @@ class VariantServiceTest {
                         .productId("p-1").slug("congo-tetra").name("P").description("d").build()));
         when(repo.findByProduct_SlugIgnoreCase("congo-tetra", Pageable.unpaged())).thenReturn(page);
         when(mapper.toVariantResponse(v)).thenReturn(
-                new VariantResponse(1L, "v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P", false, null, null));
+                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P", false, null, null));
         PageResponse<VariantResponse> result =
                 service.listByProductSlug("congo-tetra", Pageable.unpaged());
         assertThat(result.getContent()).hasSize(1);
@@ -120,7 +120,7 @@ class VariantServiceTest {
     void cachedVariantWithMissingStockRowFallsBackToTheDatabase() {
         when(cache.currentGeneration("variant")).thenReturn(OptionalLong.of(4));
         when(cache.get(eq("pim:variant:4:v"), any())).thenReturn(Optional.of(
-                new VariantResponse(1L, "v", "SKU-1", new BigDecimal("10.00"), null,
+                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), null,
                         "p-1", "P", false, null, null)));
         when(repo.findStockByVariantId("v")).thenReturn(Optional.empty());
         when(repo.findByVariantId("v")).thenReturn(Optional.empty());
@@ -139,7 +139,7 @@ class VariantServiceTest {
                 .build();
         when(repo.findByVariantId("v")).thenReturn(Optional.of(v));
         when(mapper.toVariantResponse(v)).thenReturn(
-                new VariantResponse(1L, "v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P",
+                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P",
                         false, null, null));
 
         service.get("v", true);
@@ -156,7 +156,7 @@ class VariantServiceTest {
                 .build();
         when(repo.findByVariantId("v")).thenReturn(Optional.of(v));
         when(mapper.toVariantResponse(v)).thenReturn(
-                new VariantResponse(1L, "v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P",
+                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P",
                         false, null, null));
 
         assertThatThrownBy(() -> service.get("v"))
@@ -168,7 +168,7 @@ class VariantServiceTest {
     void getCacheHitOverlaysStockAndSkipsRepository() {
         when(cache.currentGeneration("variant")).thenReturn(OptionalLong.of(4));
         when(cache.get(eq("pim:variant:4:v"), any())).thenReturn(Optional.of(
-                new VariantResponse(1L, "v", "SKU-1", new BigDecimal("10.00"), null,
+                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), null,
                         "p-1", "P", false, null, null)));
         VariantRepository.VariantStockView stock = mock(VariantRepository.VariantStockView.class);
         when(stock.getStock()).thenReturn(7);
@@ -185,7 +185,7 @@ class VariantServiceTest {
         when(cache.currentGeneration("variant")).thenReturn(OptionalLong.of(4));
         when(cache.get(eq("pim:variant:by-product:congo-tetra:4:0:20:none"), any()))
                 .thenReturn(Optional.of(new PageResponse<>(List.of(
-                        new VariantResponse(1L, "v", "SKU-1", new BigDecimal("10.00"), null,
+                        new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), null,
                                 "p-1", "P", false, null, null)), 0, 20, 1, 1)));
         VariantRepository.VariantStockView stock = mock(VariantRepository.VariantStockView.class);
         when(stock.getVariantId()).thenReturn("v");
@@ -209,7 +209,7 @@ class VariantServiceTest {
         when(repo.findByDeletedFalseAndProduct_Status(
                 eq(com.project.dacn.common.constant.ProductStatus.ACTIVE), any(Pageable.class)))
                 .thenReturn(page);
-        when(mapper.toVariantResponse(v)).thenReturn(new VariantResponse(1L, "v", "SKU-1",
+        when(mapper.toVariantResponse(v)).thenReturn(new VariantResponse("v", "SKU-1",
                 new BigDecimal("10.00"), 5, "p-1", "P", false, null, null));
         ArgumentCaptor<Object> stored = ArgumentCaptor.forClass(Object.class);
 
@@ -233,7 +233,7 @@ class VariantServiceTest {
         when(cache.get(eq("pim:variant:4:v"), any())).thenReturn(Optional.empty());
         when(repo.findByVariantId("v")).thenReturn(Optional.of(v));
         when(mapper.toVariantResponse(v)).thenReturn(
-                new VariantResponse(1L, "v", "SKU-1", new BigDecimal("10.00"), 5,
+                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5,
                         "p-1", "P", false, null, null));
         ArgumentCaptor<Object> stored = ArgumentCaptor.forClass(Object.class);
 
@@ -267,7 +267,7 @@ class VariantServiceTest {
         when(cache.currentGeneration("variant")).thenReturn(OptionalLong.empty());
         when(repo.findByVariantId("v")).thenReturn(Optional.of(v));
         when(mapper.toVariantResponse(v)).thenReturn(
-                new VariantResponse(1L, "v", "SKU-1", new BigDecimal("10.00"), 5,
+                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5,
                         "p-1", "P", false, null, null));
 
         service.get("v");
