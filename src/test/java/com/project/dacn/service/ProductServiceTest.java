@@ -521,6 +521,37 @@ class ProductServiceTest {
         verify(engagementMapper, never()).toReviewResponse(any());
     }
 
+    @Test
+    void detailFallsBackToThumbnailForOnlyVariantWithoutMedia() {
+        Product p = product(1L);
+        ProductResponse base = new ProductResponse("PRD_1", "ember-tetra", "P", "d", null,
+                "https://img", "MED_9", ProductStatus.ACTIVE, null, null, null, null, 0,
+                null, null);
+        when(cache.currentGeneration("product")).thenReturn(OptionalLong.empty());
+        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
+        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
+        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(base);
+
+        Variant only = Variant.builder().variantId("VAR_1").sku("SKU-1")
+                .price(new BigDecimal("100")).stock(5).build();
+        when(variantRepo.findByProduct_ProductId("PRD_1")).thenReturn(List.of(only));
+        when(mediaRepo.findByVariant_Product_ProductId("PRD_1")).thenReturn(List.of());
+
+        Media thumbnail = Media.builder().mediaId("MED_9").url("https://img").build();
+        MediaResponse thumbnailResponse = new MediaResponse(
+                "MED_9", "https://img", "PRD_1", null, false, null, null);
+        when(mediaRepo.findByMediaId("MED_9")).thenReturn(Optional.of(thumbnail));
+        when(mapper.toMediaResponse(thumbnail)).thenReturn(thumbnailResponse);
+        when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc(
+                "PRD_1", PageRequest.of(0, 20)))
+                .thenReturn(new PageImpl<Review>(List.of(), PageRequest.of(0, 20), 0));
+
+        ProductDetailResponse result = service.getDetail("ember-tetra", false, PageRequest.of(0, 20));
+
+        assertThat(result.variants()).singleElement()
+                .satisfies(variant -> assertThat(variant.media()).containsExactly(thumbnailResponse));
+    }
+
     private static Product product(Long id) {
         return Product.builder()
                 .id(id)

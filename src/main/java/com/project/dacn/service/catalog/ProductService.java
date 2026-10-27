@@ -238,10 +238,24 @@ public class ProductService {
                 .map(mapper::toMediaResponse)
                 .collect(Collectors.groupingBy(MediaResponse::variantId));
         List<VariantDetailResponse> variantDetails = variants.stream()
-                .map(variant -> new VariantDetailResponse(
-                        variant.getVariantId(), variant.getSku(), variant.getPrice(), variant.getStock(),
-                        attributesByVariant.getOrDefault(variant.getVariantId(), List.of()),
-                        mediaByVariant.getOrDefault(variant.getVariantId(), List.of())))
+                .map(variant -> {
+                    List<MediaResponse> media =
+                            mediaByVariant.getOrDefault(variant.getVariantId(), List.of());
+                    // A product with no real variant choice has no variant-level
+                    // media; its thumbnail is the default variant's image.
+                    if (media.isEmpty() && variants.size() == 1
+                            && product.thumbnailMediaId() != null) {
+                        media = mediaRepo.findByMediaId(product.thumbnailMediaId())
+                                .map(mapper::toMediaResponse)
+                                .map(List::of)
+                                .orElse(List.of());
+                    }
+                    return new VariantDetailResponse(
+                            variant.getVariantId(), variant.getSku(), variant.getPrice(),
+                            variant.getStock(),
+                            attributesByVariant.getOrDefault(variant.getVariantId(), List.of()),
+                            media);
+                })
                 .toList();
         Function<Review, ReviewResponse> toReview =
                 includeHidden ? engagementMapper::toStaffReviewResponse : engagementMapper::toReviewResponse;
