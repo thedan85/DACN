@@ -28,6 +28,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.context.ActiveProfiles;
 import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
@@ -68,13 +69,18 @@ class CatalogCacheSerializationTest {
     @Test
     void storefrontReviewJsonHidesCustomerIdButKeepsName() {
         ReviewResponse storefront = new ReviewResponse(
-                "REV_1", "VAR_1", null, "An", null, 5, "nice", null, null);
+                "REV_1", "VAR_1", null, "An", false, 5, "nice", null, null);
         ReviewResponse staff = new ReviewResponse(
-                "REV_1", "VAR_1", "CUS_1", "An", null, 5, "nice", null, null);
+                "REV_1", "VAR_1", "CUS_1", "An", false, 5, "nice", null, null);
+
 
         assertThat(mapper.writeValueAsString(storefront))
                 .doesNotContain("customerId")
                 .contains("customerName");
+        JsonNode storefrontJson = mapper.readTree(mapper.writeValueAsString(storefront));
+        assertThat(storefrontJson.has("orderItemId")).isFalse();
+        assertThat(storefrontJson.has("verifiedPurchase")).isTrue();
+        assertThat(storefrontJson.get("verifiedPurchase").asBoolean()).isFalse();
         assertThat(mapper.writeValueAsString(staff)).contains("CUS_1");
     }
 

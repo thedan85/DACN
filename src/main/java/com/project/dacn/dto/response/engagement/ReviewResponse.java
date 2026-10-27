@@ -14,7 +14,7 @@ public record ReviewResponse(
                 String variantId,
                 String customerId,
                 String customerName,
-                Long orderItemId,
+                boolean verifiedPurchase,
                 Integer rating,
                 String comment,
                 Instant createdAt,

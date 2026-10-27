@@ -11,6 +11,7 @@ import com.project.dacn.dto.response.catalog.ProductAttributeValueResponse;
 import com.project.dacn.dto.response.catalog.ProductDetailResponse;
 import com.project.dacn.dto.response.catalog.ProductResponse;
 import com.project.dacn.dto.response.catalog.VariantAttributeValueResponse;
+import com.project.dacn.dto.response.catalog.VariantDetailResponse;
 import com.project.dacn.dto.response.engagement.ReviewResponse;
 import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.catalog.Product;
@@ -473,7 +474,7 @@ class ProductServiceTest {
         when(mapper.toMediaResponse(any())).thenReturn(media);
 
         ReviewResponse review = new ReviewResponse(
-                "REV_1", "VAR_1", null, "An", null, 5, "nice", null, null);
+                "REV_1", "VAR_1", null, "An", false, 5, "nice", null, null);
         when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc(
                 "PRD_1", PageRequest.of(0, 20)))
                 .thenReturn(new PageImpl<>(List.of(Review.builder().build()),
@@ -505,7 +506,7 @@ class ProductServiceTest {
         when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
         when(mapper.toProductResponse(p, null, null, 0)).thenReturn(base);
         ReviewResponse staffReview = new ReviewResponse(
-                "REV_1", "VAR_1", "CUS_1", "An", null, 5, "nice", null, null);
+                "REV_1", "VAR_1", "CUS_1", "An", false, 5, "nice", null, null);
         when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc(
                 "PRD_1", PageRequest.of(1, 5)))
                 .thenReturn(new PageImpl<>(List.of(Review.builder().build()),
@@ -519,6 +520,33 @@ class ProductServiceTest {
         assertThat(result.reviews().getSize()).isEqualTo(5);
         assertThat(result.reviews().getTotalElements()).isEqualTo(6);
         verify(engagementMapper, never()).toReviewResponse(any());
+    }
+
+    @Test
+    void detailPutsTheDefaultVariantFirst() {
+        Product p = product(1L);
+        ProductResponse base = response(null, null, 0);
+        when(cache.currentGeneration("product")).thenReturn(OptionalLong.empty());
+        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
+        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
+        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(base);
+        when(productAttributeValueRepo.findByProduct_ProductId("PRD_1")).thenReturn(List.of());
+        when(variantRepo.findByProduct_ProductId("PRD_1")).thenReturn(List.of(
+                Variant.builder().variantId("ember-tetra-gold").sku("SKU-G")
+                        .price(new BigDecimal("100")).stock(5).build(),
+                Variant.builder().variantId("ember-tetra-default").sku("SKU-D")
+                        .price(new BigDecimal("100")).stock(5).build()));
+        when(variantAttributeValueRepo.findByVariant_Product_ProductId("PRD_1"))
+                .thenReturn(List.of());
+        when(mediaRepo.findByVariant_Product_ProductId("PRD_1")).thenReturn(List.of());
+        when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc(
+                "PRD_1", PageRequest.of(0, 20)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+
+        ProductDetailResponse result = service.getDetail("ember-tetra", false, PageRequest.of(0, 20));
+
+        assertThat(result.variants()).extracting(VariantDetailResponse::variantId)
+                .containsExactly("ember-tetra-default", "ember-tetra-gold");
     }
 
     @Test

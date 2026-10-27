@@ -1,5 +1,6 @@
 package com.project.dacn.repository;
 
+import com.project.dacn.common.constant.ProductSort;
 import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.entity.catalog.Category;
 import com.project.dacn.entity.catalog.Category_;
@@ -12,15 +13,20 @@ import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.service.catalog.CatalogCache;
 import com.project.dacn.service.catalog.ProductService;
 import com.project.dacn.dto.request.catalog.ProductFilter;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -41,6 +47,8 @@ class ProductFilterTest {
     CategoryRepository categories;
     @Autowired
     VariantRepository variants;
+    @Autowired
+    EntityManager entityManager;
 
     @Test
     void metamodelAttributesResolve() {
@@ -177,5 +185,34 @@ class ProductFilterTest {
 
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).name()).isEqualTo("Gone Fish");
+    }
+
+    @Test
+    void tiedSortKeysUseIdAsTiebreakerSoPagesDoNotOverlap() {
+        Instant sameInstant = Instant.parse("2026-01-01T00:00:00Z");
+        for (int i = 1; i <= 6; i++) {
+            Product product = products.save(Product.builder()
+                    .name("Tied " + i).description("d").createdAt(sameInstant).build());
+            variants.save(Variant.builder().product(product).sku("TIE-" + i)
+                    .price(new BigDecimal("10000")).stock(1).build());
+        }
+        // @CreationTimestamp may overwrite the preset value; force the tie.
+        entityManager.flush();
+        entityManager.createNativeQuery("update products set created_at = :ts")
+                .setParameter("ts", OffsetDateTime.ofInstant(sameInstant, ZoneOffset.UTC))
+                .executeUpdate();
+        entityManager.clear();
+
+        for (ProductSort sort : ProductSort.values()) {
+            var firstPage = service.search(
+                    new ProductFilter(null, null, null, null, null, sort), PageRequest.of(0, 3));
+            var secondPage = service.search(
+                    new ProductFilter(null, null, null, null, null, sort), PageRequest.of(1, 3));
+
+            assertThat(firstPage.getContent()).as("first page for %s", sort)
+                    .extracting("name").containsExactly("Tied 6", "Tied 5", "Tied 4");
+            assertThat(secondPage.getContent()).as("second page for %s", sort)
+                    .extracting("name").containsExactly("Tied 3", "Tied 2", "Tied 1");
+        }
     }
 }

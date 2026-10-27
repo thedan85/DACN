@@ -10,6 +10,7 @@ import com.project.dacn.entity.engagement.Review;
 import com.project.dacn.mapper.engagement.EngagementMapper;
 import com.project.dacn.dto.request.order.OrderCreateRequest;
 import com.project.dacn.entity.order.Order;
+import com.project.dacn.entity.order.OrderItem;
 import com.project.dacn.mapper.order.OrderMapper;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
@@ -65,5 +66,14 @@ class RemainingMapperTest {
         ReviewResponse staff = engagementMapper.toStaffReviewResponse(review);
         assertThat(staff.customerId()).isEqualTo("CUS_1");
         assertThat(staff.customerName()).isEqualTo("An");
+    }
+
+    @Test
+    void reviewResponseMarksOnlyReviewsWithAnOrderItemAsVerified() {
+        Review review = Review.builder().rating(5).build();
+        assertThat(engagementMapper.toReviewResponse(review).verifiedPurchase()).isFalse();
+
+        review.setOrderItem(OrderItem.builder().build());
+        assertThat(engagementMapper.toReviewResponse(review).verifiedPurchase()).isTrue();
     }
 }

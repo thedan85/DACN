@@ -41,6 +41,7 @@ import tools.jackson.core.type.TypeReference;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -256,6 +257,9 @@ public class ProductService {
                             attributesByVariant.getOrDefault(variant.getVariantId(), List.of()),
                             media);
                 })
+                // The storefront selects variants[0], so keep the default form first.
+                .sorted(Comparator.comparingInt(variant ->
+                        variant.variantId().equals(product.slug() + "-default") ? 0 : 1))
                 .toList();
         Function<Review, ReviewResponse> toReview =
                 includeHidden ? engagementMapper::toStaffReviewResponse : engagementMapper::toReviewResponse;

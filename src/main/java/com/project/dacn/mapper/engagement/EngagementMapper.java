@@ -29,13 +29,13 @@ public interface EngagementMapper {
     @Mapping(source = "variant.variantId", target = "variantId")
     @Mapping(target = "customerId", ignore = true)
     @Mapping(source = "customer.name", target = "customerName")
-    @Mapping(source = "orderItem.id", target = "orderItemId")
+    @Mapping(target = "verifiedPurchase", expression = "java(review.getOrderItem() != null)")
     ReviewResponse toReviewResponse(Review review);
 
     @Mapping(source = "variant.variantId", target = "variantId")
     @Mapping(source = "customer.customerId", target = "customerId")
     @Mapping(source = "customer.name", target = "customerName")
-    @Mapping(source = "orderItem.id", target = "orderItemId")
+    @Mapping(target = "verifiedPurchase", expression = "java(review.getOrderItem() != null)")
     ReviewResponse toStaffReviewResponse(Review review);
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)

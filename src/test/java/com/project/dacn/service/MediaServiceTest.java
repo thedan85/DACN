@@ -4,6 +4,7 @@ import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.dto.request.catalog.MediaCreateRequest;
 import com.project.dacn.dto.request.catalog.MediaUpdateRequest;
+import com.project.dacn.dto.response.catalog.MediaResponse;
 import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.entity.catalog.Variant;
@@ -21,8 +22,10 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -108,6 +111,36 @@ class MediaServiceTest {
                 () -> service.listByProduct("nope", org.springframework.data.domain.Pageable.unpaged(),
                         false))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void listByProductFallsBackToVariantMediaWhenProductHasNoDirectMedia() {
+        PageRequest page = PageRequest.of(0, 20);
+        Product product = Product.builder().productId("p").status(ProductStatus.ACTIVE).build();
+        Media media = Media.builder().mediaId("m").url("u").build();
+        when(productRepo.findByProductId("p")).thenReturn(Optional.of(product));
+        when(repo.findByProduct_ProductId("p", page)).thenReturn(Page.empty(page));
+        when(repo.findByVariant_Product_ProductId("p", page))
+                .thenReturn(new PageImpl<>(List.of(media), page, 1));
+
+        var result = service.listByProduct("p", page, false);
+
+        assertThat(result.getContent()).extracting(MediaResponse::mediaId).containsExactly("m");
+    }
+
+    @Test
+    void listByProductKeepsDirectMediaAndDoesNotMixVariantMedia() {
+        PageRequest page = PageRequest.of(0, 20);
+        Product product = Product.builder().productId("p").status(ProductStatus.ACTIVE).build();
+        Media media = Media.builder().mediaId("direct").url("u").build();
+        when(productRepo.findByProductId("p")).thenReturn(Optional.of(product));
+        when(repo.findByProduct_ProductId("p", page))
+                .thenReturn(new PageImpl<>(List.of(media), page, 1));
+
+        var result = service.listByProduct("p", page, false);
+
+        assertThat(result.getContent()).extracting(MediaResponse::mediaId).containsExactly("direct");
+        verify(repo, never()).findByVariant_Product_ProductId("p", page);
     }
 
     @Test

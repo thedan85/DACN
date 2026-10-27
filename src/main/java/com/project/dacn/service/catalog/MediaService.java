@@ -44,6 +44,10 @@ public class MediaService {
             throw new ResourceNotFoundException("product not found: " + productId);
         }
         Page<Media> page = repo.findByProduct_ProductId(productId, pageable);
+        if (page.getTotalElements() == 0) {
+            // Merged products keep their images on variants, so fall back to them.
+            page = repo.findByVariant_Product_ProductId(productId, pageable);
+        }
         return PageResponse.from(page, page.map(mapper::toMediaResponse).getContent());
     }
 

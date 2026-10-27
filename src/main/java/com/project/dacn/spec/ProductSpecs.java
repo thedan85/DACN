@@ -77,21 +77,26 @@ public final class ProductSpecs {
             return;
         }
         ProductSort effective = sort == null ? ProductSort.NEWEST : sort;
+        // id is unique, so it breaks ties the same way for every page window.
         switch (effective) {
-            case NEWEST -> query.orderBy(cb.desc(root.get(BaseEntity_.createdAt)));
+            case NEWEST -> query.orderBy(
+                    cb.desc(root.get(BaseEntity_.createdAt)),
+                    cb.desc(root.get(BaseEntity_.id)));
             case PRICE_ASC -> {
                 Subquery<BigDecimal> minPrice = minPrice(query, root, cb);
                 // Portable NULLS LAST: products without a price sort after
                 // priced ones, then by the lowest active variant price.
                 query.orderBy(
                         cb.asc(cb.selectCase().when(cb.isNull(minPrice), 1).otherwise(0)),
-                        cb.asc(minPrice));
+                        cb.asc(minPrice),
+                        cb.desc(root.get(BaseEntity_.id)));
             }
             case PRICE_DESC -> {
                 Subquery<BigDecimal> maxPrice = maxPrice(query, root, cb);
                 query.orderBy(
                         cb.asc(cb.selectCase().when(cb.isNull(maxPrice), 1).otherwise(0)),
-                        cb.desc(maxPrice));
+                        cb.desc(maxPrice),
+                        cb.desc(root.get(BaseEntity_.id)));
             }
         }
     }
