@@ -1,6 +1,9 @@
 package com.project.dacn.repository.engagement;
 
 import com.project.dacn.entity.engagement.Review;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -10,4 +13,7 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
     Optional<Review> findByReviewId(String reviewId);
 
     List<Review> findByVariant_VariantId(String variantId);
+
+    @EntityGraph(attributePaths = {"customer"})
+    Page<Review> findByVariant_Product_ProductIdOrderByCreatedAtDesc(String productId, Pageable pageable);
 }

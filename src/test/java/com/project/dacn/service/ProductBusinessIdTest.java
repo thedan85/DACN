@@ -3,6 +3,7 @@ package com.project.dacn.service;
 import com.project.dacn.dto.request.catalog.ProductCreateRequest;
 import com.project.dacn.dto.response.catalog.ProductResponse;
 import com.project.dacn.mapper.catalog.CatalogMapperImpl;
+import com.project.dacn.mapper.engagement.EngagementMapperImpl;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.service.catalog.CatalogCache;
 import com.project.dacn.service.catalog.ProductService;
@@ -17,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
 @ActiveProfiles("test")
-@Import({ProductService.class, CatalogMapperImpl.class})
+@Import({ProductService.class, CatalogMapperImpl.class, EngagementMapperImpl.class})
 class ProductBusinessIdTest {
 
     @MockitoBean

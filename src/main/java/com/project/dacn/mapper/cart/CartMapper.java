@@ -71,9 +71,11 @@ public interface CartMapper {
                 .filter(amount -> amount != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         String customerId = cart != null && cart.getCustomer() != null
-                ? cart.getCustomer().getCustomerId() : null;
+                ? cart.getCustomer().getCustomerId()
+                : null;
         String customerName = cart != null && cart.getCustomer() != null
-                ? cart.getCustomer().getName() : null;
+                ? cart.getCustomer().getName()
+                : null;
         return new CartDetailResponse(
                 cart == null ? null : cart.getCartId(),
                 customerId,

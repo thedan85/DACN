@@ -1,7 +1,9 @@
 package com.project.dacn;
 
 import com.project.dacn.dto.request.cart.CartItemCreateRequest;
+import com.project.dacn.dto.response.engagement.ReviewResponse;
 import com.project.dacn.entity.cart.CartItem;
+import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.mapper.cart.CartMapper;
 import com.project.dacn.dto.request.engagement.ReviewCreateRequest;
 import com.project.dacn.entity.engagement.Review;
@@ -49,5 +51,19 @@ class RemainingMapperTest {
                 new ReviewCreateRequest("v-1", "c-1", null, 4, "good"));
         assertThat(mapped.getReviewId()).isNull();
         assertThat(mapped.getRating()).isEqualTo(4);
+    }
+
+    @Test
+    void reviewResponseShowsCustomerNameAndOnlyStaffSeeCustomerId() {
+        Customer customer = Customer.builder().customerId("CUS_1").name("An").phone("090").build();
+        Review review = Review.builder().rating(5).customer(customer).build();
+
+        ReviewResponse storefront = engagementMapper.toReviewResponse(review);
+        assertThat(storefront.customerId()).isNull();
+        assertThat(storefront.customerName()).isEqualTo("An");
+
+        ReviewResponse staff = engagementMapper.toStaffReviewResponse(review);
+        assertThat(staff.customerId()).isEqualTo("CUS_1");
+        assertThat(staff.customerName()).isEqualTo("An");
     }
 }

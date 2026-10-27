@@ -5,13 +5,18 @@ import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.response.catalog.CategoryResponse;
 import com.project.dacn.dto.response.catalog.ProductResponse;
 import com.project.dacn.dto.response.catalog.VariantResponse;
+import com.project.dacn.dto.response.engagement.ReviewResponse;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.mapper.catalog.CatalogMapperImpl;
+import com.project.dacn.mapper.engagement.EngagementMapperImpl;
 import com.project.dacn.repository.catalog.CategoryRepository;
 import com.project.dacn.repository.catalog.MediaRepository;
+import com.project.dacn.repository.catalog.ProductAttributeValueRepository;
 import com.project.dacn.repository.catalog.ProductPriceRange;
 import com.project.dacn.repository.catalog.ProductRepository;
+import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
+import com.project.dacn.repository.engagement.ReviewRepository;
 import com.project.dacn.service.catalog.CatalogCache;
 import com.project.dacn.service.catalog.ProductService;
 import org.junit.jupiter.api.Test;
@@ -58,6 +63,19 @@ class CatalogCacheSerializationTest {
 
         assertThat(mapper.readValue(mapper.writeValueAsString(response),
                 new TypeReference<ProductResponse>() { })).isEqualTo(response);
+    }
+
+    @Test
+    void storefrontReviewJsonHidesCustomerIdButKeepsName() {
+        ReviewResponse storefront = new ReviewResponse(
+                "REV_1", "VAR_1", null, "An", null, 5, "nice", null, null);
+        ReviewResponse staff = new ReviewResponse(
+                "REV_1", "VAR_1", "CUS_1", "An", null, 5, "nice", null, null);
+
+        assertThat(mapper.writeValueAsString(storefront))
+                .doesNotContain("customerId")
+                .contains("customerName");
+        assertThat(mapper.writeValueAsString(staff)).contains("CUS_1");
     }
 
     @Test
@@ -108,7 +126,10 @@ class CatalogCacheSerializationTest {
 
         // A real CatalogCache over an in-memory StringRedisTemplate stand-in.
         ProductService service = new ProductService(productRepo, mock(CategoryRepository.class),
-                variantRepo, mock(MediaRepository.class), new CatalogMapperImpl(),
+                variantRepo, mock(MediaRepository.class),
+                mock(ProductAttributeValueRepository.class),
+                mock(VariantAttributeValueRepository.class), mock(ReviewRepository.class),
+                new CatalogMapperImpl(), new EngagementMapperImpl(),
                 new CatalogCache(inMemoryRedis(), mapper));
 
         PageResponse<ProductResponse> first = service.list(PageRequest.of(0, 20));

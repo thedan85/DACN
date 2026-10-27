@@ -27,70 +27,68 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(controllers = CartController.class,
-        excludeFilters = @ComponentScan.Filter(
-                type = FilterType.ASSIGNABLE_TYPE, classes = JwtAuthenticationFilter.class))
+@WebMvcTest(controllers = CartController.class, excludeFilters = @ComponentScan.Filter(type = FilterType.ASSIGNABLE_TYPE, classes = JwtAuthenticationFilter.class))
 @AutoConfigureMockMvc(addFilters = false)
 class CartControllerTest {
 
-    @Autowired
-    private MockMvc mockMvc;
+        @Autowired
+        private MockMvc mockMvc;
 
-    @MockitoBean
-    private CartService service;
+        @MockitoBean
+        private CartService service;
 
-    @MockitoBean
-    private CustomerIdentity identity;
+        @MockitoBean
+        private CustomerIdentity identity;
 
-    @Test
-    void getAutoCreatesCart() throws Exception {
-        var detail = new CartDetailResponse("cart-1", "CUS_1", "Jane", List.of(),
-                0, BigDecimal.ZERO, null, null);
-        when(identity.requireCustomerId(any())).thenReturn(42L);
-        when(service.getDetail(42L)).thenReturn(detail);
-        mockMvc.perform(get("/api/v1/cart"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.cartId").value("cart-1"));
-    }
+        @Test
+        void getAutoCreatesCart() throws Exception {
+                var detail = new CartDetailResponse("cart-1", "CUS_1", "Jane", List.of(),
+                                0, BigDecimal.ZERO, null, null);
+                when(identity.requireCustomerId(any())).thenReturn(42L);
+                when(service.getDetail(42L)).thenReturn(detail);
+                mockMvc.perform(get("/api/v1/cart"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.data.cartId").value("cart-1"));
+        }
 
-    @Test
-    void clientSuppliedCustomerHeaderIsIgnored() throws Exception {
-        when(identity.requireCustomerId(any())).thenReturn(42L);
-        when(service.getDetail(42L)).thenReturn(new CartDetailResponse(
-                "cart-1", "CUS_1", "Jane", List.of(), 0, BigDecimal.ZERO, null, null));
+        @Test
+        void clientSuppliedCustomerHeaderIsIgnored() throws Exception {
+                when(identity.requireCustomerId(any())).thenReturn(42L);
+                when(service.getDetail(42L)).thenReturn(new CartDetailResponse(
+                                "cart-1", "CUS_42", "Jane", List.of(), 0, BigDecimal.ZERO, null, null));
 
-        mockMvc.perform(get("/api/v1/cart").header("X-Customer-Id", "999"))
-                .andExpect(status().isOk());
+                mockMvc.perform(get("/api/v1/cart").header("X-Customer-Id", "999"))
+                                .andExpect(status().isOk());
 
-        verify(service).getDetail(42L);
-    }
+                verify(service).getDetail(42L);
+        }
 
-    @Test
-    void patchInvalidQtyIs400() throws Exception {
-        when(identity.requireCustomerId(any())).thenReturn(42L);
-        mockMvc.perform(patch("/api/v1/cart/items/7")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"quantity\":0}"))
-                .andExpect(status().isBadRequest());
-    }
+        @Test
+        void patchInvalidQtyIs400() throws Exception {
+                when(identity.requireCustomerId(any())).thenReturn(42L);
+                mockMvc.perform(patch("/api/v1/cart/items/CI_7")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"quantity\":0}"))
+                                .andExpect(status().isBadRequest());
+        }
 
-    @Test
-    void patchAcceptsBusinessCartItemId() throws Exception {
-        when(identity.requireCustomerId(any())).thenReturn(42L);
+        @Test
+        void patchAcceptsBusinessCartItemId() throws Exception {
+                when(identity.requireCustomerId(any())).thenReturn(42L);
 
-        mockMvc.perform(patch("/api/v1/cart/items/CI_1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"quantity\":2}"))
-                .andExpect(status().isOk());
-    }
+                mockMvc.perform(patch("/api/v1/cart/items/CI_1")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"quantity\":2}"))
+                                .andExpect(status().isOk());
+        }
 
-    @Test
-    void addAcceptsBusinessVariantId() throws Exception {
-        when(identity.requireCustomerId(any())).thenReturn(42L);
+        @Test
+        void addAcceptsBusinessVariantId() throws Exception {
+                when(identity.requireCustomerId(any())).thenReturn(42L);
 
-        mockMvc.perform(post("/api/v1/cart/items")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"variantId\":\"VAR_1\",\"quantity\":1}"))
-                .andExpect(status().isOk());
-    }
+                mockMvc.perform(post("/api/v1/cart/items")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"variantId\":\"VAR_1\",\"quantity\":1}"))
+                                .andExpect(status().isOk());
+        }
 }

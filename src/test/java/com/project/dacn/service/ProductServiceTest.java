@@ -6,15 +6,28 @@ import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.catalog.ProductCreateRequest;
 import com.project.dacn.dto.request.catalog.ProductFilter;
 import com.project.dacn.dto.request.catalog.ProductUpdateRequest;
+import com.project.dacn.dto.response.catalog.MediaResponse;
+import com.project.dacn.dto.response.catalog.ProductAttributeValueResponse;
+import com.project.dacn.dto.response.catalog.ProductDetailResponse;
 import com.project.dacn.dto.response.catalog.ProductResponse;
+import com.project.dacn.dto.response.catalog.VariantAttributeValueResponse;
+import com.project.dacn.dto.response.engagement.ReviewResponse;
 import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.catalog.Product;
+import com.project.dacn.entity.catalog.ProductAttributeValue;
+import com.project.dacn.entity.catalog.Variant;
+import com.project.dacn.entity.catalog.VariantAttributeValue;
+import com.project.dacn.entity.engagement.Review;
 import com.project.dacn.mapper.catalog.CatalogMapper;
+import com.project.dacn.mapper.engagement.EngagementMapper;
 import com.project.dacn.repository.catalog.CategoryRepository;
 import com.project.dacn.repository.catalog.MediaRepository;
+import com.project.dacn.repository.catalog.ProductAttributeValueRepository;
 import com.project.dacn.repository.catalog.ProductPriceRange;
 import com.project.dacn.repository.catalog.ProductRepository;
+import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
+import com.project.dacn.repository.engagement.ReviewRepository;
 import com.project.dacn.service.catalog.CatalogCache;
 import com.project.dacn.service.catalog.CatalogCacheKeys;
 import com.project.dacn.service.catalog.ProductService;
@@ -65,7 +78,19 @@ class ProductServiceTest {
     MediaRepository mediaRepo;
 
     @Mock
+    ProductAttributeValueRepository productAttributeValueRepo;
+
+    @Mock
+    VariantAttributeValueRepository variantAttributeValueRepo;
+
+    @Mock
+    ReviewRepository reviewRepo;
+
+    @Mock
     CatalogMapper mapper;
+
+    @Mock
+    EngagementMapper engagementMapper;
 
     @Mock
     CatalogCache cache;
@@ -413,6 +438,87 @@ class ProductServiceTest {
         assertThatThrownBy(() -> service.update("PRD_1",
                 new ProductUpdateRequest(null, null, null, "MED_nope", null, null, null)))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void detailGroupsVariantAttributesAndMediaAndLoadsReviews() {
+        Product p = product(1L);
+        ProductResponse base = response(null, null, 0);
+        when(cache.currentGeneration("product")).thenReturn(OptionalLong.empty());
+        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
+        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
+        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(base);
+
+        ProductAttributeValueResponse productAttribute = new ProductAttributeValueResponse(
+                "PAV_1", "PRD_1", "ATTR_1", "Temperature", "AV_1", "25C", null);
+        when(productAttributeValueRepo.findByProduct_ProductId("PRD_1"))
+                .thenReturn(List.of(ProductAttributeValue.builder().build()));
+        when(mapper.toProductAttributeValueResponse(any())).thenReturn(productAttribute);
+
+        Variant v1 = Variant.builder().variantId("VAR_1").sku("SKU-1")
+                .price(new BigDecimal("100")).stock(5).build();
+        Variant v2 = Variant.builder().variantId("VAR_2").sku("SKU-2")
+                .price(new BigDecimal("200")).stock(0).build();
+        when(variantRepo.findByProduct_ProductId("PRD_1")).thenReturn(List.of(v1, v2));
+
+        VariantAttributeValueResponse variantAttribute = new VariantAttributeValueResponse(
+                "VAV_1", "VAR_1", "ATTR_2", "Color", "AV_2", "Red", null);
+        when(variantAttributeValueRepo.findByVariant_Product_ProductId("PRD_1"))
+                .thenReturn(List.of(VariantAttributeValue.builder().build()));
+        when(mapper.toVariantAttributeValueResponse(any())).thenReturn(variantAttribute);
+
+        MediaResponse media = new MediaResponse("MED_1", "url", null, "VAR_1", false, null, null);
+        when(mediaRepo.findByVariant_Product_ProductId("PRD_1"))
+                .thenReturn(List.of(Media.builder().build()));
+        when(mapper.toMediaResponse(any())).thenReturn(media);
+
+        ReviewResponse review = new ReviewResponse(
+                "REV_1", "VAR_1", null, "An", null, 5, "nice", null, null);
+        when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc(
+                "PRD_1", PageRequest.of(0, 20)))
+                .thenReturn(new PageImpl<>(List.of(Review.builder().build()),
+                        PageRequest.of(0, 20), 1));
+        when(engagementMapper.toReviewResponse(any())).thenReturn(review);
+
+        ProductDetailResponse result = service.getDetail("ember-tetra", false, PageRequest.of(0, 20));
+
+        assertThat(result.product()).isSameAs(base);
+        assertThat(result.attributes()).containsExactly(productAttribute);
+        assertThat(result.variants()).hasSize(2);
+        assertThat(result.variants().get(0).variantId()).isEqualTo("VAR_1");
+        assertThat(result.variants().get(0).price()).isEqualByComparingTo("100");
+        assertThat(result.variants().get(0).stock()).isEqualTo(5);
+        assertThat(result.variants().get(0).attributes()).containsExactly(variantAttribute);
+        assertThat(result.variants().get(0).media()).containsExactly(media);
+        assertThat(result.variants().get(1).attributes()).isEmpty();
+        assertThat(result.variants().get(1).media()).isEmpty();
+        assertThat(result.reviews().getContent()).containsExactly(review);
+        assertThat(result.reviews().getTotalElements()).isEqualTo(1);
+        assertThat(result.reviews().getPage()).isZero();
+        verify(engagementMapper, never()).toStaffReviewResponse(any());
+    }
+
+    @Test
+    void detailExposesReviewCustomerIdOnlyToStaff() {
+        Product p = product(1L);
+        ProductResponse base = response(null, null, 0);
+        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
+        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(base);
+        ReviewResponse staffReview = new ReviewResponse(
+                "REV_1", "VAR_1", "CUS_1", "An", null, 5, "nice", null, null);
+        when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc(
+                "PRD_1", PageRequest.of(1, 5)))
+                .thenReturn(new PageImpl<>(List.of(Review.builder().build()),
+                        PageRequest.of(1, 5), 6));
+        when(engagementMapper.toStaffReviewResponse(any())).thenReturn(staffReview);
+
+        ProductDetailResponse result = service.getDetail("ember-tetra", true, PageRequest.of(1, 5));
+
+        assertThat(result.reviews().getContent()).containsExactly(staffReview);
+        assertThat(result.reviews().getPage()).isEqualTo(1);
+        assertThat(result.reviews().getSize()).isEqualTo(5);
+        assertThat(result.reviews().getTotalElements()).isEqualTo(6);
+        verify(engagementMapper, never()).toReviewResponse(any());
     }
 
     private static Product product(Long id) {

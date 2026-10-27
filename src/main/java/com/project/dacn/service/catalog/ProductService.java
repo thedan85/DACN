@@ -8,16 +8,28 @@ import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.dto.request.catalog.ProductCreateRequest;
 import com.project.dacn.dto.request.catalog.ProductFilter;
 import com.project.dacn.dto.request.catalog.ProductUpdateRequest;
+import com.project.dacn.dto.response.catalog.MediaResponse;
+import com.project.dacn.dto.response.catalog.ProductAttributeValueResponse;
+import com.project.dacn.dto.response.catalog.ProductDetailResponse;
 import com.project.dacn.dto.response.catalog.ProductResponse;
+import com.project.dacn.dto.response.catalog.VariantAttributeValueResponse;
+import com.project.dacn.dto.response.catalog.VariantDetailResponse;
+import com.project.dacn.dto.response.engagement.ReviewResponse;
 import com.project.dacn.entity.catalog.Category;
 import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.catalog.Product;
+import com.project.dacn.entity.catalog.Variant;
+import com.project.dacn.entity.engagement.Review;
 import com.project.dacn.mapper.catalog.CatalogMapper;
+import com.project.dacn.mapper.engagement.EngagementMapper;
 import com.project.dacn.repository.catalog.CategoryRepository;
 import com.project.dacn.repository.catalog.MediaRepository;
+import com.project.dacn.repository.catalog.ProductAttributeValueRepository;
 import com.project.dacn.repository.catalog.ProductPriceRange;
 import com.project.dacn.repository.catalog.ProductRepository;
+import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
+import com.project.dacn.repository.engagement.ReviewRepository;
 import com.project.dacn.spec.ProductSpecs;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -68,7 +80,11 @@ public class ProductService {
     private final CategoryRepository categoryRepo;
     private final VariantRepository variantRepo;
     private final MediaRepository mediaRepo;
+    private final ProductAttributeValueRepository productAttributeValueRepo;
+    private final VariantAttributeValueRepository variantAttributeValueRepo;
+    private final ReviewRepository reviewRepo;
     private final CatalogMapper mapper;
+    private final EngagementMapper engagementMapper;
     private final CatalogCache cache;
 
     public PageResponse<ProductResponse> list(Pageable pageable) {
@@ -198,6 +214,41 @@ public class ProductService {
         ProductResponse response = toResponse(requireBySlug(slug, false));
         cache.put(key, withStock(response, null), CatalogCacheKeys.PRODUCT_DETAIL_TTL);
         return response;
+    }
+
+    /**
+     * Storefront detail payload: the cached flat product plus its relation
+     * lists, which are read fresh so variant price/stock and reviews stay live.
+     * customerId in reviews is only populated for admins/employees.
+     */
+    public ProductDetailResponse getDetail(String slug, boolean includeHidden, Pageable reviewPage) {
+        ProductResponse product = getBySlug(slug, includeHidden);
+
+        List<ProductAttributeValueResponse> attributes = productAttributeValueRepo
+                .findByProduct_ProductId(product.productId()).stream()
+                .map(mapper::toProductAttributeValueResponse)
+                .toList();
+        List<Variant> variants = variantRepo.findByProduct_ProductId(product.productId());
+        Map<String, List<VariantAttributeValueResponse>> attributesByVariant =
+                variantAttributeValueRepo.findByVariant_Product_ProductId(product.productId()).stream()
+                        .map(mapper::toVariantAttributeValueResponse)
+                        .collect(Collectors.groupingBy(VariantAttributeValueResponse::variantId));
+        Map<String, List<MediaResponse>> mediaByVariant = mediaRepo
+                .findByVariant_Product_ProductId(product.productId()).stream()
+                .map(mapper::toMediaResponse)
+                .collect(Collectors.groupingBy(MediaResponse::variantId));
+        List<VariantDetailResponse> variantDetails = variants.stream()
+                .map(variant -> new VariantDetailResponse(
+                        variant.getVariantId(), variant.getSku(), variant.getPrice(), variant.getStock(),
+                        attributesByVariant.getOrDefault(variant.getVariantId(), List.of()),
+                        mediaByVariant.getOrDefault(variant.getVariantId(), List.of())))
+                .toList();
+        Function<Review, ReviewResponse> toReview =
+                includeHidden ? engagementMapper::toStaffReviewResponse : engagementMapper::toReviewResponse;
+        Page<Review> reviews = reviewRepo
+                .findByVariant_Product_ProductIdOrderByCreatedAtDesc(product.productId(), reviewPage);
+        return new ProductDetailResponse(product, attributes, variantDetails,
+                PageResponse.from(reviews, reviews.getContent().stream().map(toReview).toList()));
     }
 
     public ProductResponse create(ProductCreateRequest request) {
