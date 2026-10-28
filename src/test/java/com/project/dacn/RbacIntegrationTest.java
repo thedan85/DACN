@@ -13,6 +13,7 @@ import com.project.dacn.repository.auth.PermissionRepository;
 import com.project.dacn.repository.auth.RolePermissionRepository;
 import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
+import com.project.dacn.security.RateLimiter;
 import com.project.dacn.service.catalog.CatalogCache;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,9 @@ class RbacIntegrationTest {
 
     @MockitoBean
     CatalogCache cache;
+
+    @MockitoBean
+    RateLimiter rateLimiter;
 
     @Autowired
     private MockMvc mockMvc;

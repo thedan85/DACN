@@ -21,6 +21,7 @@ import com.project.dacn.repository.auth.RolePermissionRepository;
 import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
+import com.project.dacn.security.RateLimiter;
 import com.project.dacn.security.RefreshTokenCookie;
 import com.project.dacn.service.auth.AuthService;
 import jakarta.servlet.http.Cookie;
@@ -32,6 +33,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
@@ -61,6 +63,9 @@ class AuthServiceTest {
     // Real service, NOT mocked: exercises register/login/refresh/logout against H2.
     @Autowired
     private AuthService authService;
+
+    @MockitoBean
+    private RateLimiter rateLimiter;
 
     @Autowired
     private RoleRepository roleRepository;
