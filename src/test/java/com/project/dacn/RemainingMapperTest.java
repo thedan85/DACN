@@ -49,7 +49,7 @@ class RemainingMapperTest {
         review.setReviewId("r-1");
         assertThat(engagementMapper.toReviewResponse(review).reviewId()).isEqualTo("r-1");
         Review mapped = engagementMapper.toReview(
-                new ReviewCreateRequest("v-1", "c-1", null, 4, "good"));
+                new ReviewCreateRequest(4, "good"));
         assertThat(mapped.getReviewId()).isNull();
         assertThat(mapped.getRating()).isEqualTo(4);
     }

@@ -88,6 +88,24 @@ public class OrderService {
         return toResponse(order);
     }
 
+    /**
+     * Admin override: mark a non-terminal order completed manually. The normal
+     * shipping flow is not implemented, so this is the only path to COMPLETED.
+     * Stock and payment state are left unchanged.
+     */
+    @Transactional
+    public OrderResponse completeByAdmin(String orderId) {
+        Order order = orderRepository.findWithLockByOrderId(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("order not found: " + orderId));
+        if (order.getStatus() == OrderStatus.CANCELLED
+                || order.getStatus() == OrderStatus.COMPLETED) {
+            throw new InvalidOrderStateException(
+                    "order cannot be completed from: " + order.getStatus());
+        }
+        order.setStatus(OrderStatus.COMPLETED);
+        return toResponse(order);
+    }
+
     private void restock(Order order) {
         for (OrderItem item : orderItemRepository.findByOrder_OrderId(order.getOrderId())) {
             variantRepository.incrementStock(item.getVariant().getId(), item.getQuantity());

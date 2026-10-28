@@ -6,9 +6,6 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 public record ReviewCreateRequest(
-        @NotBlank String variantId,
-        @NotBlank String customerId,
-        Long orderItemId,
         @NotNull @Min(1) @Max(5) Integer rating,
         @NotBlank String comment) {
 }

@@ -84,6 +84,14 @@ class RbacIntegrationTest {
                         .deleted(false)
                         .build()));
 
+        Role adminRole = roleRepository.findByCodeIgnoreCase("ADMIN").orElseGet(() ->
+                roleRepository.save(Role.builder()
+                        .code("ADMIN")
+                        .name("Administrator")
+                        .system(true)
+                        .deleted(false)
+                        .build()));
+
         Permission createProduct = permissionRepository.findByCode("product:create").orElseGet(() ->
                 permissionRepository.save(Permission.builder()
                         .code("product:create")
@@ -99,6 +107,22 @@ class RbacIntegrationTest {
                 .orElseGet(() -> rolePermissionRepository.save(RolePermission.builder()
                         .role(employeeRole)
                         .permission(createProduct)
+                        .build()));
+
+        // Mirrors V21: order:complete is granted to ADMIN only.
+        Permission completeOrder = permissionRepository.findByCode("order:complete").orElseGet(() ->
+                permissionRepository.save(Permission.builder()
+                        .code("order:complete")
+                        .name("Complete Order")
+                        .resource("order")
+                        .action("complete")
+                        .build()));
+        rolePermissionRepository.findByRole_RoleId(adminRole.getRoleId()).stream()
+                .filter(rp -> rp.getPermission().getCode().equals("order:complete"))
+                .findFirst()
+                .orElseGet(() -> rolePermissionRepository.save(RolePermission.builder()
+                        .role(adminRole)
+                        .permission(completeOrder)
                         .build()));
     }
 
@@ -196,5 +220,50 @@ class RbacIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void orderCompletion_employeeToken_403() throws Exception {
+        Role employeeRole = roleRepository.findByCodeIgnoreCase("EMPLOYEE").orElseThrow();
+        User employee = userRepository.save(User.builder()
+                .email("complete-employee@test.com")
+                .passwordHash(passwordEncoder.encode("password123"))
+                .role(employeeRole)
+                .status(UserStatus.ACTIVE)
+                .build());
+
+        // EMPLOYEE has order:update but must not gain order:complete.
+        mockMvc.perform(post("/api/v1/admin/orders/ORD_1/complete")
+                        .header("Authorization", "Bearer " + login(employee.getEmail())))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void orderCompletion_adminToken_404() throws Exception {
+        Role adminRole = roleRepository.findByCodeIgnoreCase("ADMIN").orElseThrow();
+        User admin = userRepository.save(User.builder()
+                .email("complete-admin@test.com")
+                .passwordHash(passwordEncoder.encode("password123"))
+                .role(adminRole)
+                .status(UserStatus.ACTIVE)
+                .build());
+
+        // Authorization passes; the unknown order is then a 404.
+        mockMvc.perform(post("/api/v1/admin/orders/ORD_1/complete")
+                        .header("Authorization", "Bearer " + login(admin.getEmail())))
+                .andExpect(status().isNotFound());
+    }
+
+    private String login(String email) throws Exception {
+        LoginRequest loginRequest = new LoginRequest(email, "password123");
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(loginRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(loginResult.getResponse().getContentAsString())
+                .path("data")
+                .path("accessToken")
+                .asText();
     }
 }

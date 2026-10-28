@@ -12,6 +12,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.stream.Stream;
@@ -49,6 +50,8 @@ class SecurityRulesIntegrationTest {
     void ordersRequireToken() throws Exception {
         mockMvc.perform(get("/api/v1/orders"))
                 .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/orders/ORD_1/reviews"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -79,8 +82,19 @@ class SecurityRulesIntegrationTest {
     }
 
     @Test
+    @WithMockUser
+    void reviewCreateDoesNotRequireCatalogWritePermission() throws Exception {
+        mockMvc.perform(post("/api/v1/variants/VAR_1/reviews")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void staffOrderListRequiresToken() throws Exception {
         mockMvc.perform(get("/api/v1/staff/orders"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/staff/orders/ORD_1/reviews"))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -95,6 +109,10 @@ class SecurityRulesIntegrationTest {
                 Arguments.of(HttpMethod.PUT, "/api/v1/variants/VAR_1"),
                 Arguments.of(HttpMethod.PATCH, "/api/v1/variants/VAR_1"),
                 Arguments.of(HttpMethod.DELETE, "/api/v1/variants/VAR_1"),
+                Arguments.of(HttpMethod.POST, "/api/v1/variants/VAR_1/reviews"),
+
+                Arguments.of(HttpMethod.PATCH, "/api/v1/reviews/REV_1"),
+                Arguments.of(HttpMethod.DELETE, "/api/v1/reviews/REV_1"),
 
                 Arguments.of(HttpMethod.POST, "/api/v1/categories"),
                 Arguments.of(HttpMethod.PUT, "/api/v1/categories/CAT_1"),
@@ -122,6 +140,7 @@ class SecurityRulesIntegrationTest {
                 Arguments.of(HttpMethod.POST, "/api/v1/uploads/variants/VAR_1"),
 
                 Arguments.of(HttpMethod.PATCH, "/api/v1/staff/orders/ORD_1/status"),
+                Arguments.of(HttpMethod.POST, "/api/v1/admin/orders/ORD_1/complete"),
 
                 Arguments.of(HttpMethod.DELETE, "/api/v1/cart"),
                 Arguments.of(HttpMethod.POST, "/api/v1/cart/items"),
@@ -153,6 +172,7 @@ class SecurityRulesIntegrationTest {
                 "/api/v1/products/PRD_1/media",
                 "/api/v1/variants",
                 "/api/v1/variants/no-such-id",
+                "/api/v1/variants/no-such-id/reviews",
                 "/api/v1/variants/no-such-id/media",
                 "/api/v1/variants/no-such-id/attributes",
                 "/api/v1/categories",

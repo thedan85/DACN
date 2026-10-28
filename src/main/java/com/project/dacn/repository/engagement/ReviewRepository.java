@@ -12,8 +12,18 @@ import java.util.Optional;
 public interface ReviewRepository extends JpaRepository<Review, Long> {
     Optional<Review> findByReviewId(String reviewId);
 
+    Optional<Review> findByReviewIdAndCustomer_Id(String reviewId, Long customerId);
+
+    Optional<Review> findByCustomer_IdAndVariant_VariantId(Long customerId, String variantId);
+
     List<Review> findByVariant_VariantId(String variantId);
 
-    @EntityGraph(attributePaths = {"customer"})
+    @EntityGraph(attributePaths = {"customer", "variant"})
+    Page<Review> findByVariant_VariantIdOrderByCreatedAtDesc(String variantId, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"customer", "variant"})
     Page<Review> findByVariant_Product_ProductIdOrderByCreatedAtDesc(String productId, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"customer", "variant"})
+    Page<Review> findByOrderItem_Order_OrderIdOrderByCreatedAtDesc(String orderId, Pageable pageable);
 }

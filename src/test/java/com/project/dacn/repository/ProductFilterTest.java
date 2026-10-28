@@ -12,6 +12,7 @@ import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.service.catalog.CatalogCache;
 import com.project.dacn.service.catalog.ProductService;
+import com.project.dacn.service.engagement.ReviewService;
 import com.project.dacn.dto.request.catalog.ProductFilter;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
@@ -38,6 +39,9 @@ class ProductFilterTest {
 
     @MockitoBean
     CatalogCache cache;
+
+    @MockitoBean
+    ReviewService reviewService;
 
     @Autowired
     ProductService service;

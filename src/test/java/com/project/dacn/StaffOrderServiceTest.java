@@ -23,6 +23,8 @@ import com.project.dacn.service.order.OrderService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mapstruct.factory.Mappers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -174,6 +176,41 @@ class StaffOrderServiceTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("CONFIRMED");
         verify(orderRepository, never()).findWithLockByOrderId(anyString());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = OrderStatus.class, names = {"PENDING", "CONFIRMED", "SHIPPING"})
+    void adminCanCompleteNonTerminalOrder(OrderStatus status) {
+        Order order = order(status);
+        when(orderRepository.findWithLockByOrderId("ORD_1"))
+                .thenReturn(Optional.of(order));
+        when(orderItemRepository.findByOrder_OrderId("ORD_1")).thenReturn(List.of());
+
+        OrderResponse response = service.completeByAdmin("ORD_1");
+
+        assertThat(response.status()).isEqualTo(OrderStatus.COMPLETED);
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.COMPLETED);
+        verify(variantRepository, never()).incrementStock(any(), org.mockito.ArgumentMatchers.anyInt());
+        verify(paymentRepository, never()).settle(anyString(), any(), any(), any(), any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = OrderStatus.class, names = {"CANCELLED", "COMPLETED"})
+    void adminCannotCompleteTerminalOrder(OrderStatus status) {
+        when(orderRepository.findWithLockByOrderId("ORD_1"))
+                .thenReturn(Optional.of(order(status)));
+
+        assertThatThrownBy(() -> service.completeByAdmin("ORD_1"))
+                .isInstanceOf(InvalidOrderStateException.class)
+                .hasMessageContaining(status.name());
+    }
+
+    @Test
+    void adminCompleteMissingOrderThrows404() {
+        when(orderRepository.findWithLockByOrderId("ORD_X")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.completeByAdmin("ORD_X"))
+                .isInstanceOf(ResourceNotFoundException.class);
     }
 
     private Order order(OrderStatus status) {

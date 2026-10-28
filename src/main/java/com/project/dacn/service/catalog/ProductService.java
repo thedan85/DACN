@@ -15,13 +15,12 @@ import com.project.dacn.dto.response.catalog.ProductResponse;
 import com.project.dacn.dto.response.catalog.VariantAttributeValueResponse;
 import com.project.dacn.dto.response.catalog.VariantDetailResponse;
 import com.project.dacn.dto.response.engagement.ReviewResponse;
+import com.project.dacn.service.engagement.ReviewService;
 import com.project.dacn.entity.catalog.Category;
 import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.entity.catalog.Variant;
-import com.project.dacn.entity.engagement.Review;
 import com.project.dacn.mapper.catalog.CatalogMapper;
-import com.project.dacn.mapper.engagement.EngagementMapper;
 import com.project.dacn.repository.catalog.CategoryRepository;
 import com.project.dacn.repository.catalog.MediaRepository;
 import com.project.dacn.repository.catalog.ProductAttributeValueRepository;
@@ -29,7 +28,6 @@ import com.project.dacn.repository.catalog.ProductPriceRange;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
-import com.project.dacn.repository.engagement.ReviewRepository;
 import com.project.dacn.spec.ProductSpecs;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -83,9 +81,8 @@ public class ProductService {
     private final MediaRepository mediaRepo;
     private final ProductAttributeValueRepository productAttributeValueRepo;
     private final VariantAttributeValueRepository variantAttributeValueRepo;
-    private final ReviewRepository reviewRepo;
+    private final ReviewService reviewService;
     private final CatalogMapper mapper;
-    private final EngagementMapper engagementMapper;
     private final CatalogCache cache;
 
     public PageResponse<ProductResponse> search(ProductFilter filter, Pageable pageable) {
@@ -238,12 +235,9 @@ public class ProductService {
                 .sorted(Comparator.comparingInt(variant ->
                         variant.variantId().equals(product.slug() + "-default") ? 0 : 1))
                 .toList();
-        Function<Review, ReviewResponse> toReview =
-                includeHidden ? engagementMapper::toStaffReviewResponse : engagementMapper::toReviewResponse;
-        Page<Review> reviews = reviewRepo
-                .findByVariant_Product_ProductIdOrderByCreatedAtDesc(product.productId(), reviewPage);
-        return new ProductDetailResponse(product, attributes, variantDetails,
-                PageResponse.from(reviews, reviews.getContent().stream().map(toReview).toList()));
+        PageResponse<ReviewResponse> reviews = reviewService.listForProduct(
+                product.productId(), includeHidden, reviewPage);
+        return new ProductDetailResponse(product, attributes, variantDetails, reviews);
     }
 
     public ProductResponse create(ProductCreateRequest request) {

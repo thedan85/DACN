@@ -25,6 +25,7 @@ public final class Permissions {
     public static final String MEDIA_DELETE = "media:delete";
     public static final String ORDER_READ = "order:read";
     public static final String ORDER_UPDATE = "order:update";
+    public static final String ORDER_COMPLETE = "order:complete";
 
     /**
      * Optional-privilege check: a token holding this permission may see DRAFT

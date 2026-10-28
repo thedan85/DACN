@@ -72,6 +72,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/products/**").hasAuthority(Permissions.PRODUCT_UPDATE)
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/products/**").hasAuthority(Permissions.PRODUCT_DELETE)
 
+                        // Customers create reviews on a purchased variant; this must be
+                        // checked before the catalog-staff rule for POST /variants/**.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/variants/*/reviews").authenticated()
+
                         .requestMatchers(HttpMethod.POST, "/api/v1/variants/**").hasAuthority(Permissions.VARIANT_CREATE)
                         .requestMatchers(HttpMethod.PUT, "/api/v1/variants/**").hasAuthority(Permissions.VARIANT_UPDATE)
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/variants/**").hasAuthority(Permissions.VARIANT_UPDATE)
@@ -108,6 +112,8 @@ public class SecurityConfig {
 
                         .requestMatchers(HttpMethod.GET, "/api/v1/staff/orders/**").hasAuthority(Permissions.ORDER_READ)
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/staff/orders/**").hasAuthority(Permissions.ORDER_UPDATE)
+                        .requestMatchers(HttpMethod.POST, "/api/v1/admin/orders/*/complete")
+                        .hasAuthority(Permissions.ORDER_COMPLETE)
 
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex

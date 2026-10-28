@@ -38,3 +38,5 @@ build/
 
 .env
 /FE-DACN
+
+/src/test/AGENTS.md

@@ -11,6 +11,7 @@ import com.project.dacn.mapper.engagement.EngagementMapperImpl;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.service.catalog.CatalogCache;
 import com.project.dacn.service.catalog.ProductService;
+import com.project.dacn.service.engagement.ReviewService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -28,6 +29,9 @@ class ProductSlugTest {
 
     @MockitoBean
     CatalogCache cache;
+
+    @MockitoBean
+    ReviewService reviewService;
 
     @Autowired
     private ProductService service;

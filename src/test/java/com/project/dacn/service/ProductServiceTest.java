@@ -18,9 +18,7 @@ import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.entity.catalog.ProductAttributeValue;
 import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.catalog.VariantAttributeValue;
-import com.project.dacn.entity.engagement.Review;
 import com.project.dacn.mapper.catalog.CatalogMapper;
-import com.project.dacn.mapper.engagement.EngagementMapper;
 import com.project.dacn.repository.catalog.CategoryRepository;
 import com.project.dacn.repository.catalog.MediaRepository;
 import com.project.dacn.repository.catalog.ProductAttributeValueRepository;
@@ -28,10 +26,10 @@ import com.project.dacn.repository.catalog.ProductPriceRange;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
-import com.project.dacn.repository.engagement.ReviewRepository;
 import com.project.dacn.service.catalog.CatalogCache;
 import com.project.dacn.service.catalog.CatalogCacheKeys;
 import com.project.dacn.service.catalog.ProductService;
+import com.project.dacn.service.engagement.ReviewService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -85,13 +83,10 @@ class ProductServiceTest {
     VariantAttributeValueRepository variantAttributeValueRepo;
 
     @Mock
-    ReviewRepository reviewRepo;
+    ReviewService reviewService;
 
     @Mock
     CatalogMapper mapper;
-
-    @Mock
-    EngagementMapper engagementMapper;
 
     @Mock
     CatalogCache cache;
@@ -481,11 +476,8 @@ class ProductServiceTest {
 
         ReviewResponse review = new ReviewResponse(
                 "REV_1", "VAR_1", null, "An", false, 5, "nice", null, null);
-        when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc(
-                "PRD_1", PageRequest.of(0, 20)))
-                .thenReturn(new PageImpl<>(List.of(Review.builder().build()),
-                        PageRequest.of(0, 20), 1));
-        when(engagementMapper.toReviewResponse(any())).thenReturn(review);
+        when(reviewService.listForProduct("PRD_1", false, PageRequest.of(0, 20)))
+                .thenReturn(new PageResponse<>(List.of(review), 0, 20, 1, 1));
 
         ProductDetailResponse result = service.getDetail("ember-tetra", false, PageRequest.of(0, 20));
 
@@ -502,7 +494,7 @@ class ProductServiceTest {
         assertThat(result.reviews().getContent()).containsExactly(review);
         assertThat(result.reviews().getTotalElements()).isEqualTo(1);
         assertThat(result.reviews().getPage()).isZero();
-        verify(engagementMapper, never()).toStaffReviewResponse(any());
+        verify(reviewService).listForProduct("PRD_1", false, PageRequest.of(0, 20));
     }
 
     @Test
@@ -513,11 +505,8 @@ class ProductServiceTest {
         when(mapper.toProductResponse(p, null, null, 0)).thenReturn(base);
         ReviewResponse staffReview = new ReviewResponse(
                 "REV_1", "VAR_1", "CUS_1", "An", false, 5, "nice", null, null);
-        when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc(
-                "PRD_1", PageRequest.of(1, 5)))
-                .thenReturn(new PageImpl<>(List.of(Review.builder().build()),
-                        PageRequest.of(1, 5), 6));
-        when(engagementMapper.toStaffReviewResponse(any())).thenReturn(staffReview);
+        when(reviewService.listForProduct("PRD_1", true, PageRequest.of(1, 5)))
+                .thenReturn(new PageResponse<>(List.of(staffReview), 1, 5, 6, 2));
 
         ProductDetailResponse result = service.getDetail("ember-tetra", true, PageRequest.of(1, 5));
 
@@ -525,7 +514,7 @@ class ProductServiceTest {
         assertThat(result.reviews().getPage()).isEqualTo(1);
         assertThat(result.reviews().getSize()).isEqualTo(5);
         assertThat(result.reviews().getTotalElements()).isEqualTo(6);
-        verify(engagementMapper, never()).toReviewResponse(any());
+        verify(reviewService).listForProduct("PRD_1", true, PageRequest.of(1, 5));
     }
 
     @Test
@@ -545,9 +534,8 @@ class ProductServiceTest {
         when(variantAttributeValueRepo.findByVariant_Product_ProductId("PRD_1"))
                 .thenReturn(List.of());
         when(mediaRepo.findByVariant_Product_ProductId("PRD_1")).thenReturn(List.of());
-        when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc(
-                "PRD_1", PageRequest.of(0, 20)))
-                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+        when(reviewService.listForProduct("PRD_1", false, PageRequest.of(0, 20)))
+                .thenReturn(new PageResponse<>(List.of(), 0, 20, 0, 0));
 
         ProductDetailResponse result = service.getDetail("ember-tetra", false, PageRequest.of(0, 20));
 
@@ -576,9 +564,8 @@ class ProductServiceTest {
                 "MED_9", "https://img", "PRD_1", null, false, null, null);
         when(mediaRepo.findByMediaId("MED_9")).thenReturn(Optional.of(thumbnail));
         when(mapper.toMediaResponse(thumbnail)).thenReturn(thumbnailResponse);
-        when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc(
-                "PRD_1", PageRequest.of(0, 20)))
-                .thenReturn(new PageImpl<Review>(List.of(), PageRequest.of(0, 20), 0));
+        when(reviewService.listForProduct("PRD_1", false, PageRequest.of(0, 20)))
+                .thenReturn(new PageResponse<>(List.of(), 0, 20, 0, 0));
 
         ProductDetailResponse result = service.getDetail("ember-tetra", false, PageRequest.of(0, 20));
 
