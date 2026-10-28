@@ -98,6 +98,14 @@ class CatalogCacheTest {
     }
 
     @Test
+    void corruptGenerationIsResetAndBypassed() {
+        when(values.get("pim:product:gen")).thenReturn("not-a-number");
+
+        assertThat(cache.currentGeneration("product")).isEqualTo(OptionalLong.empty());
+        verify(redis).delete("pim:product:gen");
+    }
+
+    @Test
     void bumpSeedsBeforeIncrementing() {
         cache.bumpGeneration("product");
 

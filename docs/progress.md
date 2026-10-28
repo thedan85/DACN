@@ -9,7 +9,7 @@ Source scan: `src/main/java`, `src/main/resources`, `FE-DACN/app`, `docs/*`, git
 ### Backend foundation (Spring Boot 4.1.1, Java 21)
 - `pom.xml:1-299` — webmvc, validation, actuator, aspectj, data-jpa, mail, thymeleaf, security, oauth2-auth-server + resource-server, websocket, springdoc, mapstruct, jjwt, flyway, postgres, cloudinary-http5 + taglib, redis, dotenv. No RabbitMQ dependency despite `docs/Overview.md:7` listing it.
 - Config: `config/SecurityConfig.java:9-18`, `config/RedisConfig.java`, `config/CorsConfig.java`, `config/WebConfig.java`, `config/OpenApiConfig.java`, `config/JacksonConfig.java`.
-- Profiles: `resources/application.yml` (validate, flyway off), `application-dev.yml` (flyway on, cloud Redis via `.env`), `application-test.yml` (H2 `create-drop`, flyway off).
+- Profiles: `resources/application.yml` (validate, flyway off, Redis via `.env`), `application-dev.yml` (flyway on), `application-test.yml` (H2 `create-drop`, flyway off).
 - Common: `common/response/{ApiResponse,PageResponse,ServiceResponse}`, `common/exception/{ResourceNotFoundException,GlobalExceptionHandler}`, 9 enums in `common/constant`.
 - Exception envelope: 404 (`ResourceNotFoundException`, `NoResourceFoundException`), 409 (`DataIntegrityViolationException` → generic message), 400 (validation/constraint/illegal-arg/malformed), 500 generic + log. `GlobalExceptionHandler.java:32-37` logs 409 detail, returns generic string.
 

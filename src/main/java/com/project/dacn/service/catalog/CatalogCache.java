@@ -67,7 +67,8 @@ public class CatalogCache {
             }
             return current == null ? OptionalLong.empty() : OptionalLong.of(Long.parseLong(current));
         } catch (NumberFormatException e) {
-            log.debug("Invalid catalog generation at {}, bypassing the cache", key, e);
+            log.warn("Invalid catalog generation at {}, resetting it", key);
+            deleteQuietly(key);
             return OptionalLong.empty();
         } catch (RuntimeException e) {
             log.debug("Catalog cache generation read failed at {}, bypassing the cache", key, e);

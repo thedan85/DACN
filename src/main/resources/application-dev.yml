@@ -14,14 +14,6 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration,classpath:db/dev
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      username: ${REDIS_USERNAME:}
-      password: ${REDIS_PASSWORD:}
-      ssl:
-        enabled: ${REDIS_SSL_ENABLED:true}
 
 jwt:
   secret: ${JWT_SECRET:dev-secret-key-please-change-min-256-bits-hs256-algorithm-requires-this-length}
