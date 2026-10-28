@@ -34,12 +34,14 @@ class VnpayWebhookControllerTest {
     }
 
     @Test
-    void ipnRejectsCancelledOrder() {
+    void ipnAcknowledgesLatePaymentThatNeedsRefund() {
         Map<String, String> params = signedParams();
         when(settlement.settle(any(), any(), anyBoolean(), any()))
-                .thenReturn(PaymentSettlementService.Result.ORDER_CANCELLED);
+                .thenReturn(PaymentSettlementService.Result.REFUND_REQUIRED);
 
-        assertThat(controller.ipn(params)).containsEntry("RspCode", "01");
+        assertThat(controller.ipn(params))
+                .containsEntry("RspCode", "00")
+                .containsEntry("Message", "Refund required");
     }
 
     @Test

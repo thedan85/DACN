@@ -47,7 +47,6 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     token_id            VARCHAR(255) NOT NULL,
     user_id             BIGINT UNSIGNED NOT NULL,
-    token_hash VARCHAR(255) COLLATE utf8mb4_bin NOT NULL,
     token_expires_at    TIMESTAMP NOT NULL,
     token_revoked       BOOLEAN NOT NULL DEFAULT FALSE,
     token_user_agent    VARCHAR(255) NULL,
@@ -313,8 +312,6 @@ ALTER TABLE users ADD CONSTRAINT fk_users_role
     FOREIGN KEY (role_id) REFERENCES roles(id)
     ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- refresh_tokens.token_hash UNIQUE: moi token chi dung 1 lan, chong doan token
-ALTER TABLE refresh_tokens ADD CONSTRAINT uq_refresh_tokens_hash UNIQUE (token_hash);
 -- FK refresh_tokens.user_id -> users.id: xoa user thi xoa het token con
 ALTER TABLE refresh_tokens ADD CONSTRAINT fk_refresh_tokens_user
     FOREIGN KEY (user_id) REFERENCES users(id)

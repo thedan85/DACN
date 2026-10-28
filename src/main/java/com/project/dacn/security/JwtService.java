@@ -76,6 +76,10 @@ public class JwtService {
         return parse(token).getSubject();
     }
 
+    public String extractEmail(String token) {
+        return parse(token).get("email", String.class);
+    }
+
     public String extractJti(String token) {
         return parse(token).get("jti", String.class);
     }

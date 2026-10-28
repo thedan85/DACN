@@ -154,6 +154,7 @@ class AuthControllerTest {
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("refresh_token=")));
 
         verify(rateLimiter).check("rl:login:local", 10, Duration.ofMinutes(1));
+        verify(rateLimiter).check("rl:login-email:test@example.com", 10, Duration.ofMinutes(15));
     }
 
     @Test

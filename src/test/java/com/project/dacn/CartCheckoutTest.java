@@ -121,6 +121,8 @@ class CartCheckoutTest {
         @Test
         void checkoutSnapshotsPriceAndClearsCart() {
             givenCart();
+            when(cartRepository.findByCustomer_Id(1L))
+                    .thenReturn(Optional.of(cart(customer())));
             Variant v = variant(10);
             CartItem existing = item(cart(customer()), v, 2);
             when(cartItemRepository.findWithDetailsByCart_Id(10L))
@@ -160,7 +162,7 @@ class CartCheckoutTest {
         void checkoutWithNoCartRowThrows400() {
             when(customerRepository.findById(1L))
                     .thenReturn(Optional.of(customer()));
-            when(cartRepository.findByCustomer_Id(1L))
+            when(cartRepository.findByCustomer_IdForUpdate(1L))
                     .thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.checkout(1L,
@@ -204,7 +206,7 @@ class CartCheckoutTest {
         private void givenCart() {
             Customer c = customer();
             when(customerRepository.findById(1L)).thenReturn(Optional.of(c));
-            when(cartRepository.findByCustomer_Id(1L))
+            when(cartRepository.findByCustomer_IdForUpdate(1L))
                     .thenReturn(Optional.of(cart(c)));
         }
 

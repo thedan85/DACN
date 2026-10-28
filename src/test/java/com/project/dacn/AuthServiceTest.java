@@ -148,8 +148,11 @@ class AuthServiceTest {
         assertThat(refreshed.accessToken()).isNotNull();
         assertThat(refreshed.refreshToken()).isNotEqualTo(login.refreshToken());
 
-        // Old refresh token was revoked by rotation -> must be rejected.
+        // Old refresh token was revoked by rotation -> must be rejected, and
+        // replaying it revokes every session, including the rotated one.
         assertThatThrownBy(() -> authService.refresh(new RefreshRequest(login.refreshToken())))
+                .isInstanceOf(InvalidTokenException.class);
+        assertThatThrownBy(() -> authService.refresh(new RefreshRequest(refreshed.refreshToken())))
                 .isInstanceOf(InvalidTokenException.class);
     }
 

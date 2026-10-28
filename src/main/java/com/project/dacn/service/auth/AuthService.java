@@ -30,6 +30,7 @@ import com.project.dacn.repository.identity.CustomerRepository;
 import com.project.dacn.security.JwtService;
 import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -38,18 +39,15 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 
 @Service
 @Transactional
 @RequiredArgsConstructor
+@Slf4j
 public class AuthService {
 
     private final UserRepository userRepository;
@@ -131,13 +129,9 @@ public class AuthService {
         String accessToken = jwtService.generateAccessToken(user.getUserId(), user.getEmail());
         String refreshToken = jwtService.generateRefreshToken(user.getUserId(), tokenId);
 
-        // Hash refresh token and save
-        String tokenHash = hashToken(refreshToken);
-
         RefreshToken token = RefreshToken.builder()
                 .tokenId(tokenId)
                 .user(user)
-                .tokenHash(tokenHash)
                 .expiresAt(Instant.now().plus(jwtService.getRefreshTokenExpirationMs(), ChronoUnit.MILLIS))
                 .userAgent(userAgent)
                 .ip(ip)
@@ -153,6 +147,9 @@ public class AuthService {
         );
     }
 
+    // Commit the revocation of a replayed token's sessions even though the
+    // request still fails with InvalidTokenException.
+    @Transactional(noRollbackFor = InvalidTokenException.class)
     public RefreshResponse refresh(RefreshRequest request) {
         // Extract jti from refresh token, wrap in try-catch for invalid tokens
         String jti;
@@ -166,8 +163,15 @@ public class AuthService {
         RefreshToken token = refreshTokenRepository.findByTokenId(jti)
                 .orElseThrow(InvalidTokenException::new);
 
-        // Validate token: not revoked, not expired
-        if (token.getRevoked() || token.getExpiresAt().isBefore(Instant.now())) {
+        // A replayed token means it was stolen: drop every session of that user.
+        if (token.getRevoked()) {
+            log.warn("Refresh token reuse for user {}; revoking all sessions",
+                    token.getUser().getUserId());
+            refreshTokenRepository.findByUser_UserId(token.getUser().getUserId())
+                    .forEach(t -> t.setRevoked(true));
+            throw new InvalidTokenException();
+        }
+        if (token.getExpiresAt().isBefore(Instant.now())) {
             throw new InvalidTokenException();
         }
 
@@ -186,13 +190,9 @@ public class AuthService {
         String newAccessToken = jwtService.generateAccessToken(user.getUserId(), user.getEmail());
         String newRefreshToken = jwtService.generateRefreshToken(user.getUserId(), newTokenId);
 
-        // Hash and save new refresh token
-        String tokenHash = hashToken(newRefreshToken);
-
         RefreshToken newToken = RefreshToken.builder()
                 .tokenId(newTokenId)
                 .user(user)
-                .tokenHash(tokenHash)
                 .expiresAt(Instant.now().plus(jwtService.getRefreshTokenExpirationMs(), ChronoUnit.MILLIS))
                 .userAgent(token.getUserAgent())
                 .ip(token.getIp())
@@ -311,13 +311,4 @@ public class AuthService {
         }
     }
 
-    private String hashToken(String token) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
-            return Base64.getEncoder().encodeToString(hash);
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 not available", e);
-        }
-    }
 }

@@ -1,9 +1,6 @@
 package com.project.dacn.security;
 
-import com.project.dacn.common.exception.ResourceNotFoundException;
-import com.project.dacn.entity.auth.User;
 import com.project.dacn.entity.identity.Customer;
-import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
@@ -19,7 +16,6 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class CustomerIdentity {
 
-    private final UserRepository userRepository;
     private final CustomerRepository customerRepository;
 
     public Long requireCustomerId(Authentication auth) {
@@ -27,9 +23,7 @@ public class CustomerIdentity {
                 || auth instanceof AnonymousAuthenticationToken) {
             throw new AccessDeniedException("authentication required");
         }
-        User user = userRepository.findByEmail(auth.getName())
-                .orElseThrow(() -> new ResourceNotFoundException("user not found"));
-        return customerRepository.findByUser_UserId(user.getUserId())
+        return customerRepository.findByUser_Email(auth.getName())
                 .map(Customer::getId)
                 .orElseThrow(() -> new AccessDeniedException("customer profile not found"));
     }

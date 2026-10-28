@@ -1,7 +1,5 @@
 package com.project.dacn.security;
 
-import com.project.dacn.entity.auth.User;
-import com.project.dacn.repository.auth.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -10,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -21,7 +18,6 @@ import java.io.IOException;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
-    private final UserRepository userRepository;
     private final CustomUserDetailsService userDetailsService;
 
     @Override
@@ -39,14 +35,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             if (jwtService.validateAccessToken(token)) {
-                String userId = jwtService.extractUserId(token);
-
-                // Load user by userId to get email (single query)
-                User user = userRepository.findByUserId(userId)
-                        .orElseThrow(() -> new UsernameNotFoundException("User not found"));
-
-                // Load UserDetails with authorities
-                UserDetails userDetails = userDetailsService.loadUserByUsername(user.getEmail());
+                // The access token carries the email, so no extra user lookup.
+                UserDetails userDetails = userDetailsService
+                        .loadUserByUsername(jwtService.extractEmail(token));
 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         userDetails,

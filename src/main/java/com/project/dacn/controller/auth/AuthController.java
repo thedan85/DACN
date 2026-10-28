@@ -57,6 +57,9 @@ public class AuthController {
             HttpServletRequest httpRequest) {
         String ip = clientIp(httpRequest);
         rateLimiter.check("rl:login:" + ip, 10, Duration.ofMinutes(1));
+        // Per-account limit so many source IPs cannot brute-force one email.
+        rateLimiter.check("rl:login-email:" + request.email().toLowerCase(),
+                10, Duration.ofMinutes(15));
         String userAgent = httpRequest.getHeader("User-Agent");
         LoginResponse response = authService.login(request, userAgent, ip);
         return ResponseEntity.ok()

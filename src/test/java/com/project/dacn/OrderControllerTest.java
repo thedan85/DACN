@@ -1,6 +1,7 @@
 package com.project.dacn;
 
 import com.project.dacn.common.constant.OrderStatus;
+import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.controller.order.OrderController;
 import com.project.dacn.dto.response.order.OrderItemResponse;
 import com.project.dacn.dto.response.order.OrderResponse;
@@ -13,6 +14,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -20,6 +22,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -55,12 +58,13 @@ class OrderControllerTest {
     @Test
     void listReturnsCustomerOrders() throws Exception {
         when(identity.requireCustomerId(any())).thenReturn(1L);
-        when(service.list(1L)).thenReturn(List.of(order()));
+        when(service.list(eq(1L), any(Pageable.class)))
+                .thenReturn(new PageResponse<>(List.of(order()), 0, 20, 1, 1));
 
         mockMvc.perform(get("/api/v1/orders"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].orderId").value("ORD_1"))
-                .andExpect(jsonPath("$.data[0].customerId").value("CUS_1"));
+                .andExpect(jsonPath("$.data.content[0].orderId").value("ORD_1"))
+                .andExpect(jsonPath("$.data.content[0].customerId").value("CUS_1"));
     }
 
     @Test

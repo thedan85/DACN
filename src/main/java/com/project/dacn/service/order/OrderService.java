@@ -23,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -35,10 +37,9 @@ public class OrderService {
     private final VariantRepository variantRepository;
     private final PaymentRepository paymentRepository;
 
-    public List<OrderResponse> list(Long customerId) {
-        return orderRepository.findByCustomer_IdOrderByIdDesc(customerId).stream()
-                .map(this::toResponse)
-                .toList();
+    public PageResponse<OrderResponse> list(Long customerId, Pageable pageable) {
+        Page<Order> page = orderRepository.findByCustomer_IdOrderByIdDesc(customerId, pageable);
+        return PageResponse.from(page, toResponses(page.getContent()));
     }
 
     public OrderResponse get(Long customerId, String orderId) {
@@ -55,7 +56,7 @@ public class OrderService {
         Page<Order> page = status == null
                 ? orderRepository.findAllByOrderByIdDesc(pageable)
                 : orderRepository.findByStatusOrderByIdDesc(status, pageable);
-        return PageResponse.from(page, page.getContent().stream().map(this::toResponse).toList());
+        return PageResponse.from(page, toResponses(page.getContent()));
     }
 
     /**
@@ -99,6 +100,24 @@ public class OrderService {
                 .filter(payment -> payment.getStatus() == PaymentStatus.PENDING)
                 .ifPresent(payment -> paymentRepository.settle(payment.getPaymentId(),
                         PaymentStatus.PENDING, PaymentStatus.FAILED, null, Instant.now()));
+    }
+
+    /**
+     * Maps a page of orders with one item query instead of one per order.
+     */
+    private List<OrderResponse> toResponses(List<Order> orders) {
+        if (orders.isEmpty()) {
+            return List.of();
+        }
+        Map<String, List<OrderItem>> itemsByOrder = orderItemRepository
+                .findByOrder_OrderIdIn(orders.stream().map(Order::getOrderId).toList())
+                .stream()
+                .collect(Collectors.groupingBy(item -> item.getOrder().getOrderId()));
+        return orders.stream()
+                .map(order -> orderMapper.toOrderResponse(order,
+                        itemsByOrder.getOrDefault(order.getOrderId(), List.of()).stream()
+                                .map(orderMapper::toOrderItemResponse).toList()))
+                .toList();
     }
 
     private OrderResponse toResponse(Order order) {

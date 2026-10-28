@@ -33,9 +33,6 @@ public class RefreshToken extends BaseEntity {
             foreignKey = @ForeignKey(name = "fk_refresh_tokens_user"))
     private User user;
 
-    @Column(name = "token_hash", nullable = false, unique = true)
-    private String tokenHash;
-
     @Column(name = "token_expires_at", nullable = false)
     private Instant expiresAt;
 

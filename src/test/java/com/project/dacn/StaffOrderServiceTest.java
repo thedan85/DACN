@@ -75,7 +75,7 @@ class StaffOrderServiceTest {
         Order order = order(OrderStatus.PENDING);
         when(orderRepository.findByStatusOrderByIdDesc(OrderStatus.PENDING, pageable))
                 .thenReturn(new PageImpl<>(List.of(order), pageable, 1));
-        when(orderItemRepository.findByOrder_OrderId("ORD_1")).thenReturn(List.of());
+        when(orderItemRepository.findByOrder_OrderIdIn(List.of("ORD_1"))).thenReturn(List.of());
 
         PageResponse<OrderResponse> page = service.listForStaff(OrderStatus.PENDING, pageable);
 
@@ -89,7 +89,7 @@ class StaffOrderServiceTest {
         Pageable pageable = PageRequest.of(0, 20);
         when(orderRepository.findAllByOrderByIdDesc(pageable))
                 .thenReturn(new PageImpl<>(List.of(order(OrderStatus.CONFIRMED)), pageable, 1));
-        when(orderItemRepository.findByOrder_OrderId("ORD_1")).thenReturn(List.of());
+        when(orderItemRepository.findByOrder_OrderIdIn(List.of("ORD_1"))).thenReturn(List.of());
 
         assertThat(service.listForStaff(null, pageable).getContent()).hasSize(1);
     }
