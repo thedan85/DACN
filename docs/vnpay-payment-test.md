@@ -13,7 +13,7 @@ winget install --id Cloudflare.cloudflared
 ### 1. Mở tunnel
 
 ```powershell
-cloudflared tunnel --url http://localhost:8080
+cloudflared tunnel --url http://127.0.0.1:8080
 ```
 
 Copy URL `https://...trycloudflare.com`. Giữ terminal này mở.

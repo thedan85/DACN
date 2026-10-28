@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project.dacn.common.exception.RateLimitExceededException;
 import com.project.dacn.config.SecurityConfig;
 import com.project.dacn.controller.auth.AuthController;
+import com.project.dacn.dto.request.auth.ChangePasswordRequest;
 import com.project.dacn.dto.request.auth.LoginRequest;
 import com.project.dacn.dto.request.auth.RefreshRequest;
 import com.project.dacn.dto.request.auth.RegisterRequest;
@@ -26,14 +27,19 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.time.Duration;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -101,6 +107,8 @@ class AuthControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value(201))
                 .andExpect(jsonPath("$.data.userId").value("user-123"));
+
+        verify(rateLimiter).check("rl:register:127.0.0.1", 20, Duration.ofHours(1));
     }
 
     @Test
@@ -144,6 +152,8 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.accessToken").value("access-token"))
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("refresh_token=")));
+
+        verify(rateLimiter).check("rl:login:127.0.0.1", 10, Duration.ofMinutes(1));
     }
 
     @Test
@@ -207,6 +217,8 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.accessToken").value("new-access-token"))
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("refresh_token=")));
+
+        verify(rateLimiter).check("rl:refresh:127.0.0.1", 30, Duration.ofMinutes(1));
     }
 
     @Test
@@ -255,6 +267,63 @@ class AuthControllerTest {
 
         mockMvc.perform(post("/api/v1/auth/refresh")
                         .cookie(new Cookie(RefreshTokenCookie.NAME, "valid-refresh-token")))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value(429));
+    }
+
+    @Test
+    void login_usesCloudflareIpNotForwardedFor() throws Exception {
+        when(authService.login(any(LoginRequest.class), any(), any())).thenReturn(
+                new LoginResponse("access-token", "refresh-token", 900, "Bearer"));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("CF-Connecting-IP", "203.0.113.7")
+                        .header("X-Forwarded-For", "198.51.100.9")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new LoginRequest("test@example.com", "password123"))))
+                .andExpect(status().isOk());
+
+        verify(rateLimiter).check("rl:login:203.0.113.7", 10, Duration.ofMinutes(1));
+        verify(authService).login(any(LoginRequest.class), any(), eq("203.0.113.7"));
+    }
+
+    @Test
+    void register_rateLimited_429() throws Exception {
+        doThrow(new RateLimitExceededException("too many requests, try again later"))
+                .when(rateLimiter).check(anyString(), anyInt(), any());
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new RegisterRequest("test@example.com", "password123",
+                                        "Test User", "1234567890"))))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value(429));
+    }
+
+    @Test
+    @WithMockUser(username = "test@example.com")
+    void changePassword_usesExpectedPolicy() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/change-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new ChangePasswordRequest("password123", "newpassword123"))))
+                .andExpect(status().isOk());
+
+        verify(rateLimiter).check("rl:pwd:test@example.com", 5, Duration.ofMinutes(1));
+    }
+
+    @Test
+    @WithMockUser(username = "test@example.com")
+    void changePassword_rateLimited_429() throws Exception {
+        doThrow(new RateLimitExceededException("too many requests, try again later"))
+                .when(rateLimiter).check(anyString(), anyInt(), any());
+
+        mockMvc.perform(post("/api/v1/auth/change-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new ChangePasswordRequest("password123", "newpassword123"))))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.code").value(429));
     }

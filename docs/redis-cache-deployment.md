@@ -36,7 +36,9 @@ On a miss, the cache write happens while the request's DB transaction is still o
 no cleanup job. If Redis is unreachable the limiter fails open and logs a
 warning at most once per minute; auth keeps working with throttling disabled.
 
-The app must not expose port 8080 directly: bind it to `127.0.0.1` or
-firewall it to the tunnel. `forward-headers-strategy: framework` trusts
-`X-Forwarded-For`, so a directly reachable port lets a client forge a fresh
-address per request and bypass the limits.
+The app binds to `127.0.0.1` (`server.address`), so only the local Cloudflare
+tunnel can reach it; point the tunnel at `http://127.0.0.1:8080`. The limiter
+keys on `CF-Connecting-IP` (falling back to `getRemoteAddr()` for local dev),
+not `X-Forwarded-For`: Cloudflare appends to a client-supplied
+`X-Forwarded-For`, and Spring's forwarded-header handling takes its leftmost
+value, so `X-Forwarded-For` alone is forgeable.

@@ -45,7 +45,7 @@ public class AuthController {
     public ResponseEntity<ApiResponse<UserResponse>> register(
             @Valid @RequestBody RegisterRequest request,
             HttpServletRequest httpRequest) {
-        rateLimiter.check("rl:register:" + httpRequest.getRemoteAddr(), 20, Duration.ofHours(1));
+        rateLimiter.check("rl:register:" + clientIp(httpRequest), 20, Duration.ofHours(1));
         UserResponse response = authService.register(request);
         return ResponseEntity.status(201)
                 .body(ApiResponse.of(201, "registered successfully", response));
@@ -55,9 +55,9 @@ public class AuthController {
     public ResponseEntity<ApiResponse<LoginResponse>> login(
             @Valid @RequestBody LoginRequest request,
             HttpServletRequest httpRequest) {
-        rateLimiter.check("rl:login:" + httpRequest.getRemoteAddr(), 10, Duration.ofMinutes(1));
+        String ip = clientIp(httpRequest);
+        rateLimiter.check("rl:login:" + ip, 10, Duration.ofMinutes(1));
         String userAgent = httpRequest.getHeader("User-Agent");
-        String ip = httpRequest.getRemoteAddr();
         LoginResponse response = authService.login(request, userAgent, ip);
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.create(response.refreshToken()))
@@ -74,7 +74,7 @@ public class AuthController {
             throw new InvalidTokenException();
         }
 
-        rateLimiter.check("rl:refresh:" + httpRequest.getRemoteAddr(), 30, Duration.ofMinutes(1));
+        rateLimiter.check("rl:refresh:" + clientIp(httpRequest), 30, Duration.ofMinutes(1));
 
         RefreshResponse response = authService.refresh(new RefreshRequest(refreshToken));
         return ResponseEntity.ok()
@@ -117,5 +117,16 @@ public class AuthController {
         rateLimiter.check("rl:pwd:" + authentication.getName(), 5, Duration.ofMinutes(1));
         authService.changePassword(request, refreshToken);
         return ResponseEntity.ok(ApiResponse.ok(null));
+    }
+
+    private static String clientIp(HttpServletRequest request) {
+        String cloudflareIp = request.getHeader("CF-Connecting-IP");
+        if (cloudflareIp != null && !cloudflareIp.isBlank()) {
+            String trimmed = cloudflareIp.trim();
+            if (trimmed.length() <= 45 && trimmed.indexOf(',') < 0) {
+                return trimmed;
+            }
+        }
+        return request.getRemoteAddr();
     }
 }

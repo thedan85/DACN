@@ -29,6 +29,8 @@ spring:
 
 server:
   port: 8080
+  # Cloudflare Tunnel connects over loopback; never expose the app directly.
+  address: 127.0.0.1
   # Cloudflare tunnel terminates TLS; use X-Forwarded-* so Swagger/redirects
   # generate https URLs instead of http ones.
   forward-headers-strategy: framework
