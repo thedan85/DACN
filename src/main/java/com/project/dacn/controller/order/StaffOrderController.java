@@ -33,8 +33,9 @@ public class StaffOrderController {
     @PreAuthorize("hasAuthority('" + Permissions.ORDER_READ + "')")
     public ApiResponse<PageResponse<OrderResponse>> list(
             @RequestParam(required = false) OrderStatus status,
+            @RequestParam(required = false) String q,
             @ParameterObject Pageable pageable) {
-        return ApiResponse.ok(service.listForStaff(status, pageable));
+        return ApiResponse.ok(service.listForStaff(status, q, pageable));
     }
 
     /**

@@ -77,6 +77,7 @@ class StaffOrderPersistenceTest {
     EntityManager entityManager;
 
     Order order;
+    Order otherOrder;
     Variant variant;
     Payment payment;
 
@@ -86,13 +87,20 @@ class StaffOrderPersistenceTest {
         User user = userRepository.save(User.builder()
                 .email("stafford@x.com").passwordHash("h").role(role).build());
         Customer customer = customerRepository.save(Customer.builder()
-                .user(user).name("C").phone("090").build());
+                .user(user).name("Alpha Customer").phone("0901234567").build());
+        User otherUser = userRepository.save(User.builder()
+                .email("beta@x.com").passwordHash("h").role(role).build());
+        Customer otherCustomer = customerRepository.save(Customer.builder()
+                .user(otherUser).name("Beta Customer").phone("0917654321").build());
         Product product = productRepository.save(Product.builder().name("P").description("d").build());
         variant = variantRepository.save(Variant.builder().product(product)
                 .sku("STAFF-SKU").price(new BigDecimal("10.00")).stock(5).build());
         order = orderRepository.save(Order.builder()
                 .customer(customer).total(new BigDecimal("20.00"))
-                .address("addr").recipientName("C").phone("090").build());
+                .address("addr").recipientName("Alpha Customer").phone("0901234567").build());
+        otherOrder = orderRepository.save(Order.builder()
+                .customer(otherCustomer).total(new BigDecimal("30.00"))
+                .address("addr2").recipientName("Beta Customer").phone("0917654321").build());
         orderItemRepository.save(OrderItem.builder()
                 .order(order).variant(variant).quantity(2)
                 .unitPrice(new BigDecimal("10.00")).build());
@@ -112,7 +120,7 @@ class StaffOrderPersistenceTest {
         entityManager.flush();
         entityManager.clear();
 
-        assertThat(response.customerName()).isEqualTo("C");
+        assertThat(response.customerName()).isEqualTo("Alpha Customer");
         assertThat(response.status()).isEqualTo(OrderStatus.CANCELLED);
         assertThat(orderRepository.findByOrderId(order.getOrderId()).orElseThrow().getStatus())
                 .isEqualTo(OrderStatus.CANCELLED);
@@ -145,6 +153,24 @@ class StaffOrderPersistenceTest {
                 .allSatisfy(o -> assertThat(o.items()).hasSize(1));
         // page + count + one batched item query
         assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(3);
+    }
+
+    @Test
+    void staffSearchMatchesOrderIdContactFieldsAndStatus() {
+        var page = PageRequest.of(0, 20);
+
+        assertThat(service.listForStaff(null, order.getOrderId(), page).getContent())
+                .extracting(OrderResponse::orderId).containsExactly(order.getOrderId());
+        assertThat(service.listForStaff(null, "alpha", page).getContent())
+                .extracting(OrderResponse::orderId).containsExactly(order.getOrderId());
+        assertThat(service.listForStaff(null, "0901234567", page).getContent())
+                .extracting(OrderResponse::orderId).containsExactly(order.getOrderId());
+        assertThat(service.listForStaff(null, "stafford@", page).getContent())
+                .extracting(OrderResponse::orderId).containsExactly(order.getOrderId());
+        assertThat(service.listForStaff(null, "beta", page).getContent())
+                .extracting(OrderResponse::orderId).containsExactly(otherOrder.getOrderId());
+        assertThat(service.listForStaff(OrderStatus.CONFIRMED, "alpha", page).getContent())
+                .isEmpty();
     }
 
     @Test
