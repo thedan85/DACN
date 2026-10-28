@@ -43,6 +43,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -506,6 +507,119 @@ class ProductServiceTest {
     }
 
     @Test
+    void detailCacheHitOverlaysStockAndSkipsDetailQueries() {
+        when(cache.currentGeneration("product")).thenReturn(OptionalLong.of(9));
+        ProductDetailResponse cached = new ProductDetailResponse(
+                response(null, null, null), List.of(),
+                List.of(variantDetail("VAR_1", null), variantDetail("VAR_2", null)),
+                new PageResponse<>(List.of(), 0, 20, 0, 0));
+        when(cache.get(eq("pim:product:detail:9:ember-tetra:0:20:none"), any()))
+                .thenReturn(Optional.of(cached));
+        VariantRepository.VariantStockView stock = stockView("VAR_1", 5);
+        when(variantRepo.findStockByVariantIdIn(List.of("VAR_1", "VAR_2")))
+                .thenReturn(List.of(stock));
+
+        ProductDetailResponse result = service.getDetail("ember-tetra", false, PageRequest.of(0, 20));
+
+        assertThat(result.product().stock()).isEqualTo(5);
+        assertThat(result.variants()).extracting(VariantDetailResponse::stock)
+                .containsExactly(5, 0);
+        verifyNoInteractions(repo, mediaRepo, productAttributeValueRepo,
+                variantAttributeValueRepo, reviewRepo);
+    }
+
+    @Test
+    void detailCacheHitForProductWithoutVariantsOverlaysZeroStockWithoutQuery() {
+        when(cache.currentGeneration("product")).thenReturn(OptionalLong.of(9));
+        when(cache.get(any(), any())).thenReturn(Optional.of(new ProductDetailResponse(
+                response(null, null, null), List.of(), List.of(),
+                new PageResponse<>(List.of(), 0, 20, 0, 0))));
+
+        ProductDetailResponse result = service.getDetail("ember-tetra", false, PageRequest.of(0, 20));
+
+        assertThat(result.product().stock()).isZero();
+        verify(variantRepo, never()).findStockByVariantIdIn(any());
+    }
+
+    @Test
+    void detailCacheMissStoresAggregateWithStockScrubbed() {
+        Product p = product(1L);
+        ProductResponse base = response(null, null, 0);
+        when(cache.currentGeneration("product")).thenReturn(OptionalLong.of(9));
+        when(cache.get(any(), any())).thenReturn(Optional.empty());
+        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
+        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
+        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(base);
+
+        ProductAttributeValueResponse productAttribute = new ProductAttributeValueResponse(
+                "PAV_1", "PRD_1", "ATTR_1", "Temperature", "AV_1", "25C", null);
+        when(productAttributeValueRepo.findByProduct_ProductId("PRD_1"))
+                .thenReturn(List.of(ProductAttributeValue.builder().build()));
+        when(mapper.toProductAttributeValueResponse(any())).thenReturn(productAttribute);
+
+        Variant v1 = Variant.builder().variantId("VAR_1").sku("SKU-1")
+                .price(new BigDecimal("100")).stock(5).build();
+        Variant v2 = Variant.builder().variantId("VAR_2").sku("SKU-2")
+                .price(new BigDecimal("200")).stock(0).build();
+        when(variantRepo.findByProduct_ProductId("PRD_1")).thenReturn(List.of(v1, v2));
+        when(variantAttributeValueRepo.findByVariant_Product_ProductId("PRD_1"))
+                .thenReturn(List.of());
+        when(mediaRepo.findByVariant_Product_ProductId("PRD_1")).thenReturn(List.of());
+        when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc(
+                "PRD_1", PageRequest.of(0, 20)))
+                .thenReturn(new PageImpl<Review>(List.of(), PageRequest.of(0, 20), 0));
+
+        ProductDetailResponse result = service.getDetail("ember-tetra", false, PageRequest.of(0, 20));
+
+        ArgumentCaptor<ProductDetailResponse> stored =
+                ArgumentCaptor.forClass(ProductDetailResponse.class);
+        verify(cache).put(eq("pim:product:detail:9:ember-tetra:0:20:none"), stored.capture(),
+                eq(CatalogCacheKeys.PRODUCT_DETAIL_AGGREGATE_TTL));
+        assertThat(stored.getValue().product().stock()).isNull();
+        assertThat(stored.getValue().variants())
+                .allSatisfy(variant -> assertThat(variant.stock()).isNull());
+        assertThat(result.variants().get(0).stock()).isEqualTo(5);
+    }
+
+    @Test
+    void detailSkipsAggregateCacheForNonStandardReviewPage() {
+        Product p = product(1L);
+        when(cache.currentGeneration("product")).thenReturn(OptionalLong.of(9));
+        when(cache.get(any(), any())).thenReturn(Optional.empty());
+        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
+        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(response(null, null, 0));
+        when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc(
+                "PRD_1", PageRequest.of(0, 7)))
+                .thenReturn(new PageImpl<Review>(List.of(), PageRequest.of(0, 7), 3));
+
+        ProductDetailResponse result =
+                service.getDetail("ember-tetra", false, PageRequest.of(0, 7));
+
+        assertThat(result.reviews().getPage()).isZero();
+        assertThat(result.reviews().getSize()).isEqualTo(7);
+        assertThat(result.reviews().getTotalElements()).isEqualTo(3);
+        verify(cache, never()).get(startsWith("pim:product:detail:"), any());
+        verify(cache, never()).put(startsWith("pim:product:detail:"), any(), any());
+    }
+
+    @Test
+    void detailSkipsAggregateCacheWhenReviewPageIsSorted() {
+        Product p = product(1L);
+        PageRequest sorted = PageRequest.of(0, 20, Sort.by("rating").ascending());
+        when(cache.currentGeneration("product")).thenReturn(OptionalLong.of(9));
+        when(cache.get(any(), any())).thenReturn(Optional.empty());
+        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
+        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(response(null, null, 0));
+        when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc("PRD_1", sorted))
+                .thenReturn(new PageImpl<Review>(List.of(), sorted, 0));
+
+        service.getDetail("ember-tetra", false, sorted);
+
+        verify(cache, never()).get(startsWith("pim:product:detail:"), any());
+        verify(cache, never()).put(startsWith("pim:product:detail:"), any(), any());
+    }
+
+    @Test
     void detailExposesReviewCustomerIdOnlyToStaff() {
         Product p = product(1L);
         ProductResponse base = response(null, null, 0);
@@ -514,18 +628,19 @@ class ProductServiceTest {
         ReviewResponse staffReview = new ReviewResponse(
                 "REV_1", "VAR_1", "CUS_1", "An", false, 5, "nice", null, null);
         when(reviewRepo.findByVariant_Product_ProductIdOrderByCreatedAtDesc(
-                "PRD_1", PageRequest.of(1, 5)))
+                "PRD_1", PageRequest.of(1, 20)))
                 .thenReturn(new PageImpl<>(List.of(Review.builder().build()),
-                        PageRequest.of(1, 5), 6));
+                        PageRequest.of(1, 20), 21));
         when(engagementMapper.toStaffReviewResponse(any())).thenReturn(staffReview);
 
-        ProductDetailResponse result = service.getDetail("ember-tetra", true, PageRequest.of(1, 5));
+        ProductDetailResponse result = service.getDetail("ember-tetra", true, PageRequest.of(1, 20));
 
         assertThat(result.reviews().getContent()).containsExactly(staffReview);
         assertThat(result.reviews().getPage()).isEqualTo(1);
-        assertThat(result.reviews().getSize()).isEqualTo(5);
-        assertThat(result.reviews().getTotalElements()).isEqualTo(6);
+        assertThat(result.reviews().getSize()).isEqualTo(20);
+        assertThat(result.reviews().getTotalElements()).isEqualTo(21);
         verify(engagementMapper, never()).toReviewResponse(any());
+        verifyNoInteractions(cache);
     }
 
     @Test
@@ -584,6 +699,18 @@ class ProductServiceTest {
 
         assertThat(result.variants()).singleElement()
                 .satisfies(variant -> assertThat(variant.media()).containsExactly(thumbnailResponse));
+    }
+
+    private static VariantDetailResponse variantDetail(String variantId, Integer stock) {
+        return new VariantDetailResponse(variantId, "SKU-" + variantId,
+                new BigDecimal("100"), stock, List.of(), List.of());
+    }
+
+    private static VariantRepository.VariantStockView stockView(String variantId, int stock) {
+        VariantRepository.VariantStockView view = mock(VariantRepository.VariantStockView.class);
+        when(view.getVariantId()).thenReturn(variantId);
+        when(view.getStock()).thenReturn(stock);
+        return view;
     }
 
     private static Product product(Long id) {
