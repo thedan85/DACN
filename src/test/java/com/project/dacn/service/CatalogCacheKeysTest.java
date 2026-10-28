@@ -10,6 +10,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -32,6 +33,23 @@ class CatalogCacheKeysTest {
                 .isEqualTo("pim:product:slug:5:ember-tetra");
         assertThat(CatalogCacheKeys.productSlug(6, "Ember-Tetra"))
                 .isNotEqualTo(CatalogCacheKeys.productSlug(5, "Ember-Tetra"));
+    }
+
+    @Test
+    void productDetailKeyIncludesGenerationLowercaseSlugAndReviewPage() {
+        assertThat(CatalogCacheKeys.productDetail(7L, "Ember-Tetra", PageRequest.of(2, 12)))
+                .isEqualTo("pim:product:detail:7:ember-tetra:2:12:none");
+    }
+
+    @Test
+    void productDetailAggregateTtlIsFortyFiveSeconds() {
+        assertThat(CatalogCacheKeys.PRODUCT_DETAIL_AGGREGATE_TTL)
+                .isEqualTo(Duration.ofSeconds(45));
+    }
+
+    @Test
+    void productSlugTtlStaysFiveMinutes() {
+        assertThat(CatalogCacheKeys.PRODUCT_SLUG_TTL).isEqualTo(Duration.ofMinutes(5));
     }
 
     @Test

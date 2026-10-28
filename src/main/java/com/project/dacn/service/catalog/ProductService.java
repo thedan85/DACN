@@ -190,7 +190,7 @@ public class ProductService {
             return withStock(cached.get(), productStock(cached.get().productId()));
         }
         ProductResponse response = toResponse(requireBySlug(slug, false));
-        cache.put(key, withStock(response, null), CatalogCacheKeys.PRODUCT_DETAIL_TTL);
+        cache.put(key, withStock(response, null), CatalogCacheKeys.PRODUCT_SLUG_TTL);
         return response;
     }
 

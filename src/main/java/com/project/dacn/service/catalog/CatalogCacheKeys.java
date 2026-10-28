@@ -20,7 +20,8 @@ public final class CatalogCacheKeys {
     public static final String VARIANT_SCOPE = "variant";
     public static final String CATEGORY_SCOPE = "category";
 
-    public static final Duration PRODUCT_DETAIL_TTL = Duration.ofMinutes(5);
+    public static final Duration PRODUCT_SLUG_TTL = Duration.ofMinutes(5);
+    public static final Duration PRODUCT_DETAIL_AGGREGATE_TTL = Duration.ofSeconds(45);
     public static final Duration PRODUCT_PAGE_TTL = Duration.ofMinutes(2);
     public static final Duration VARIANT_DETAIL_TTL = Duration.ofMinutes(5);
     public static final Duration VARIANT_PAGE_TTL = Duration.ofMinutes(2);
@@ -40,6 +41,11 @@ public final class CatalogCacheKeys {
 
     public static String productSlug(long generation, String slug) {
         return "pim:product:slug:" + generation + ":" + slug.toLowerCase(Locale.ROOT);
+    }
+
+    public static String productDetail(long generation, String slug, Pageable reviewPage) {
+        return "pim:product:detail:" + generation + ":" + slug.toLowerCase(Locale.ROOT)
+                + ":" + pageSegment(reviewPage);
     }
 
     public static String productList(long generation, Pageable pageable) {
