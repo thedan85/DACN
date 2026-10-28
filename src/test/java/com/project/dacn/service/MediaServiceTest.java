@@ -78,6 +78,17 @@ class MediaServiceTest {
     }
 
     @Test
+    void createBumpsProductGenerationAfterCommit() {
+        when(productRepo.findByProductId("p")).thenReturn(Optional.of(
+                Product.builder().productId("p").build()));
+        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        service.create(new MediaCreateRequest("u", "p", null));
+
+        verify(cache).bumpAfterCommit("product");
+    }
+
+    @Test
     void createWithBothTargetsRejected() {
         assertThatThrownBy(() -> service.create(new MediaCreateRequest("u", "p-1", "v-1")))
                 .isInstanceOf(IllegalArgumentException.class);

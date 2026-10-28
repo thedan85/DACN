@@ -21,6 +21,7 @@ public class AttributeService {
 
     private final AttributeRepository repo;
     private final CatalogMapper mapper;
+    private final CatalogCache cache;
 
     public PageResponse<AttributeResponse> list(Pageable pageable) {
         Page<Attribute> page = repo.findByDeletedFalse(pageable);
@@ -32,13 +33,17 @@ public class AttributeService {
     }
 
     public AttributeResponse create(AttributeCreateRequest request) {
-        return mapper.toAttributeResponse(repo.save(mapper.toAttribute(request)));
+        AttributeResponse response = mapper.toAttributeResponse(repo.save(mapper.toAttribute(request)));
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
+        return response;
     }
 
     public AttributeResponse update(String attributeId, AttributeUpdateRequest request) {
         Attribute entity = require(attributeId);
         mapper.updateAttribute(request, entity);
-        return mapper.toAttributeResponse(repo.save(entity));
+        AttributeResponse response = mapper.toAttributeResponse(repo.save(entity));
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
+        return response;
     }
 
     /**
@@ -53,6 +58,7 @@ public class AttributeService {
         Attribute entity = require(attributeId);
         entity.setDeleted(true);
         repo.save(entity);
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
     }
 
     private Attribute require(String attributeId) {

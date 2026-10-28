@@ -70,7 +70,9 @@ public class MediaService {
     }
 
     public MediaResponse create(MediaCreateRequest request) {
-        return mapper.toMediaResponse(createEntity(request));
+        MediaResponse response = mapper.toMediaResponse(createEntity(request));
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
+        return response;
     }
 
     public Media createEntity(MediaCreateRequest request) {

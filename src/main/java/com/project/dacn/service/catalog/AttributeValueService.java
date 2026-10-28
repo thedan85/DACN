@@ -23,6 +23,7 @@ public class AttributeValueService {
     private final AttributeValueRepository repo;
     private final AttributeRepository attributeRepo;
     private final CatalogMapper mapper;
+    private final CatalogCache cache;
 
     public PageResponse<AttributeValueResponse> list(Pageable pageable) {
         Page<AttributeValue> page = repo.findAll(pageable);
@@ -46,13 +47,17 @@ public class AttributeValueService {
         entity.setAttribute(attributeRepo.findByAttributeId(request.attributeId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "attribute not found: " + request.attributeId())));
-        return mapper.toAttributeValueResponse(repo.save(entity));
+        AttributeValueResponse response = mapper.toAttributeValueResponse(repo.save(entity));
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
+        return response;
     }
 
     public AttributeValueResponse update(String attributeValueId, AttributeValueUpdateRequest request) {
         AttributeValue entity = require(attributeValueId);
         mapper.updateAttributeValue(request, entity);
-        return mapper.toAttributeValueResponse(repo.save(entity));
+        AttributeValueResponse response = mapper.toAttributeValueResponse(repo.save(entity));
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
+        return response;
     }
 
     /**
@@ -65,6 +70,7 @@ public class AttributeValueService {
 
     public void delete(String attributeValueId) {
         repo.delete(require(attributeValueId));
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
     }
 
     private AttributeValue require(String attributeValueId) {

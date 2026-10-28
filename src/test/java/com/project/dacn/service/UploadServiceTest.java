@@ -74,7 +74,7 @@ class UploadServiceTest {
     }
 
     @Test
-    void variantImageUploadDoesNotBump() {
+    void variantImageUploadLeavesBumpToMediaService() {
         Product product = Product.builder().productId("p").name("P").build();
         Variant variant = Variant.builder().variantId("v-1").sku("SKU-1")
                 .price(new java.math.BigDecimal("1000")).product(product).build();
