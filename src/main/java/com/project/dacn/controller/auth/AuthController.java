@@ -127,6 +127,8 @@ public class AuthController {
                 return trimmed;
             }
         }
-        return request.getRemoteAddr();
+        // getRemoteAddr() is rewritten from the leftmost X-Forwarded-For, so it is
+        // forgeable here; all direct traffic shares one bucket instead.
+        return "local";
     }
 }

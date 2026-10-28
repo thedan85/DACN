@@ -108,7 +108,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.code").value(201))
                 .andExpect(jsonPath("$.data.userId").value("user-123"));
 
-        verify(rateLimiter).check("rl:register:127.0.0.1", 20, Duration.ofHours(1));
+        verify(rateLimiter).check("rl:register:local", 20, Duration.ofHours(1));
     }
 
     @Test
@@ -153,7 +153,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data.accessToken").value("access-token"))
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("refresh_token=")));
 
-        verify(rateLimiter).check("rl:login:127.0.0.1", 10, Duration.ofMinutes(1));
+        verify(rateLimiter).check("rl:login:local", 10, Duration.ofMinutes(1));
     }
 
     @Test
@@ -218,7 +218,7 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.data.accessToken").value("new-access-token"))
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("refresh_token=")));
 
-        verify(rateLimiter).check("rl:refresh:127.0.0.1", 30, Duration.ofMinutes(1));
+        verify(rateLimiter).check("rl:refresh:local", 30, Duration.ofMinutes(1));
     }
 
     @Test
@@ -286,6 +286,22 @@ class AuthControllerTest {
 
         verify(rateLimiter).check("rl:login:203.0.113.7", 10, Duration.ofMinutes(1));
         verify(authService).login(any(LoginRequest.class), any(), eq("203.0.113.7"));
+    }
+
+    @Test
+    void login_ignoresForwardedForWithoutCloudflareIp() throws Exception {
+        when(authService.login(any(LoginRequest.class), any(), any())).thenReturn(
+                new LoginResponse("access-token", "refresh-token", 900, "Bearer"));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("X-Forwarded-For", "198.51.100.9")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new LoginRequest("test@example.com", "password123"))))
+                .andExpect(status().isOk());
+
+        verify(rateLimiter).check("rl:login:local", 10, Duration.ofMinutes(1));
+        verify(authService).login(any(LoginRequest.class), any(), eq("local"));
     }
 
     @Test

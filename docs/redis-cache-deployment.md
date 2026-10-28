@@ -38,7 +38,8 @@ warning at most once per minute; auth keeps working with throttling disabled.
 
 The app binds to `127.0.0.1` (`server.address`), so only the local Cloudflare
 tunnel can reach it; point the tunnel at `http://127.0.0.1:8080`. The limiter
-keys on `CF-Connecting-IP` (falling back to `getRemoteAddr()` for local dev),
-not `X-Forwarded-For`: Cloudflare appends to a client-supplied
-`X-Forwarded-For`, and Spring's forwarded-header handling takes its leftmost
-value, so `X-Forwarded-For` alone is forgeable.
+keys on `CF-Connecting-IP`, not `X-Forwarded-For`: Cloudflare appends to a
+client-supplied `X-Forwarded-For`, and Spring's forwarded-header handling takes
+its leftmost value, so `X-Forwarded-For` alone is forgeable. Requests without a
+valid `CF-Connecting-IP` share one `local` bucket, so a missing header cannot
+reset the limit per request.
