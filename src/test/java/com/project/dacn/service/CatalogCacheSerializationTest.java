@@ -2,6 +2,7 @@ package com.project.dacn.service;
 
 import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.common.response.PageResponse;
+import com.project.dacn.dto.request.catalog.ProductFilter;
 import com.project.dacn.dto.response.catalog.CategoryResponse;
 import com.project.dacn.dto.response.catalog.ProductResponse;
 import com.project.dacn.dto.response.catalog.VariantResponse;
@@ -24,6 +25,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.test.context.ActiveProfiles;
@@ -115,12 +118,12 @@ class CatalogCacheSerializationTest {
     }
 
     @Test
-    void secondIdenticalListRequestIsServedFromTheCache() {
+    void secondIdenticalSearchRequestIsServedFromTheCache() {
         Product product = Product.builder().id(1L).productId("PRD_1").slug("ember-tetra")
                 .name("Ember Tetra").description("d").status(ProductStatus.ACTIVE).build();
         ProductRepository productRepo = mock(ProductRepository.class);
         VariantRepository variantRepo = mock(VariantRepository.class);
-        when(productRepo.findByStatus(ProductStatus.ACTIVE, PageRequest.of(0, 20)))
+        when(productRepo.findAll(any(Specification.class), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(product), PageRequest.of(0, 20), 1));
         when(variantRepo.findPriceRangesByProductIds(List.of(1L)))
                 .thenReturn(List.of(new ProductPriceRange(1L, new BigDecimal("179000.00"),
@@ -138,10 +141,12 @@ class CatalogCacheSerializationTest {
                 new CatalogMapperImpl(), new EngagementMapperImpl(),
                 new CatalogCache(inMemoryRedis(), mapper));
 
-        PageResponse<ProductResponse> first = service.list(PageRequest.of(0, 20));
-        PageResponse<ProductResponse> second = service.list(PageRequest.of(0, 20));
+        PageResponse<ProductResponse> first = service.search(
+                new ProductFilter(null, ProductStatus.ACTIVE, null), PageRequest.of(0, 20));
+        PageResponse<ProductResponse> second = service.search(
+                new ProductFilter(null, ProductStatus.ACTIVE, null), PageRequest.of(0, 20));
 
-        verify(productRepo, times(1)).findByStatus(ProductStatus.ACTIVE, PageRequest.of(0, 20));
+        verify(productRepo, times(1)).findAll(any(Specification.class), any(Pageable.class));
         assertThat(second).isEqualTo(first);
         assertThat(second.getContent().get(0).stock()).isEqualTo(4);
     }

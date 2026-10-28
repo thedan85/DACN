@@ -88,24 +88,6 @@ public class ProductService {
     private final EngagementMapper engagementMapper;
     private final CatalogCache cache;
 
-    public PageResponse<ProductResponse> list(Pageable pageable) {
-        if (!CatalogCacheKeys.isCacheablePage(pageable)) {
-            return listFromDb(pageable);
-        }
-        OptionalLong generation = cache.currentGeneration(CatalogCacheKeys.PRODUCT_SCOPE);
-        if (generation.isEmpty()) {
-            return listFromDb(pageable);
-        }
-        String key = CatalogCacheKeys.productList(generation.getAsLong(), pageable);
-        Optional<PageResponse<ProductResponse>> cached = cache.get(key, PRODUCT_PAGE);
-        if (cached.isPresent()) {
-            return overlayProductStock(cached.get());
-        }
-        PageResponse<ProductResponse> response = listFromDb(pageable);
-        cache.put(key, scrubProductStock(response), CatalogCacheKeys.PRODUCT_PAGE_TTL);
-        return response;
-    }
-
     public PageResponse<ProductResponse> search(ProductFilter filter, Pageable pageable) {
         // Strip before both the query and the cache key, so " a" and "a" agree.
         // Blank categoryId means "no filter"; the key builder collapses it too.
@@ -137,11 +119,6 @@ public class ProductService {
             cache.put(key, scrubProductStock(response), CatalogCacheKeys.PRODUCT_PAGE_TTL);
         }
         return response;
-    }
-
-    private PageResponse<ProductResponse> listFromDb(Pageable pageable) {
-        Page<Product> page = repo.findByStatus(ProductStatus.ACTIVE, pageable);
-        return toPageResponse(page);
     }
 
     private PageResponse<ProductResponse> searchFromDb(ProductFilter filter, Pageable cleanPageable) {

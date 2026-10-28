@@ -9,6 +9,10 @@ import com.project.dacn.entity.catalog.ProductAttributeValue;
 import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.catalog.VariantAttributeValue;
 import com.project.dacn.common.constant.ProductStatus;
+import com.project.dacn.dto.response.catalog.CategoryResponse;
+import com.project.dacn.dto.response.catalog.ProductResponse;
+import com.project.dacn.mapper.catalog.CatalogMapper;
+import com.project.dacn.mapper.catalog.CatalogMapperImpl;
 import com.project.dacn.repository.catalog.AttributeRepository;
 import com.project.dacn.repository.catalog.AttributeValueRepository;
 import com.project.dacn.repository.catalog.CategoryRepository;
@@ -17,11 +21,17 @@ import com.project.dacn.repository.catalog.ProductAttributeValueRepository;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
+import jakarta.persistence.EntityManager;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
@@ -32,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DataJpaTest
 @ActiveProfiles("test")
+@Import(CatalogMapperImpl.class)
 class CatalogPersistenceTest {
 
     @Autowired
@@ -50,6 +61,10 @@ class CatalogPersistenceTest {
     VariantAttributeValueRepository variantAttributeValueRepository;
     @Autowired
     ProductAttributeValueRepository productAttributeValueRepository;
+    @Autowired
+    CatalogMapper mapper;
+    @Autowired
+    EntityManager entityManager;
 
     @Test
     void persistCatalogChainThroughBusinessKeys() {
@@ -197,5 +212,69 @@ class CatalogPersistenceTest {
         assertThat(variantRepository.findPriceRangesByProductIds(List.of(noVariants.getId()))).isEmpty();
         assertThat(variantRepository.findStockByProductId(noVariants.getProductId())).isEmpty();
         assertThat(variantRepository.findStockByProductIdIn(List.of(noVariants.getProductId()))).isEmpty();
+    }
+
+    @Test
+    void categoryPageLoadsParentsInBatches() {
+        for (int i = 0; i < 30; i++) {
+            Category parent = categoryRepository.save(Category.builder()
+                    .name("Z Parent " + i).slug("parent-" + i).build());
+            for (int j = 0; j < 2; j++) {
+                categoryRepository.save(Category.builder()
+                        .name("A Child " + i + "-" + j).slug("child-" + i + "-" + j)
+                        .parent(parent).build());
+            }
+        }
+        entityManager.flush();
+        entityManager.clear();
+        Statistics stats = statistics();
+        stats.clear();
+
+        // Sort children first so the page under test contains only rows whose
+        // parent is a lazy proxy, matching the real category page.
+        List<CategoryResponse> content = categoryRepository
+                .findByDeletedFalse(PageRequest.of(0, 60, Sort.by("name")))
+                .map(mapper::toCategoryResponse)
+                .getContent();
+
+        assertThat(content).hasSize(60)
+                .allSatisfy(category -> assertThat(category.parentCategoryId()).isNotNull());
+        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(3);
+    }
+
+    @Test
+    void productPageLoadsCategoryAndThumbnailInBatches() {
+        Category[] categories = new Category[3];
+        for (int i = 0; i < categories.length; i++) {
+            categories[i] = categoryRepository.save(Category.builder()
+                    .name("Category " + i).slug("category-" + i).build());
+        }
+        for (int i = 0; i < 12; i++) {
+            Media thumbnail = mediaRepository.save(
+                    Media.builder().url("thumb-" + i + ".jpg").build());
+            productRepository.save(Product.builder()
+                    .name("Product " + i).slug("product-" + i).description("d")
+                    .category(categories[i % categories.length]).thumbnail(thumbnail).build());
+        }
+        entityManager.flush();
+        entityManager.clear();
+        Statistics stats = statistics();
+        stats.clear();
+
+        List<ProductResponse> content =
+                productRepository.findAll(PageRequest.of(0, 12))
+                        .map(product -> mapper.toProductResponse(product, null, null, 0))
+                        .getContent();
+
+        assertThat(content).hasSize(12)
+                .allSatisfy(product -> {
+                    assertThat(product.categoryId()).isNotNull();
+                    assertThat(product.thumbnail()).isNotNull();
+                });
+        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(5);
+    }
+
+    private Statistics statistics() {
+        return entityManager.getEntityManagerFactory().unwrap(SessionFactory.class).getStatistics();
     }
 }

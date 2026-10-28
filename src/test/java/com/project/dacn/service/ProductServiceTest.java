@@ -100,9 +100,9 @@ class ProductServiceTest {
     ProductService service;
 
     @Test
-    void listCacheHitOverlaysStockAndSkipsRepository() {
+    void searchCacheHitOverlaysStockAndSkipsRepository() {
         when(cache.currentGeneration("product")).thenReturn(OptionalLong.of(1));
-        when(cache.get(startsWith("pim:product:list:1:"), any()))
+        when(cache.get(startsWith("pim:product:search:1:"), any()))
                 .thenReturn(Optional.of(new PageResponse<>(List.of(response(null, null, null)),
                         0, 20, 1, 1)));
         VariantRepository.ProductStockView stock = mock(VariantRepository.ProductStockView.class);
@@ -110,10 +110,11 @@ class ProductServiceTest {
         when(stock.getTotalStock()).thenReturn(4L);
         when(variantRepo.findStockByProductIdIn(List.of("PRD_1"))).thenReturn(List.of(stock));
 
-        PageResponse<ProductResponse> result = service.list(PageRequest.of(0, 20));
+        PageResponse<ProductResponse> result = service.search(
+                new ProductFilter(null, ProductStatus.ACTIVE, null), PageRequest.of(0, 20));
 
         assertThat(result.getContent().get(0).stock()).isEqualTo(4);
-        verify(repo, never()).findByStatus(any(), any());
+        verifyNoInteractions(repo);
     }
 
     @Test
@@ -352,35 +353,40 @@ class ProductServiceTest {
     }
 
     @Test
-    void listReturnsPageResponseWithoutPricesWhenProductHasNoVariants() {
+    void searchReturnsPageResponseWithoutPricesWhenProductHasNoVariants() {
         Product p = product(1L);
         Page<Product> page = new PageImpl<>(List.of(p), Pageable.unpaged(), 1);
-        when(repo.findByStatus(ProductStatus.ACTIVE, Pageable.unpaged())).thenReturn(page);
+        when(repo.findAll(any(org.springframework.data.jpa.domain.Specification.class),
+                any(Pageable.class))).thenReturn(page);
         when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
         when(mapper.toProductResponse(p, null, null, 0)).thenReturn(response(null, null, 0));
 
-        PageResponse<ProductResponse> result = service.list(Pageable.unpaged());
+        PageResponse<ProductResponse> result = service.search(
+                new ProductFilter(null, ProductStatus.ACTIVE, null), Pageable.unpaged());
 
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).minPrice()).isNull();
         assertThat(result.getContent().get(0).maxPrice()).isNull();
         assertThat(result.getContent().get(0).stock()).isZero();
         assertThat(result.getTotalElements()).isEqualTo(1);
-        verify(repo).findByStatus(ProductStatus.ACTIVE, Pageable.unpaged());
+        verify(repo).findAll(any(org.springframework.data.jpa.domain.Specification.class),
+                any(Pageable.class));
     }
 
     @Test
-    void listIncludesMinAndMaxPriceFromVariants() {
+    void searchIncludesMinAndMaxPriceFromVariants() {
         Product p = product(1L);
         Page<Product> page = new PageImpl<>(List.of(p), Pageable.unpaged(), 1);
         ProductPriceRange range = new ProductPriceRange(
                 1L, new BigDecimal("179000"), new BigDecimal("199000"), 30L);
-        when(repo.findByStatus(ProductStatus.ACTIVE, Pageable.unpaged())).thenReturn(page);
+        when(repo.findAll(any(org.springframework.data.jpa.domain.Specification.class),
+                any(Pageable.class))).thenReturn(page);
         when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of(range));
         when(mapper.toProductResponse(p, range.minPrice(), range.maxPrice(), 30))
                 .thenReturn(response(range.minPrice(), range.maxPrice(), 30));
 
-        PageResponse<ProductResponse> result = service.list(Pageable.unpaged());
+        PageResponse<ProductResponse> result = service.search(
+                new ProductFilter(null, ProductStatus.ACTIVE, null), Pageable.unpaged());
 
         assertThat(result.getContent().get(0).minPrice()).isEqualByComparingTo("179000");
         assertThat(result.getContent().get(0).maxPrice()).isEqualByComparingTo("199000");

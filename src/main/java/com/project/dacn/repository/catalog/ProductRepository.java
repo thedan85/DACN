@@ -1,7 +1,6 @@
 package com.project.dacn.repository.catalog;
 
 import com.project.dacn.entity.catalog.Product;
-import com.project.dacn.common.constant.ProductStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -38,8 +37,6 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
             """, nativeQuery = true)
     long countBySlugIncludingDeletedAndIdNot(
             @Param("slug") String slug, @Param("id") Long id);
-
-    Page<Product> findByStatus(ProductStatus status, Pageable pageable);
 
     /**
      * Admin/audit path bypassing {@code @SQLRestriction("product_status <> 'DELETED'")}.

@@ -10,6 +10,9 @@ spring:
   jpa:
     hibernate:
       ddl-auto: create-drop
+    properties:
+      hibernate:
+        generate_statistics: true
 
 # Dummy values so CloudinaryConfig does not throw in full-context tests.
 # Real credentials live in .env and are never committed.
