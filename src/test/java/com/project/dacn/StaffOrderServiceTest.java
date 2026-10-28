@@ -75,11 +75,12 @@ class StaffOrderServiceTest {
     void staffListFiltersByStatus() {
         Pageable pageable = PageRequest.of(0, 20);
         Order order = order(OrderStatus.PENDING);
-        when(orderRepository.findByStatusOrderByIdDesc(OrderStatus.PENDING, pageable))
+        when(orderRepository.searchForStaff("", OrderStatus.PENDING, pageable))
                 .thenReturn(new PageImpl<>(List.of(order), pageable, 1));
         when(orderItemRepository.findByOrder_OrderId("ORD_1")).thenReturn(List.of());
 
-        PageResponse<OrderResponse> page = service.listForStaff(OrderStatus.PENDING, pageable);
+        PageResponse<OrderResponse> page = service.listForStaff(
+                OrderStatus.PENDING, null, pageable);
 
         assertThat(page.getTotalElements()).isEqualTo(1);
         assertThat(page.getContent()).singleElement()
@@ -89,11 +90,36 @@ class StaffOrderServiceTest {
     @Test
     void staffListWithoutFilterReturnsAll() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(orderRepository.findAllByOrderByIdDesc(pageable))
+        when(orderRepository.searchForStaff("", null, pageable))
                 .thenReturn(new PageImpl<>(List.of(order(OrderStatus.CONFIRMED)), pageable, 1));
         when(orderItemRepository.findByOrder_OrderId("ORD_1")).thenReturn(List.of());
 
-        assertThat(service.listForStaff(null, pageable).getContent()).hasSize(1);
+        assertThat(service.listForStaff(null, null, pageable).getContent()).hasSize(1);
+    }
+
+    @Test
+    void staffListTrimsSearchTerm() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(orderRepository.searchForStaff("swagger", null, pageable))
+                .thenReturn(new PageImpl<>(List.of(order(OrderStatus.PENDING)), pageable, 1));
+        when(orderItemRepository.findByOrder_OrderId("ORD_1")).thenReturn(List.of());
+
+        assertThat(service.listForStaff(null, "  swagger  ", pageable).getContent())
+                .hasSize(1);
+
+        verify(orderRepository).searchForStaff("swagger", null, pageable);
+    }
+
+    @Test
+    void staffListTreatsBlankSearchAsNoFilter() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(orderRepository.searchForStaff("", null, pageable))
+                .thenReturn(new PageImpl<>(List.of(order(OrderStatus.PENDING)), pageable, 1));
+        when(orderItemRepository.findByOrder_OrderId("ORD_1")).thenReturn(List.of());
+
+        assertThat(service.listForStaff(null, "   ", pageable).getContent()).hasSize(1);
+
+        verify(orderRepository).searchForStaff("", null, pageable);
     }
 
     @Test

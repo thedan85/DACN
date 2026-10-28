@@ -21,9 +21,21 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     List<Order> findByCustomer_IdOrderByIdDesc(Long customerId);
 
-    Page<Order> findAllByOrderByIdDesc(Pageable pageable);
-
-    Page<Order> findByStatusOrderByIdDesc(OrderStatus status, Pageable pageable);
+    @Query("""
+            select o from Order o
+            where (:status is null or o.status = :status)
+              and (:q = ''
+                or lower(o.orderId) like lower(concat('%', :q, '%'))
+                or lower(o.recipientName) like lower(concat('%', :q, '%'))
+                or lower(o.phone) like lower(concat('%', :q, '%'))
+                or lower(o.customer.name) like lower(concat('%', :q, '%'))
+                or lower(o.customer.phone) like lower(concat('%', :q, '%'))
+                or lower(o.customer.user.email) like lower(concat('%', :q, '%')))
+            order by o.id desc
+            """)
+    Page<Order> searchForStaff(@Param("q") String q,
+                               @Param("status") OrderStatus status,
+                               Pageable pageable);
 
     /**
      * Serializes staff decisions with payment settlement: both lock the same

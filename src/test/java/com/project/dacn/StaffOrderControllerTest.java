@@ -51,7 +51,7 @@ class StaffOrderControllerTest {
 
     @Test
     void listReturnsFilteredOrders() throws Exception {
-        when(service.listForStaff(OrderStatus.PENDING, PageRequest.of(0, 20)))
+        when(service.listForStaff(OrderStatus.PENDING, null, PageRequest.of(0, 20)))
                 .thenReturn(new PageResponse<>(List.of(order(OrderStatus.PENDING)), 0, 20, 1, 1));
 
         mockMvc.perform(get("/api/v1/staff/orders")
@@ -61,6 +61,20 @@ class StaffOrderControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[0].orderId").value("ORD_1"))
                 .andExpect(jsonPath("$.data.content[0].status").value("PENDING"));
+    }
+
+    @Test
+    void listPassesSearchTerm() throws Exception {
+        when(service.listForStaff(null, "swagger", PageRequest.of(0, 20)))
+                .thenReturn(new PageResponse<>(List.of(order(OrderStatus.PENDING)), 0, 20, 1, 1));
+
+        mockMvc.perform(get("/api/v1/staff/orders")
+                        .param("q", "swagger")
+                        .param("page", "0")
+                        .param("size", "20"))
+                .andExpect(status().isOk());
+
+        verify(service).listForStaff(null, "swagger", PageRequest.of(0, 20));
     }
 
     @Test

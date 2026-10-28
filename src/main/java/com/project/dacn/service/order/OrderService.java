@@ -49,12 +49,11 @@ public class OrderService {
 
     /**
      * Shop owner/employee view: every order, newest first, optionally filtered
-     * by status.
+     * by status and a keyword matching the order id or customer contact details.
      */
-    public PageResponse<OrderResponse> listForStaff(OrderStatus status, Pageable pageable) {
-        Page<Order> page = status == null
-                ? orderRepository.findAllByOrderByIdDesc(pageable)
-                : orderRepository.findByStatusOrderByIdDesc(status, pageable);
+    public PageResponse<OrderResponse> listForStaff(OrderStatus status, String q, Pageable pageable) {
+        String query = q == null ? "" : q.trim();
+        Page<Order> page = orderRepository.searchForStaff(query, status, pageable);
         return PageResponse.from(page, page.getContent().stream().map(this::toResponse).toList());
     }
 
