@@ -35,6 +35,7 @@ build/
 .vscode/
 
 *.log
+/src/test/AGENTS.md
 
 .env
 /FE-DACN
