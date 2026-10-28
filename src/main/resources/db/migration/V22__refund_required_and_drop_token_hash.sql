@@ -1,5 +1,5 @@
 -- =========================================================
--- V21: Refund-required payments; drop unused refresh token hash
+-- V22: Refund-required payments; drop unused refresh token hash
 --
 -- A successful IPN can arrive after staff cancelled the order. The
 -- money was collected, so the payment becomes REFUND_REQUIRED and
