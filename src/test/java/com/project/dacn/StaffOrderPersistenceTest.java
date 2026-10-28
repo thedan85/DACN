@@ -3,6 +3,7 @@ package com.project.dacn;
 import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.common.constant.PaymentMethod;
 import com.project.dacn.common.constant.PaymentStatus;
+import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.order.StaffOrderStatusUpdateRequest;
 import com.project.dacn.dto.response.order.OrderResponse;
 import com.project.dacn.entity.auth.Role;
@@ -24,6 +25,8 @@ import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
 import com.project.dacn.service.order.OrderService;
 import jakarta.persistence.EntityManager;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
@@ -32,6 +35,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
@@ -116,6 +120,31 @@ class StaffOrderPersistenceTest {
                 .isEqualTo(7);
         assertThat(paymentRepository.findByPaymentId(payment.getPaymentId()).orElseThrow().getStatus())
                 .isEqualTo(PaymentStatus.FAILED);
+    }
+
+    @Test
+    void customerHistoryLoadsItemsInOneBatch() {
+        Long customerId = order.getCustomer().getId();
+        for (int i = 0; i < 4; i++) {
+            Order extra = orderRepository.save(Order.builder()
+                    .customer(order.getCustomer()).total(new BigDecimal("10.00"))
+                    .address("addr").recipientName("C").phone("090").build());
+            orderItemRepository.save(OrderItem.builder()
+                    .order(extra).variant(variant).quantity(1)
+                    .unitPrice(new BigDecimal("10.00")).build());
+        }
+        entityManager.flush();
+        entityManager.clear();
+        Statistics stats = entityManager.getEntityManagerFactory()
+                .unwrap(SessionFactory.class).getStatistics();
+        stats.clear();
+
+        PageResponse<OrderResponse> page = service.list(customerId, PageRequest.of(0, 20));
+
+        assertThat(page.getContent()).hasSize(5)
+                .allSatisfy(o -> assertThat(o.items()).hasSize(1));
+        // page + count + one batched item query
+        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(3);
     }
 
     @Test

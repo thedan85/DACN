@@ -80,7 +80,7 @@ class AuthPersistenceTest {
         User user = userRepository.save(User.builder().email("t@example.com")
                 .passwordHash("h").role(role).build());
         RefreshToken token = refreshTokenRepository.save(RefreshToken.builder()
-                .user(user).tokenHash("thash")
+                .user(user)
                 .expiresAt(java.time.Instant.now().plusSeconds(3600)).build());
         assertThat(token.getTokenId()).isNotNull();
 

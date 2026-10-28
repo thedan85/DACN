@@ -133,7 +133,7 @@ public class CartService {
 
     public OrderResponse checkout(Long customerId, CartCheckoutRequest req) {
         Customer customer = requireCustomer(customerId);
-        Cart cart = cartRepository.findByCustomer_Id(customerId).orElse(null);
+        Cart cart = cartRepository.findByCustomer_IdForUpdate(customerId).orElse(null);
         List<CartItem> items = cart == null
                 ? List.of()
                 : cartItemRepository.findWithDetailsByCart_Id(cart.getId());

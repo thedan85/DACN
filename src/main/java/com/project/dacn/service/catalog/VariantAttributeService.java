@@ -29,6 +29,7 @@ public class VariantAttributeService {
     private final AttributeRepository attributeRepo;
     private final AttributeValueRepository valueRepo;
     private final CatalogMapper mapper;
+    private final CatalogCache cache;
 
     public PageResponse<VariantAttributeValueResponse> listByVariant(String variantId, Pageable pageable) {
         if (variantRepo.findByVariantId(variantId).isEmpty()) {
@@ -62,12 +63,15 @@ public class VariantAttributeService {
         entity.setVariant(variant);
         entity.setAttribute(attribute);
         entity.setAttributeValue(value);
-        return mapper.toVariantAttributeValueResponse(repo.save(entity));
+        VariantAttributeValueResponse response = mapper.toVariantAttributeValueResponse(repo.save(entity));
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
+        return response;
     }
 
     public void delete(String variantValueId) {
         repo.delete(repo.findByVariantValueId(variantValueId)
                 .orElseThrow(
                         () -> new ResourceNotFoundException("variant link not found: " + variantValueId)));
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
     }
 }

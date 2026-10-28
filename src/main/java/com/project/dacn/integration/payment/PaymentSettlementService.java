@@ -22,7 +22,7 @@ import java.time.Instant;
 public class PaymentSettlementService {
 
     public enum Result {
-        SETTLED, ALREADY_SETTLED, NOT_FOUND, ORDER_CANCELLED, AMOUNT_MISMATCH
+        SETTLED, ALREADY_SETTLED, NOT_FOUND, AMOUNT_MISMATCH, REFUND_REQUIRED
     }
 
     private final PaymentRepository paymentRepository;
@@ -34,7 +34,8 @@ public class PaymentSettlementService {
         if (payment == null) {
             return Result.NOT_FOUND;
         }
-        if (payment.getStatus() != PaymentStatus.PENDING) {
+        PaymentStatus status = payment.getStatus();
+        if (status != PaymentStatus.PENDING && status != PaymentStatus.FAILED) {
             return Result.ALREADY_SETTLED;
         }
         if (success && (amount == null || payment.getAmount().compareTo(amount) != 0)) {
@@ -45,9 +46,18 @@ public class PaymentSettlementService {
             // Serialize with staff cancellation: a cancelled order must never be
             // confirmed by a late IPN.
             Order order = orderRepository.findWithLockByOrderId(orderId).orElse(null);
-            if (order == null || order.getStatus() == OrderStatus.CANCELLED) {
-                return Result.ORDER_CANCELLED;
+            if (status == PaymentStatus.FAILED
+                    || order == null || order.getStatus() == OrderStatus.CANCELLED) {
+                // Money was taken for an order that will not be fulfilled. Keep
+                // the provider transaction so staff can refund it.
+                int updated = paymentRepository.settle(
+                        payment.getPaymentId(), status, PaymentStatus.REFUND_REQUIRED,
+                        transactionId, Instant.now());
+                return updated == 0 ? Result.ALREADY_SETTLED : Result.REFUND_REQUIRED;
             }
+        }
+        if (status == PaymentStatus.FAILED) {
+            return Result.ALREADY_SETTLED;
         }
 
         // Conditional UPDATE so duplicate/concurrent IPNs settle at most once.

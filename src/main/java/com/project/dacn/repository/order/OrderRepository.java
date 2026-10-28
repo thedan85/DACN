@@ -5,6 +5,7 @@ import com.project.dacn.entity.order.Order;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -19,7 +20,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     Optional<Order> findByOrderIdAndCustomer_Id(String orderId, Long customerId);
 
-    List<Order> findByCustomer_IdOrderByIdDesc(Long customerId);
+    @EntityGraph(attributePaths = "customer")
+    Page<Order> findByCustomer_IdOrderByIdDesc(Long customerId, Pageable pageable);
 
     Page<Order> findAllByOrderByIdDesc(Pageable pageable);
 

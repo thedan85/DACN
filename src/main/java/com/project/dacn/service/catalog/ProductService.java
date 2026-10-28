@@ -74,6 +74,8 @@ public class ProductService {
     };
     private static final TypeReference<PageResponse<ProductResponse>> PRODUCT_PAGE = new TypeReference<>() {
     };
+    private static final TypeReference<ProductDetailResponse> PRODUCT_DETAIL = new TypeReference<>() {
+    };
 
     private final ProductRepository repo;
     private final CategoryRepository categoryRepo;
@@ -187,16 +189,38 @@ public class ProductService {
             return withStock(cached.get(), productStock(cached.get().productId()));
         }
         ProductResponse response = toResponse(requireBySlug(slug, false));
-        cache.put(key, withStock(response, null), CatalogCacheKeys.PRODUCT_DETAIL_TTL);
+        cache.put(key, withStock(response, null), CatalogCacheKeys.PRODUCT_SLUG_TTL);
         return response;
     }
 
     /**
      * Storefront detail payload: the cached flat product plus its relation
-     * lists, which are read fresh so variant price/stock and reviews stay live.
+     * lists. Public, standard, unsorted review pages are cached for 45 seconds;
+     * stock is refreshed on every hit, and staff reads are never cached.
      * customerId in reviews is only populated for admins/employees.
      */
     public ProductDetailResponse getDetail(String slug, boolean includeHidden, Pageable reviewPage) {
+        if (includeHidden
+                || !CatalogCacheKeys.isCacheablePage(reviewPage)
+                || !reviewPage.getSort().isUnsorted()) {
+            return getDetailFromDb(slug, includeHidden, reviewPage);
+        }
+        OptionalLong generation = cache.currentGeneration(CatalogCacheKeys.PRODUCT_SCOPE);
+        if (generation.isEmpty()) {
+            return getDetailFromDb(slug, false, reviewPage);
+        }
+        String key = CatalogCacheKeys.productDetail(generation.getAsLong(), slug, reviewPage);
+        Optional<ProductDetailResponse> cached = cache.get(key, PRODUCT_DETAIL);
+        if (cached.isPresent()) {
+            return overlayDetailStock(cached.get());
+        }
+        ProductDetailResponse response = getDetailFromDb(slug, false, reviewPage);
+        cache.put(key, scrubDetailStock(response), CatalogCacheKeys.PRODUCT_DETAIL_AGGREGATE_TTL);
+        return response;
+    }
+
+    private ProductDetailResponse getDetailFromDb(String slug, boolean includeHidden,
+            Pageable reviewPage) {
         ProductResponse product = getBySlug(slug, includeHidden);
 
         List<ProductAttributeValueResponse> attributes = productAttributeValueRepo
@@ -420,6 +444,45 @@ public class ProductService {
                 response.thumbnailMediaId(), response.status(), response.categoryId(),
                 response.categoryName(), response.minPrice(), response.maxPrice(), stock,
                 response.createdAt(), response.updatedAt());
+    }
+
+    private static ProductDetailResponse scrubDetailStock(ProductDetailResponse detail) {
+        return new ProductDetailResponse(
+                withStock(detail.product(), null),
+                detail.attributes(),
+                detail.variants().stream()
+                        .map(variant -> new VariantDetailResponse(variant.variantId(),
+                                variant.sku(), variant.price(), null,
+                                variant.attributes(), variant.media()))
+                        .toList(),
+                detail.reviews());
+    }
+
+    private ProductDetailResponse overlayDetailStock(ProductDetailResponse detail) {
+        List<String> variantIds = detail.variants().stream()
+                .map(VariantDetailResponse::variantId)
+                .filter(Objects::nonNull)
+                .toList();
+        if (variantIds.isEmpty()) {
+            return new ProductDetailResponse(withStock(detail.product(), 0),
+                    detail.attributes(), detail.variants(), detail.reviews());
+        }
+        Map<String, Integer> stockByVariant = new HashMap<>();
+        for (VariantRepository.VariantStockView view
+                : variantRepo.findStockByVariantIdIn(variantIds)) {
+            stockByVariant.put(view.getVariantId(),
+                    view.getStock() == null ? 0 : view.getStock());
+        }
+        int totalStock = 0;
+        List<VariantDetailResponse> variants = new ArrayList<>(detail.variants().size());
+        for (VariantDetailResponse variant : detail.variants()) {
+            int stock = stockByVariant.getOrDefault(variant.variantId(), 0);
+            totalStock += stock;
+            variants.add(new VariantDetailResponse(variant.variantId(), variant.sku(),
+                    variant.price(), stock, variant.attributes(), variant.media()));
+        }
+        return new ProductDetailResponse(withStock(detail.product(), totalStock),
+                detail.attributes(), variants, detail.reviews());
     }
 
     private Product require(String productId) {

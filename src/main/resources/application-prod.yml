@@ -7,3 +7,14 @@ spring:
     show-sql: false
   flyway:
     enabled: true
+
+app:
+  auth:
+    cookie-secure: true
+
+# API docs are for local development only.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

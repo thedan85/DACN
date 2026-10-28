@@ -29,6 +29,7 @@ public class ProductAttributeService {
     private final AttributeRepository attributeRepo;
     private final AttributeValueRepository valueRepo;
     private final CatalogMapper mapper;
+    private final CatalogCache cache;
 
     public PageResponse<ProductAttributeValueResponse> listByProduct(String productId, Pageable pageable) {
         if (productRepo.findByProductId(productId).isEmpty()) {
@@ -62,12 +63,15 @@ public class ProductAttributeService {
         entity.setProduct(product);
         entity.setAttribute(attribute);
         entity.setAttributeValue(value);
-        return mapper.toProductAttributeValueResponse(repo.save(entity));
+        ProductAttributeValueResponse response = mapper.toProductAttributeValueResponse(repo.save(entity));
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
+        return response;
     }
 
     public void delete(String productValueId) {
         repo.delete(repo.findByProductValueId(productValueId)
                 .orElseThrow(
                         () -> new ResourceNotFoundException("product link not found: " + productValueId)));
+        cache.bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
     }
 }

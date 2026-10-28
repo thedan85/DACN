@@ -75,14 +75,31 @@ class PaymentSettlementServiceTest {
     }
 
     @Test
-    void cancelledOrderIsRefused() {
+    void lateSuccessOnCancelledOrderRecordsRefund() {
         Payment payment = payment(PaymentStatus.PENDING, OrderStatus.CANCELLED);
         when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
         when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(payment.getOrder()));
+        when(paymentRepository.settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
+                eq(PaymentStatus.REFUND_REQUIRED), eq("TXN_1"), any(Instant.class))).thenReturn(1);
 
         assertThat(service.settle("ORD_1", new BigDecimal("5000"), true, "TXN_1"))
-                .isEqualTo(PaymentSettlementService.Result.ORDER_CANCELLED);
-        verify(paymentRepository, never()).settle(any(), any(), any(), any(), any());
+                .isEqualTo(PaymentSettlementService.Result.REFUND_REQUIRED);
+        verify(paymentRepository).settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
+                eq(PaymentStatus.REFUND_REQUIRED), eq("TXN_1"), any(Instant.class));
+        verify(orderRepository, never()).updateStatus(any(), any(), any());
+    }
+
+    @Test
+    void lateSuccessAfterCancellationSetPaymentFailedRecordsRefund() {
+        // Staff cancellation sets the payment FAILED before the IPN arrives.
+        Payment payment = payment(PaymentStatus.FAILED, OrderStatus.CANCELLED);
+        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
+        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(payment.getOrder()));
+        when(paymentRepository.settle(eq("PAY_1"), eq(PaymentStatus.FAILED),
+                eq(PaymentStatus.REFUND_REQUIRED), eq("TXN_1"), any(Instant.class))).thenReturn(1);
+
+        assertThat(service.settle("ORD_1", new BigDecimal("5000"), true, "TXN_1"))
+                .isEqualTo(PaymentSettlementService.Result.REFUND_REQUIRED);
         verify(orderRepository, never()).updateStatus(any(), any(), any());
     }
 
