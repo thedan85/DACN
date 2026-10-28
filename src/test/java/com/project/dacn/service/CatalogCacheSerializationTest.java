@@ -224,6 +224,7 @@ class CatalogCacheSerializationTest {
                 "PRD_1", PageRequest.of(0, 20));
         verify(variantRepo, times(1)).findStockByVariantIdIn(List.of("ember-tetra-default"));
         assertThat(first.variants().get(0).stock()).isEqualTo(4);
+        assertThat(first.product().stock()).isEqualTo(4);
         assertThat(second.variants().get(0).stock()).isEqualTo(3);
         assertThat(second.product().stock()).isEqualTo(3);
     }

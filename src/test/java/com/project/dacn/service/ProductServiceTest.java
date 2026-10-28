@@ -578,6 +578,7 @@ class ProductServiceTest {
         assertThat(stored.getValue().product().stock()).isNull();
         assertThat(stored.getValue().variants())
                 .allSatisfy(variant -> assertThat(variant.stock()).isNull());
+        assertThat(result.product().stock()).isZero();
         assertThat(result.variants().get(0).stock()).isEqualTo(5);
     }
 
