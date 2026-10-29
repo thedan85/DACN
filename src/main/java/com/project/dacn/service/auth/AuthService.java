@@ -28,6 +28,7 @@ import com.project.dacn.repository.auth.RolePermissionRepository;
 import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
+import com.project.dacn.security.GoogleTokenVerifier;
 import com.project.dacn.security.JwtService;
 import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +41,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -51,6 +53,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class AuthService {
+
+    // Two tabs can race on one rotating refresh token; short replays return
+    // the already-rotated token instead of killing every session.
+    private static final Duration REFRESH_REPLAY_GRACE = Duration.ofSeconds(30);
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
@@ -153,48 +159,73 @@ public class AuthService {
     }
 
     public LoginResponse loginWithVerifiedGoogleEmail(
-            String verifiedEmail, String userAgent, String ip) {
-        String normalizedEmail = verifiedEmail.trim().toLowerCase(Locale.ROOT);
-        User user = userRepository.findByEmail(normalizedEmail).orElse(null);
+            GoogleTokenVerifier.GoogleIdentity identity, String userAgent, String ip) {
+        String normalizedEmail = identity.email().trim().toLowerCase(Locale.ROOT);
+        User user = userRepository.findByGoogleSubIncludingDeleted(identity.sub()).orElse(null);
 
-        if (user == null) {
-            user = createGoogleCustomer(verifiedEmail, normalizedEmail);
+        if (user != null) {
+            ensureGoogleCustomer(user);
+            user = syncGoogleEmail(user, normalizedEmail);
         } else {
-            if (!user.getRole().getCode().equalsIgnoreCase("CUSTOMER")) {
-                throw new GoogleLoginNotAllowedException(
-                        "Google sign-in is only available for customer accounts; use email and password");
-            }
-            ensureLoginAllowed(user);
-            // Password registration does not verify email ownership; linking by
-            // email would give the account to whoever registered first.
-            // shortcut: also blocks Google after a future set-password flow; add a
-            // linked-identity (google_sub) column then.
-            if (user.getPasswordHash() != null) {
-                throw new GoogleLoginNotAllowedException(
-                        "This account already uses email and password; sign in with password");
+            user = userRepository.findByEmailIncludingDeleted(normalizedEmail).orElse(null);
+            if (user == null) {
+                user = createGoogleCustomer(identity, normalizedEmail);
+            } else {
+                ensureGoogleCustomer(user);
+                if (user.getGoogleSub() != null) {
+                    throw new GoogleLoginNotAllowedException(
+                            "This email is linked to a different Google account");
+                }
+                // Google verified this email, so linking it to an existing
+                // password account is safe and keeps the owner from being locked out.
+                user.setGoogleSub(identity.sub());
+                user = userRepository.saveAndFlush(user);
             }
         }
 
         return issueSession(user, userAgent, ip);
     }
 
-    private User createGoogleCustomer(String originalEmail, String normalizedEmail) {
+    private void ensureGoogleCustomer(User user) {
+        if (!user.getRole().getCode().equalsIgnoreCase("CUSTOMER")) {
+            throw new GoogleLoginNotAllowedException(
+                    "Google sign-in is only available for customer accounts; use email and password");
+        }
+        ensureLoginAllowed(user);
+    }
+
+    private User syncGoogleEmail(User user, String normalizedEmail) {
+        if (user.getEmail().equalsIgnoreCase(normalizedEmail)) {
+            return user;
+        }
+        user.setEmail(normalizedEmail);
+        try {
+            return userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException ex) {
+            throw new GoogleLoginNotAllowedException(
+                    "This Google email is already used by another account; sign in with that account");
+        }
+    }
+
+    private User createGoogleCustomer(
+            GoogleTokenVerifier.GoogleIdentity identity, String normalizedEmail) {
         Role customerRole = roleRepository.findByCodeIgnoreCase("CUSTOMER")
                 .orElseThrow(() -> new IllegalStateException("CUSTOMER role not found"));
 
         User user;
         try {
-            user = userRepository.save(User.builder()
+            user = userRepository.saveAndFlush(User.builder()
                     .email(normalizedEmail)
+                    .googleSub(identity.sub())
                     .role(customerRole)
                     .build());
         } catch (DataIntegrityViolationException ex) {
-            // Two first-time Google logins raced; the caller can retry and will sign in.
+            // Two first-time Google logins raced; the controller retries once.
             throw new EmailAlreadyExistsException("email already exists");
         }
 
-        int at = originalEmail.indexOf('@');
-        String name = at > 0 ? originalEmail.substring(0, at) : originalEmail;
+        int at = identity.email().indexOf('@');
+        String name = at > 0 ? identity.email().substring(0, at) : identity.email();
 
         customerRepository.save(Customer.builder()
                 .user(user)
@@ -215,12 +246,18 @@ public class AuthService {
             throw new InvalidTokenException();
         }
 
-        // Find token by jti
-        RefreshToken token = refreshTokenRepository.findByTokenId(jti)
+        // Serialize rotations of the same token. The second tab then sees the
+        // first rotation and can reuse it instead of tripping the replay alarm.
+        RefreshToken token = refreshTokenRepository.findByTokenIdForUpdate(jti)
                 .orElseThrow(InvalidTokenException::new);
 
-        // A replayed token means it was stolen: drop every session of that user.
         if (token.getRevoked()) {
+            RefreshToken replacement = graceReplacement(token);
+            if (replacement != null) {
+                return tokensFor(replacement);
+            }
+            // A replayed token outside the grace window means it was stolen:
+            // drop every session of that user.
             log.warn("Refresh token reuse for user {}; revoking all sessions",
                     token.getUser().getUserId());
             refreshTokenRepository.findByUser_UserId(token.getUser().getUserId())
@@ -237,14 +274,10 @@ public class AuthService {
             throw new InvalidTokenException();
         }
 
-        // Revoke old token
-        token.setRevoked(true);
-        refreshTokenRepository.save(token);
-
-        // Generate new tokens
         String newTokenId = UUID.randomUUID().toString();
-        String newAccessToken = jwtService.generateAccessToken(user.getUserId(), user.getEmail());
-        String newRefreshToken = jwtService.generateRefreshToken(user.getUserId(), newTokenId);
+        token.setRevoked(true);
+        token.setReplacedByTokenId(newTokenId);
+        refreshTokenRepository.save(token);
 
         RefreshToken newToken = RefreshToken.builder()
                 .tokenId(newTokenId)
@@ -256,12 +289,38 @@ public class AuthService {
                 .build();
         refreshTokenRepository.save(newToken);
 
+        return tokensFor(newToken);
+    }
+
+    /**
+     * A just-rotated token replayed by a concurrent tab returns the replacement
+     * that is already stored, so the shared cookie converges on one token.
+     */
+    private RefreshToken graceReplacement(RefreshToken revoked) {
+        if (revoked.getReplacedByTokenId() == null) {
+            return null;
+        }
+        RefreshToken replacement = refreshTokenRepository
+                .findByTokenId(revoked.getReplacedByTokenId()).orElse(null);
+        if (replacement == null
+                || replacement.getRevoked()
+                || replacement.getExpiresAt().isBefore(Instant.now())
+                || replacement.getUser().getStatus() != UserStatus.ACTIVE
+                || replacement.getCreatedAt() == null
+                || replacement.getCreatedAt().isBefore(
+                        Instant.now().minus(REFRESH_REPLAY_GRACE))) {
+            return null;
+        }
+        return replacement;
+    }
+
+    private RefreshResponse tokensFor(RefreshToken token) {
+        User user = token.getUser();
         return new RefreshResponse(
-                newAccessToken,
-                newRefreshToken,
+                jwtService.generateAccessToken(user.getUserId(), user.getEmail()),
+                jwtService.generateRefreshToken(user.getUserId(), token.getTokenId(), token.getExpiresAt()),
                 jwtService.getAccessTokenExpirationSeconds(),
-                "Bearer"
-        );
+                "Bearer");
     }
 
     public void logout(RefreshRequest request) {
@@ -281,9 +340,8 @@ public class AuthService {
     @Transactional(readOnly = true)
     public MeResponse me() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        String email = auth.getName();
 
-        User user = userRepository.findByEmail(email)
+        User user = userRepository.findByUserId(auth.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("user not found"));
 
         List<RolePermission> rolePermissions = rolePermissionRepository
@@ -352,7 +410,7 @@ public class AuthService {
 
     private User currentUser() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return userRepository.findByEmail(auth.getName())
+        return userRepository.findByUserId(auth.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("user not found"));
     }
 

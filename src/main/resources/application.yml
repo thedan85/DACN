@@ -80,6 +80,8 @@ app:
   auth:
     # Set true in production (HTTPS). Local dev over http must stay false.
     cookie-secure: ${AUTH_COOKIE_SECURE:false}
+    # Use None only when frontend and API are on different registrable domains.
+    cookie-same-site: ${AUTH_COOKIE_SAME_SITE:Strict}
     google:
       client-id: ${GOOGLE_CLIENT_ID:}
 

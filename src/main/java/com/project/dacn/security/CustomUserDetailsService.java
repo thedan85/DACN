@@ -27,9 +27,21 @@ public class CustomUserDetailsService implements UserDetailsService {
     @Override
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
+        return toUserDetails(userRepository.findByEmail(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email)));
+    }
 
+    /**
+     * JWT subject is the immutable user business id, so a changed email does
+     * not invalidate tokens that are already in flight.
+     */
+    @Transactional(readOnly = true)
+    public UserDetails loadUserByUserId(String userId) throws UsernameNotFoundException {
+        return toUserDetails(userRepository.findByUserId(userId)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + userId)));
+    }
+
+    private UserDetails toUserDetails(User user) {
         List<RolePermission> rolePermissions = rolePermissionRepository
                 .findByRole_RoleIdWithPermission(user.getRole().getRoleId());
 
@@ -43,7 +55,7 @@ public class CustomUserDetailsService implements UserDetailsService {
         // Spring's User rejects a null password; Google-only accounts authenticate by JWT.
         String password = user.getPasswordHash() == null ? "" : user.getPasswordHash();
         return new org.springframework.security.core.userdetails.User(
-                user.getEmail(),
+                user.getUserId(),
                 password,
                 enabled,
                 true, // accountNonExpired

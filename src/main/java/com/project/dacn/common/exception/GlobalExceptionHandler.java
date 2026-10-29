@@ -149,6 +149,14 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(403, ex.getMessage(), null));
     }
 
+    @ExceptionHandler(GoogleLoginNotConfiguredException.class)
+    public ResponseEntity<ApiResponse<?>> handleGoogleLoginNotConfigured(
+            GoogleLoginNotConfiguredException ex) {
+        log.error("Google sign-in requested but app.auth.google.client-id is not set");
+        return ResponseEntity.status(503)
+                .body(ApiResponse.of(503, ex.getMessage(), null));
+    }
+
     @ExceptionHandler(InvalidPasswordException.class)
     public ResponseEntity<ApiResponse<?>> handleInvalidPassword(InvalidPasswordException ex) {
         String message = messageSource.getMessage("error.password.invalid", null,

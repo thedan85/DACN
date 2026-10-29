@@ -23,7 +23,7 @@ public class CustomerIdentity {
                 || auth instanceof AnonymousAuthenticationToken) {
             throw new AccessDeniedException("authentication required");
         }
-        return customerRepository.findByUser_Email(auth.getName())
+        return customerRepository.findByUser_UserId(auth.getName())
                 .map(Customer::getId)
                 .orElseThrow(() -> new AccessDeniedException("customer profile not found"));
     }

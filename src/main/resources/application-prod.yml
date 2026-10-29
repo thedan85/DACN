@@ -11,6 +11,9 @@ spring:
 app:
   auth:
     cookie-secure: true
+    # Vercel frontend + separate API domain. Override to Strict when both are
+    # served from one registrable domain (or behind a same-origin proxy).
+    cookie-same-site: None
 
 # API docs are for local development only.
 springdoc:

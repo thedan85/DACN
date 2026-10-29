@@ -6,6 +6,7 @@ import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import com.project.dacn.common.exception.GoogleLoginNotConfiguredException;
 import com.project.dacn.common.exception.InvalidTokenException;
 import com.project.dacn.security.GoogleTokenVerifier;
 import org.junit.jupiter.api.BeforeAll;
@@ -45,6 +46,11 @@ class GoogleTokenVerifierTest {
 
     private String token(String issuer, String audience, boolean verified,
                          String email, Instant expiresAt) throws Exception {
+        return token("google-subject", issuer, audience, verified, email, expiresAt);
+    }
+
+    private String token(String subject, String issuer, String audience, boolean verified,
+                         String email, Instant expiresAt) throws Exception {
         RSAKey key = new RSAKey.Builder((RSAPublicKey) keyPair.getPublic())
                 .privateKey((RSAPrivateKey) keyPair.getPrivate())
                 .keyID("test-key")
@@ -52,7 +58,7 @@ class GoogleTokenVerifierTest {
         JWTClaimsSet claims = new JWTClaimsSet.Builder()
                 .issuer(issuer)
                 .audience(audience)
-                .subject("google-subject")
+                .subject(subject)
                 .claim("email", email)
                 .claim("email_verified", verified)
                 .expirationTime(Date.from(expiresAt))
@@ -65,12 +71,22 @@ class GoogleTokenVerifierTest {
     }
 
     @Test
-    void validToken_returnsEmail() throws Exception {
+    void validToken_returnsSubAndEmail() throws Exception {
         String jwt = token("https://accounts.google.com", CLIENT_ID, true,
                 "John.Doe@Example.com", Instant.now().plusSeconds(300));
 
-        assertThat(verifier(CLIENT_ID).verify(jwt).email())
-                .isEqualTo("John.Doe@Example.com");
+        GoogleTokenVerifier.GoogleIdentity identity = verifier(CLIENT_ID).verify(jwt);
+        assertThat(identity.sub()).isEqualTo("google-subject");
+        assertThat(identity.email()).isEqualTo("John.Doe@Example.com");
+    }
+
+    @Test
+    void blankSubject_rejected() throws Exception {
+        String jwt = token("", "https://accounts.google.com", CLIENT_ID, true,
+                "user@example.com", Instant.now().plusSeconds(300));
+
+        assertThatThrownBy(() -> verifier(CLIENT_ID).verify(jwt))
+                .isInstanceOf(InvalidTokenException.class);
     }
 
     @Test
@@ -120,6 +136,6 @@ class GoogleTokenVerifierTest {
     @Test
     void blankClientId_failsClosed() {
         assertThatThrownBy(() -> verifier("").verify("anything"))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(GoogleLoginNotConfiguredException.class);
     }
 }

@@ -22,6 +22,16 @@ class BusinessIdTest {
     }
 
     @Test
+    void ofUniqueDisambiguatesInputsThatShareASlug() {
+        String dot = BusinessId.ofUnique("USR", "john.doe@example.com");
+        String dash = BusinessId.ofUnique("USR", "john-doe@example.com");
+
+        assertThat(dot).startsWith("USR_john-doe-example-com-");
+        assertThat(dot).isNotEqualTo(dash);
+        assertThat(BusinessId.ofUnique("USR", "john.doe@example.com")).isEqualTo(dot);
+    }
+
+    @Test
     void randomHasPrefixAndEightHexChars() {
         assertThat(BusinessId.random("ORD")).matches("ORD_[0-9a-f]{8}");
         assertThat(BusinessId.random("ORD")).isNotEqualTo(BusinessId.random("ORD"));

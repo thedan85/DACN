@@ -1,5 +1,6 @@
 package com.project.dacn.security;
 
+import com.project.dacn.common.exception.GoogleLoginNotConfiguredException;
 import com.project.dacn.common.exception.InvalidTokenException;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,7 +24,7 @@ public class GoogleTokenVerifier {
 
     public GoogleIdentity verify(String idToken) {
         if (clientId == null || clientId.isBlank()) {
-            throw new IllegalStateException("app.auth.google.client-id is not configured");
+            throw new GoogleLoginNotConfiguredException();
         }
         Jwt jwt;
         try {
@@ -32,14 +33,17 @@ public class GoogleTokenVerifier {
             throw new InvalidTokenException();
         }
 
+        String sub = jwt.getSubject();
         String email = jwt.getClaimAsString("email");
         Object verified = jwt.getClaim("email_verified");
-        if (email == null || email.isBlank() || !Boolean.TRUE.equals(verified)) {
+        if (sub == null || sub.isBlank()
+                || email == null || email.isBlank()
+                || !Boolean.TRUE.equals(verified)) {
             throw new InvalidTokenException();
         }
-        return new GoogleIdentity(email.trim());
+        return new GoogleIdentity(sub, email.trim());
     }
 
-    public record GoogleIdentity(String email) {
+    public record GoogleIdentity(String sub, String email) {
     }
 }

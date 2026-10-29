@@ -40,6 +40,9 @@ public class RefreshToken extends BaseEntity {
     @lombok.Builder.Default
     private Boolean revoked = false;
 
+    @Column(name = "replaced_by_token_id")
+    private String replacedByTokenId;
+
     @Column(name = "token_user_agent")
     private String userAgent;
 

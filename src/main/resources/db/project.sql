@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS users (
     id                 BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     user_id             VARCHAR(255) NOT NULL,
     user_email          VARCHAR(255) NOT NULL,
-    user_password_hash VARCHAR(255) COLLATE utf8mb4_bin NOT NULL,
+    google_sub          VARCHAR(255),
+    user_password_hash VARCHAR(255) COLLATE utf8mb4_bin,
     user_status         ENUM('ACTIVE','LOCKED','DELETED') NOT NULL DEFAULT 'ACTIVE',
     role_id             BIGINT UNSIGNED NOT NULL,
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -49,6 +50,7 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     user_id             BIGINT UNSIGNED NOT NULL,
     token_expires_at    TIMESTAMP NOT NULL,
     token_revoked       BOOLEAN NOT NULL DEFAULT FALSE,
+    replaced_by_token_id VARCHAR(255) NULL,
     token_user_agent    VARCHAR(255) NULL,
     token_ip            VARCHAR(45) NULL,
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -107,7 +109,7 @@ CREATE TABLE IF NOT EXISTS customers (
     user_id             BIGINT UNSIGNED NOT NULL,
     customer_name       VARCHAR(255) NOT NULL,
     customer_address    VARCHAR(255),
-    customer_phone      VARCHAR(20) NOT NULL,
+    customer_phone      VARCHAR(20),
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -300,6 +302,8 @@ CREATE TABLE IF NOT EXISTS notifications (
 ALTER TABLE users ADD CONSTRAINT uq_users_email UNIQUE (user_email);
 -- users.user_id UNIQUE: business key cho API/external, khong dung cho FK
 ALTER TABLE users ADD CONSTRAINT uq_users_user_id UNIQUE (user_id);
+-- users.google_sub UNIQUE: mot Google account chi gan voi mot user
+ALTER TABLE users ADD CONSTRAINT uq_users_google_sub UNIQUE (google_sub);
 
 -- refresh_tokens.token_id UNIQUE: business key convention
 ALTER TABLE refresh_tokens ADD CONSTRAINT uq_refresh_tokens_id UNIQUE (token_id);

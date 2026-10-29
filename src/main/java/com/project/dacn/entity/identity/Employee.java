@@ -68,7 +68,7 @@ public class Employee extends BaseEntity {
     @Override
     protected String buildBusinessId() {
         return user != null && user.getEmail() != null
-                ? BusinessId.of("EMP", user.getEmail())
+                ? BusinessId.ofUnique("EMP", user.getEmail())
                 : BusinessId.random("EMP");
     }
 }

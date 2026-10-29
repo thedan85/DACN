@@ -1,5 +1,6 @@
 package com.project.dacn.common.util;
 
+import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.util.Arrays;
 import java.util.UUID;
@@ -29,6 +30,18 @@ public final class BusinessId {
         return prefix + "_" + Arrays.stream(parts)
                 .map(BusinessId::slug)
                 .collect(Collectors.joining("_"));
+    }
+
+    /**
+     * Like {@link #of}, but appends a stable hash of the raw parts. Distinct
+     * keys that slug to the same text (john.doe@x vs john-doe@x) stay distinct.
+     */
+    public static String ofUnique(String prefix, String... parts) {
+        String key = String.join("\u0000", parts);
+        // UUIDv3 is a stable, non-secure hash used only to disambiguate slugs.
+        String hash = UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8))
+                .toString().substring(0, 12);
+        return of(prefix, parts) + "-" + hash;
     }
 
     /** {@code PREFIX_<parentId>} — parent ID used verbatim, already normalised. */

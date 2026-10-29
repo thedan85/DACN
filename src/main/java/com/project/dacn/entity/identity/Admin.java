@@ -62,7 +62,7 @@ public class Admin extends BaseEntity {
     @Override
     protected String buildBusinessId() {
         return user != null && user.getEmail() != null
-                ? BusinessId.of("ADM", user.getEmail())
+                ? BusinessId.ofUnique("ADM", user.getEmail())
                 : BusinessId.random("ADM");
     }
 }

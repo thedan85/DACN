@@ -12,9 +12,9 @@ import java.util.stream.Collectors;
 /**
  * CSRF defence for the endpoints that authenticate with the refresh cookie.
  *
- * <p>SameSite=Strict already blocks cross-site cookie sends. This adds an
- * Origin allow-list check as defence in depth, since these endpoints change
- * server state (token rotation / revocation).
+ * <p>SameSite=Strict blocks cross-site cookie sends by default; a deployment
+ * that uses SameSite=None must rely on this Origin allow-list. Either way the
+ * check covers endpoints that change server state (token rotation / revocation).
  */
 @Component
 public class TrustedOriginValidator {

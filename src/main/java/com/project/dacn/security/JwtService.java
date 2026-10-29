@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Date;
 
 @Service
@@ -38,12 +39,17 @@ public class JwtService {
     }
 
     public String generateRefreshToken(String userId, String tokenId) {
+        return generateRefreshToken(userId, tokenId,
+                Instant.now().plusMillis(refreshTokenExpiration));
+    }
+
+    public String generateRefreshToken(String userId, String tokenId, Instant expiresAt) {
         return Jwts.builder()
                 .subject(userId)
                 .id(tokenId)
                 .claim(CLAIM_TYPE, TYPE_REFRESH)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + refreshTokenExpiration))
+                .expiration(Date.from(expiresAt))
                 .signWith(getSigningKey())
                 .compact();
     }

@@ -22,6 +22,8 @@ import com.project.dacn.repository.auth.RolePermissionRepository;
 import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
+import com.project.dacn.security.GoogleTokenVerifier;
+import com.project.dacn.security.JwtService;
 import com.project.dacn.security.RateLimiter;
 import com.project.dacn.security.RefreshTokenCookie;
 import com.project.dacn.service.auth.AuthService;
@@ -39,6 +41,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -87,6 +92,9 @@ class AuthServiceTest {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private JwtService jwtService;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -144,7 +152,7 @@ class AuthServiceTest {
     }
 
     @Test
-    void refresh_rotation_oldTokenRejected() {
+    void refresh_rotation_concurrentTabWithinGraceReusesSuccessor() {
         authService.register(registerRequest("rotate@test.com"));
         LoginResponse login = authService.login(
                 new LoginRequest("rotate@test.com", "password123"), null, null);
@@ -153,12 +161,31 @@ class AuthServiceTest {
         var refreshed = authService.refresh(new RefreshRequest(login.refreshToken()));
         assertThat(refreshed.accessToken()).isNotNull();
         assertThat(refreshed.refreshToken()).isNotEqualTo(login.refreshToken());
+        entityManager.flush();
 
-        // Old refresh token was revoked by rotation -> must be rejected, and
-        // replaying it revokes every session, including the rotated one.
+        // A concurrent tab replays the old token within the grace window and
+        // receives the same successor instead of killing the session.
+        var replayed = authService.refresh(new RefreshRequest(login.refreshToken()));
+        assertThat(jwtService.extractJti(replayed.refreshToken()))
+                .isEqualTo(jwtService.extractJti(refreshed.refreshToken()));
+
+        // The grace request did not rotate the successor; it is still usable.
+        var next = authService.refresh(new RefreshRequest(refreshed.refreshToken()));
+        assertThat(next.refreshToken()).isNotBlank();
+
+        // Outside the grace window, replay is treated as theft and revokes all.
+        String refreshedJti = jwtService.extractJti(refreshed.refreshToken());
+        String nextJti = jwtService.extractJti(next.refreshToken());
+        entityManager.createQuery(
+                        "UPDATE RefreshToken t SET t.createdAt = :time WHERE t.tokenId IN :ids")
+                .setParameter("time", Instant.now().minusSeconds(31))
+                .setParameter("ids", List.of(refreshedJti, nextJti))
+                .executeUpdate();
+        entityManager.clear();
+
         assertThatThrownBy(() -> authService.refresh(new RefreshRequest(login.refreshToken())))
                 .isInstanceOf(InvalidTokenException.class);
-        assertThatThrownBy(() -> authService.refresh(new RefreshRequest(refreshed.refreshToken())))
+        assertThatThrownBy(() -> authService.refresh(new RefreshRequest(next.refreshToken())))
                 .isInstanceOf(InvalidTokenException.class);
     }
 
@@ -439,7 +466,8 @@ class AuthServiceTest {
     @Test
     void googleLogin_firstTime_createsCustomerWithEmailPrefix() {
         LoginResponse response = authService.loginWithVerifiedGoogleEmail(
-                "John.Doe@Example.com", "test-agent", "127.0.0.1");
+                new GoogleTokenVerifier.GoogleIdentity("sub-john", "John.Doe@Example.com"),
+                "test-agent", "127.0.0.1");
 
         assertThat(response.accessToken()).isNotBlank();
         assertThat(response.refreshToken()).isNotBlank();
@@ -448,6 +476,7 @@ class AuthServiceTest {
         entityManager.clear();
 
         User user = userRepository.findByEmail("john.doe@example.com").orElseThrow();
+        assertThat(user.getGoogleSub()).isEqualTo("sub-john");
         assertThat(user.getPasswordHash()).isNull();
         assertThat(user.getRole().getCode()).isEqualToIgnoringCase("CUSTOMER");
         assertThat(user.getLastLogin()).isNotNull();
@@ -455,15 +484,16 @@ class AuthServiceTest {
         Customer customer = customerRepository.findByUser_UserId(user.getUserId()).orElseThrow();
         assertThat(customer.getName()).isEqualTo("John.Doe");
         assertThat(customer.getPhone()).isNull();
-        assertThat(customer.getCustomerId()).isEqualTo("CUS_john-doe-example-com");
+        assertThat(customer.getCustomerId()).startsWith("CUS_john-doe-example-com-");
     }
 
     @Test
     void googleLogin_secondTime_signsInWithoutDuplicate() {
-        authService.loginWithVerifiedGoogleEmail("Repeat@Test.com", null, null);
+        authService.loginWithVerifiedGoogleEmail(
+                new GoogleTokenVerifier.GoogleIdentity("sub-repeat", "Repeat@Test.com"), null, null);
 
         LoginResponse response = authService.loginWithVerifiedGoogleEmail(
-                "repeat@test.com", null, null);
+                new GoogleTokenVerifier.GoogleIdentity("sub-repeat", "repeat@test.com"), null, null);
 
         assertThat(response.accessToken()).isNotBlank();
         User user = userRepository.findByEmail("repeat@test.com").orElseThrow();
@@ -474,15 +504,84 @@ class AuthServiceTest {
     }
 
     @Test
-    void googleLogin_passwordCustomer_rejected() {
+    void googleLogin_passwordCustomer_linksAccount() {
         authService.register(registerRequest("password-user@test.com"));
 
-        assertThatThrownBy(() -> authService.loginWithVerifiedGoogleEmail(
-                "password-user@test.com", null, null))
-                .isInstanceOf(GoogleLoginNotAllowedException.class)
-                .hasMessageContaining("email and password");
+        LoginResponse response = authService.loginWithVerifiedGoogleEmail(
+                new GoogleTokenVerifier.GoogleIdentity("sub-password-user", "password-user@test.com"),
+                null, null);
 
-        assertThat(userRepository.findByEmail("password-user@test.com")).isPresent();
+        assertThat(response.accessToken()).isNotBlank();
+        entityManager.flush();
+        entityManager.clear();
+
+        User user = userRepository.findByEmail("password-user@test.com").orElseThrow();
+        assertThat(user.getGoogleSub()).isEqualTo("sub-password-user");
+        assertThat(user.getPasswordHash()).isNotNull();
+
+        // Both sign-in methods now work for the same account.
+        assertThatCode(() -> authService.login(
+                new LoginRequest("password-user@test.com", "password123"), null, null))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void googleLogin_deletedUser_returnsAccountNotFound() {
+        authService.register(registerRequest("deleted-google@test.com"));
+        User user = userRepository.findByEmail("deleted-google@test.com").orElseThrow();
+        user.setStatus(UserStatus.DELETED);
+        userRepository.saveAndFlush(user);
+
+        assertThatThrownBy(() -> authService.loginWithVerifiedGoogleEmail(
+                new GoogleTokenVerifier.GoogleIdentity("sub-deleted", "deleted-google@test.com"),
+                null, null))
+                .isInstanceOf(AccountNotFoundException.class);
+    }
+
+    @Test
+    void googleLogin_changedEmail_updatesAccountAndOldTokenStillWorks() throws Exception {
+        LoginResponse first = authService.loginWithVerifiedGoogleEmail(
+                new GoogleTokenVerifier.GoogleIdentity("sub-change", "Old@Example.com"),
+                null, null);
+
+        authService.loginWithVerifiedGoogleEmail(
+                new GoogleTokenVerifier.GoogleIdentity("sub-change", "New@Example.com"),
+                null, null);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(userRepository.findByGoogleSub("sub-change").orElseThrow().getEmail())
+                .isEqualTo("new@example.com");
+
+        // The access token carries the immutable user id as subject, so the
+        // email change does not invalidate it.
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + first.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.email").value("new@example.com"));
+    }
+
+    @Test
+    void googleLogin_slugCollision_getsDistinctBusinessIds() {
+        authService.loginWithVerifiedGoogleEmail(
+                new GoogleTokenVerifier.GoogleIdentity("sub-dot", "john.doe@example.com"),
+                null, null);
+        authService.loginWithVerifiedGoogleEmail(
+                new GoogleTokenVerifier.GoogleIdentity("sub-dash", "john-doe@example.com"),
+                null, null);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        String dotId = customerRepository.findByUser_Email("john.doe@example.com")
+                .orElseThrow().getCustomerId();
+        String dashId = customerRepository.findByUser_Email("john-doe@example.com")
+                .orElseThrow().getCustomerId();
+
+        assertThat(dotId).startsWith("CUS_john-doe-example-com-");
+        assertThat(dashId).startsWith("CUS_john-doe-example-com-");
+        assertThat(dotId).isNotEqualTo(dashId);
     }
 
     @Test
@@ -497,7 +596,7 @@ class AuthServiceTest {
                 .build());
 
         assertThatThrownBy(() -> authService.loginWithVerifiedGoogleEmail(
-                "admin@test.com", null, null))
+                new GoogleTokenVerifier.GoogleIdentity("sub-admin", "admin@test.com"), null, null))
                 .isInstanceOf(GoogleLoginNotAllowedException.class);
 
         assertThat(userRepository.findByEmail("admin@test.com").orElseThrow()
@@ -512,13 +611,16 @@ class AuthServiceTest {
         userRepository.save(user);
 
         assertThatThrownBy(() -> authService.loginWithVerifiedGoogleEmail(
-                "locked-google@test.com", null, null))
+                new GoogleTokenVerifier.GoogleIdentity("sub-locked", "locked-google@test.com"),
+                null, null))
                 .isInstanceOf(UserLockedException.class);
     }
 
     @Test
     void passwordLogin_googleOnlyAccount_rejected() {
-        authService.loginWithVerifiedGoogleEmail("google-only@test.com", null, null);
+        authService.loginWithVerifiedGoogleEmail(
+                new GoogleTokenVerifier.GoogleIdentity("sub-google-only", "google-only@test.com"),
+                null, null);
 
         assertThatThrownBy(() -> authService.login(
                 new LoginRequest("google-only@test.com", "anything"), null, null))
@@ -528,12 +630,42 @@ class AuthServiceTest {
     @Test
     void googleCustomer_meWorksWithNullPasswordAndPhone() throws Exception {
         LoginResponse login = authService.loginWithVerifiedGoogleEmail(
-                "no-phone@test.com", null, null);
+                new GoogleTokenVerifier.GoogleIdentity("sub-no-phone", "no-phone@test.com"),
+                null, null);
 
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + login.accessToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.phone").value(nullValue()))
                 .andExpect(jsonPath("$.data.hasPassword").value(false));
+    }
+
+    @Test
+    void googleLogin_differentSubSameEmail_rejected() {
+        authService.loginWithVerifiedGoogleEmail(
+                new GoogleTokenVerifier.GoogleIdentity("sub-alice", "shared@test.com"), null, null);
+
+        assertThatThrownBy(() -> authService.loginWithVerifiedGoogleEmail(
+                new GoogleTokenVerifier.GoogleIdentity("sub-bob", "shared@test.com"), null, null))
+                .isInstanceOf(GoogleLoginNotAllowedException.class)
+                .hasMessageContaining("different Google account");
+    }
+
+    @Test
+    void googleLogin_linksLegacyGoogleOnlyRow() {
+        Role customerRole = roleRepository.findByCodeIgnoreCase("CUSTOMER").orElseThrow();
+        userRepository.save(User.builder()
+                .email("legacy-google@test.com")
+                .role(customerRole)
+                .build());
+
+        authService.loginWithVerifiedGoogleEmail(
+                new GoogleTokenVerifier.GoogleIdentity("sub-legacy", "legacy-google@test.com"),
+                null, null);
+
+        entityManager.flush();
+        entityManager.clear();
+        assertThat(userRepository.findByEmail("legacy-google@test.com").orElseThrow().getGoogleSub())
+                .isEqualTo("sub-legacy");
     }
 }

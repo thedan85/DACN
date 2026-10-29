@@ -35,9 +35,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             if (jwtService.validateAccessToken(token)) {
-                // The access token carries the email, so no extra user lookup.
+                // The subject is the immutable user id; email can change.
                 UserDetails userDetails = userDetailsService
-                        .loadUserByUsername(jwtService.extractEmail(token));
+                        .loadUserByUserId(jwtService.extractUserId(token));
 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         userDetails,

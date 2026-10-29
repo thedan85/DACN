@@ -1,5 +1,6 @@
 package com.project.dacn.controller.auth;
 
+import com.project.dacn.common.exception.EmailAlreadyExistsException;
 import com.project.dacn.common.exception.InvalidTokenException;
 import com.project.dacn.common.response.ApiResponse;
 import com.project.dacn.dto.request.auth.LoginRequest;
@@ -78,8 +79,14 @@ public class AuthController {
         rateLimiter.check("rl:google:" + ip, 20, Duration.ofMinutes(1));
 
         GoogleTokenVerifier.GoogleIdentity identity = googleTokenVerifier.verify(request.idToken());
-        LoginResponse response = authService.loginWithVerifiedGoogleEmail(
-                identity.email(), httpRequest.getHeader("User-Agent"), ip);
+        String userAgent = httpRequest.getHeader("User-Agent");
+        LoginResponse response;
+        try {
+            response = authService.loginWithVerifiedGoogleEmail(identity, userAgent, ip);
+        } catch (EmailAlreadyExistsException ex) {
+            // A concurrent first login created the account after our lookup.
+            response = authService.loginWithVerifiedGoogleEmail(identity, userAgent, ip);
+        }
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.create(response.refreshToken()))

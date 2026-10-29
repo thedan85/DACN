@@ -1,7 +1,9 @@
 package com.project.dacn;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.project.dacn.common.exception.EmailAlreadyExistsException;
 import com.project.dacn.common.exception.GoogleLoginNotAllowedException;
+import com.project.dacn.common.exception.GoogleLoginNotConfiguredException;
 import com.project.dacn.common.exception.InvalidTokenException;
 import com.project.dacn.common.exception.RateLimitExceededException;
 import com.project.dacn.config.SecurityConfig;
@@ -42,6 +44,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -354,8 +357,10 @@ class AuthControllerTest {
     @Test
     void google_success_200_setsRefreshCookie() throws Exception {
         when(googleTokenVerifier.verify("google-id-token"))
-                .thenReturn(new GoogleTokenVerifier.GoogleIdentity("user@example.com"));
-        when(authService.loginWithVerifiedGoogleEmail(eq("user@example.com"), any(), any()))
+                .thenReturn(new GoogleTokenVerifier.GoogleIdentity("sub-user", "user@example.com"));
+        when(authService.loginWithVerifiedGoogleEmail(
+                eq(new GoogleTokenVerifier.GoogleIdentity("sub-user", "user@example.com")),
+                any(), any()))
                 .thenReturn(new LoginResponse("access-token", "refresh-token", 900, "Bearer"));
 
         mockMvc.perform(post("/api/v1/auth/google")
@@ -391,17 +396,46 @@ class AuthControllerTest {
     @Test
     void google_refusedAccount_403WithServiceMessage() throws Exception {
         when(googleTokenVerifier.verify("password-token"))
-                .thenReturn(new GoogleTokenVerifier.GoogleIdentity("password@example.com"));
+                .thenReturn(new GoogleTokenVerifier.GoogleIdentity("sub-password", "password@example.com"));
         when(authService.loginWithVerifiedGoogleEmail(any(), any(), any()))
                 .thenThrow(new GoogleLoginNotAllowedException(
-                        "This account already uses email and password; sign in with password"));
+                        "Google sign-in is only available for customer accounts; use email and password"));
 
         mockMvc.perform(post("/api/v1/auth/google")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"idToken\":\"password-token\"}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.message")
-                        .value("This account already uses email and password; sign in with password"));
+                        .value("Google sign-in is only available for customer accounts; use email and password"));
+    }
+
+    @Test
+    void google_concurrentFirstLogin_retriesOnce() throws Exception {
+        when(googleTokenVerifier.verify("google-id-token"))
+                .thenReturn(new GoogleTokenVerifier.GoogleIdentity("sub-user", "user@example.com"));
+        when(authService.loginWithVerifiedGoogleEmail(any(), any(), any()))
+                .thenThrow(new EmailAlreadyExistsException("email already exists"))
+                .thenReturn(new LoginResponse("access-token", "refresh-token", 900, "Bearer"));
+
+        mockMvc.perform(post("/api/v1/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idToken\":\"google-id-token\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.accessToken").value("access-token"));
+
+        verify(authService, times(2)).loginWithVerifiedGoogleEmail(any(), any(), any());
+    }
+
+    @Test
+    void google_notConfigured_503() throws Exception {
+        when(googleTokenVerifier.verify("token"))
+                .thenThrow(new GoogleLoginNotConfiguredException());
+
+        mockMvc.perform(post("/api/v1/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idToken\":\"token\"}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.message").value("Google sign-in is not configured"));
     }
 
     @Test

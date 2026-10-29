@@ -40,6 +40,9 @@ public class User extends BaseEntity {
     @Column(name = "user_password_hash")
     private String passwordHash;
 
+    @Column(name = "google_sub", unique = true)
+    private String googleSub;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "user_status", nullable = false, length = 20)
     @lombok.Builder.Default
@@ -70,6 +73,6 @@ public class User extends BaseEntity {
 
     @Override
     protected String buildBusinessId() {
-        return BusinessId.of("USR", email);
+        return BusinessId.ofUnique("USR", email);
     }
 }
