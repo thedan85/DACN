@@ -4,6 +4,7 @@ import com.project.dacn.common.exception.InvalidTokenException;
 import com.project.dacn.common.response.ApiResponse;
 import com.project.dacn.dto.request.auth.LoginRequest;
 import com.project.dacn.dto.request.auth.ChangePasswordRequest;
+import com.project.dacn.dto.request.auth.GoogleLoginRequest;
 import com.project.dacn.dto.request.auth.ProfileUpdateRequest;
 import com.project.dacn.dto.request.auth.RefreshRequest;
 import com.project.dacn.dto.request.auth.RegisterRequest;
@@ -11,6 +12,7 @@ import com.project.dacn.dto.response.auth.LoginResponse;
 import com.project.dacn.dto.response.auth.MeResponse;
 import com.project.dacn.dto.response.auth.RefreshResponse;
 import com.project.dacn.dto.response.auth.UserResponse;
+import com.project.dacn.security.GoogleTokenVerifier;
 import com.project.dacn.security.RateLimiter;
 import com.project.dacn.security.RefreshTokenCookie;
 import com.project.dacn.security.TrustedOriginValidator;
@@ -40,6 +42,7 @@ public class AuthController {
     private final RefreshTokenCookie refreshTokenCookie;
     private final TrustedOriginValidator trustedOriginValidator;
     private final RateLimiter rateLimiter;
+    private final GoogleTokenVerifier googleTokenVerifier;
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<UserResponse>> register(
@@ -62,6 +65,22 @@ public class AuthController {
                 10, Duration.ofMinutes(15));
         String userAgent = httpRequest.getHeader("User-Agent");
         LoginResponse response = authService.login(request, userAgent, ip);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.create(response.refreshToken()))
+                .body(ApiResponse.ok(response));
+    }
+
+    @PostMapping("/google")
+    public ResponseEntity<ApiResponse<LoginResponse>> googleLogin(
+            @Valid @RequestBody GoogleLoginRequest request,
+            HttpServletRequest httpRequest) {
+        String ip = clientIp(httpRequest);
+        rateLimiter.check("rl:google:" + ip, 20, Duration.ofMinutes(1));
+
+        GoogleTokenVerifier.GoogleIdentity identity = googleTokenVerifier.verify(request.idToken());
+        LoginResponse response = authService.loginWithVerifiedGoogleEmail(
+                identity.email(), httpRequest.getHeader("User-Agent"), ip);
+
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.create(response.refreshToken()))
                 .body(ApiResponse.ok(response));

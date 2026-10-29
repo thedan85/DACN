@@ -1,6 +1,8 @@
 package com.project.dacn;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.project.dacn.common.exception.GoogleLoginNotAllowedException;
+import com.project.dacn.common.exception.InvalidTokenException;
 import com.project.dacn.common.exception.RateLimitExceededException;
 import com.project.dacn.config.SecurityConfig;
 import com.project.dacn.controller.auth.AuthController;
@@ -13,6 +15,7 @@ import com.project.dacn.dto.response.auth.UserResponse;
 import com.project.dacn.security.AuthenticationEntryPoint;
 import com.project.dacn.security.CustomAccessDeniedHandler;
 import com.project.dacn.security.CustomUserDetailsService;
+import com.project.dacn.security.GoogleTokenVerifier;
 import com.project.dacn.security.JwtService;
 import com.project.dacn.security.RateLimiter;
 import com.project.dacn.security.RefreshTokenCookie;
@@ -78,6 +81,9 @@ class AuthControllerTest {
 
     @MockitoBean
     private RateLimiter rateLimiter;
+
+    @MockitoBean
+    private GoogleTokenVerifier googleTokenVerifier;
 
     @Test
     void register_success_201() throws Exception {
@@ -343,5 +349,69 @@ class AuthControllerTest {
                                 new ChangePasswordRequest("password123", "newpassword123"))))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.code").value(429));
+    }
+
+    @Test
+    void google_success_200_setsRefreshCookie() throws Exception {
+        when(googleTokenVerifier.verify("google-id-token"))
+                .thenReturn(new GoogleTokenVerifier.GoogleIdentity("user@example.com"));
+        when(authService.loginWithVerifiedGoogleEmail(eq("user@example.com"), any(), any()))
+                .thenReturn(new LoginResponse("access-token", "refresh-token", 900, "Bearer"));
+
+        mockMvc.perform(post("/api/v1/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idToken\":\"google-id-token\"}"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.SET_COOKIE,
+                        containsString("refresh_token=")))
+                .andExpect(jsonPath("$.data.accessToken").value("access-token"));
+
+        verify(rateLimiter).check("rl:google:local", 20, Duration.ofMinutes(1));
+    }
+
+    @Test
+    void google_blankToken_400() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idToken\":\"\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void google_invalidToken_401() throws Exception {
+        when(googleTokenVerifier.verify("bad-token"))
+                .thenThrow(new InvalidTokenException());
+
+        mockMvc.perform(post("/api/v1/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idToken\":\"bad-token\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void google_refusedAccount_403WithServiceMessage() throws Exception {
+        when(googleTokenVerifier.verify("password-token"))
+                .thenReturn(new GoogleTokenVerifier.GoogleIdentity("password@example.com"));
+        when(authService.loginWithVerifiedGoogleEmail(any(), any(), any()))
+                .thenThrow(new GoogleLoginNotAllowedException(
+                        "This account already uses email and password; sign in with password"));
+
+        mockMvc.perform(post("/api/v1/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idToken\":\"password-token\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message")
+                        .value("This account already uses email and password; sign in with password"));
+    }
+
+    @Test
+    void google_rateLimited_429() throws Exception {
+        doThrow(new RateLimitExceededException("too many requests"))
+                .when(rateLimiter).check(eq("rl:google:local"), anyInt(), any(Duration.class));
+
+        mockMvc.perform(post("/api/v1/auth/google")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"idToken\":\"token\"}"))
+                .andExpect(status().isTooManyRequests());
     }
 }

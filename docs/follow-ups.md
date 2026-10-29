@@ -9,7 +9,7 @@ requires a valid access token, even if a handler is missing `@PreAuthorize`.
 | Method | Path | Reason |
 |---|---|---|
 | OPTIONS | `/**` | CORS preflight carries no credentials |
-| POST | `/api/v1/auth/register`, `/login`, `/refresh`, `/logout` | Session setup and teardown |
+| POST | `/api/v1/auth/register`, `/login`, `/google`, `/refresh`, `/logout` | Session setup and teardown |
 | GET | `/api/v1/products/**` | Storefront catalog |
 | GET | `/api/v1/variants/**` | Storefront catalog |
 | GET | `/api/v1/categories/**` | Storefront catalog |
