@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project.dacn.common.constant.UserStatus;
 import com.project.dacn.common.exception.AccountNotFoundException;
 import com.project.dacn.common.exception.EmailAlreadyExistsException;
+import com.project.dacn.common.exception.GoogleLoginNotAllowedException;
 import com.project.dacn.common.exception.InvalidPasswordException;
 import com.project.dacn.common.exception.InvalidTokenException;
 import com.project.dacn.common.exception.UserLockedException;
@@ -24,6 +25,7 @@ import com.project.dacn.repository.identity.CustomerRepository;
 import com.project.dacn.security.RateLimiter;
 import com.project.dacn.security.RefreshTokenCookie;
 import com.project.dacn.service.auth.AuthService;
+import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -81,6 +84,9 @@ class AuthServiceTest {
 
     @Autowired
     private CustomerRepository customerRepository;
+
+    @Autowired
+    private EntityManager entityManager;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
@@ -290,7 +296,8 @@ class AuthServiceTest {
         mockMvc.perform(get("/api/v1/auth/me")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.name").value("Test User"));
+                .andExpect(jsonPath("$.data.name").value("Test User"))
+                .andExpect(jsonPath("$.data.hasPassword").value(true));
     }
 
     @Test
@@ -427,5 +434,106 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.login(
                 new LoginRequest("change-ok@test.com", "password123"), null, null))
                 .isInstanceOf(InvalidPasswordException.class);
+    }
+
+    @Test
+    void googleLogin_firstTime_createsCustomerWithEmailPrefix() {
+        LoginResponse response = authService.loginWithVerifiedGoogleEmail(
+                "John.Doe@Example.com", "test-agent", "127.0.0.1");
+
+        assertThat(response.accessToken()).isNotBlank();
+        assertThat(response.refreshToken()).isNotBlank();
+
+        entityManager.flush();
+        entityManager.clear();
+
+        User user = userRepository.findByEmail("john.doe@example.com").orElseThrow();
+        assertThat(user.getPasswordHash()).isNull();
+        assertThat(user.getRole().getCode()).isEqualToIgnoringCase("CUSTOMER");
+        assertThat(user.getLastLogin()).isNotNull();
+
+        Customer customer = customerRepository.findByUser_UserId(user.getUserId()).orElseThrow();
+        assertThat(customer.getName()).isEqualTo("John.Doe");
+        assertThat(customer.getPhone()).isNull();
+        assertThat(customer.getCustomerId()).isEqualTo("CUS_john-doe-example-com");
+    }
+
+    @Test
+    void googleLogin_secondTime_signsInWithoutDuplicate() {
+        authService.loginWithVerifiedGoogleEmail("Repeat@Test.com", null, null);
+
+        LoginResponse response = authService.loginWithVerifiedGoogleEmail(
+                "repeat@test.com", null, null);
+
+        assertThat(response.accessToken()).isNotBlank();
+        User user = userRepository.findByEmail("repeat@test.com").orElseThrow();
+        assertThat(customerRepository.findByUser_UserId(user.getUserId())).isPresent();
+        assertThat(userRepository.findAll())
+                .filteredOn(candidate -> candidate.getEmail().equals("repeat@test.com"))
+                .hasSize(1);
+    }
+
+    @Test
+    void googleLogin_passwordCustomer_rejected() {
+        authService.register(registerRequest("password-user@test.com"));
+
+        assertThatThrownBy(() -> authService.loginWithVerifiedGoogleEmail(
+                "password-user@test.com", null, null))
+                .isInstanceOf(GoogleLoginNotAllowedException.class)
+                .hasMessageContaining("email and password");
+
+        assertThat(userRepository.findByEmail("password-user@test.com")).isPresent();
+    }
+
+    @Test
+    void googleLogin_admin_rejected() {
+        Role adminRole = roleRepository.save(Role.builder()
+                .code("ADMIN").name("Admin").system(true).deleted(false).build());
+        userRepository.save(User.builder()
+                .email("admin@test.com")
+                .passwordHash(passwordEncoder.encode("password123"))
+                .role(adminRole)
+                .status(UserStatus.ACTIVE)
+                .build());
+
+        assertThatThrownBy(() -> authService.loginWithVerifiedGoogleEmail(
+                "admin@test.com", null, null))
+                .isInstanceOf(GoogleLoginNotAllowedException.class);
+
+        assertThat(userRepository.findByEmail("admin@test.com").orElseThrow()
+                .getRole().getCode()).isEqualTo("ADMIN");
+    }
+
+    @Test
+    void googleLogin_lockedUser_rejected() {
+        authService.register(registerRequest("locked-google@test.com"));
+        User user = userRepository.findByEmail("locked-google@test.com").orElseThrow();
+        user.setStatus(UserStatus.LOCKED);
+        userRepository.save(user);
+
+        assertThatThrownBy(() -> authService.loginWithVerifiedGoogleEmail(
+                "locked-google@test.com", null, null))
+                .isInstanceOf(UserLockedException.class);
+    }
+
+    @Test
+    void passwordLogin_googleOnlyAccount_rejected() {
+        authService.loginWithVerifiedGoogleEmail("google-only@test.com", null, null);
+
+        assertThatThrownBy(() -> authService.login(
+                new LoginRequest("google-only@test.com", "anything"), null, null))
+                .isInstanceOf(InvalidPasswordException.class);
+    }
+
+    @Test
+    void googleCustomer_meWorksWithNullPasswordAndPhone() throws Exception {
+        LoginResponse login = authService.loginWithVerifiedGoogleEmail(
+                "no-phone@test.com", null, null);
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + login.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.phone").value(nullValue()))
+                .andExpect(jsonPath("$.data.hasPassword").value(false));
     }
 }

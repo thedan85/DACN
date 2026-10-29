@@ -40,9 +40,11 @@ public class CustomUserDetailsService implements UserDetailsService {
         boolean enabled = user.getStatus() == UserStatus.ACTIVE;
         boolean accountNonLocked = user.getStatus() != UserStatus.LOCKED;
 
+        // Spring's User rejects a null password; Google-only accounts authenticate by JWT.
+        String password = user.getPasswordHash() == null ? "" : user.getPasswordHash();
         return new org.springframework.security.core.userdetails.User(
                 user.getEmail(),
-                user.getPasswordHash(),
+                password,
                 enabled,
                 true, // accountNonExpired
                 true, // credentialsNonExpired

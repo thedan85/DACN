@@ -10,6 +10,7 @@ public record MeResponse(
         String address,
         String roleCode,
         String roleName,
-        List<String> permissions
+        List<String> permissions,
+        boolean hasPassword
 ) {
 }

@@ -37,7 +37,7 @@ public class User extends BaseEntity {
     @Column(name = "user_email", nullable = false, unique = true)
     private String email;
 
-    @Column(name = "user_password_hash", nullable = false)
+    @Column(name = "user_password_hash")
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)

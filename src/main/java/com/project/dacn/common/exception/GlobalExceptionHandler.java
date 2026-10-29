@@ -142,6 +142,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(404, message, null));
     }
 
+    @ExceptionHandler(GoogleLoginNotAllowedException.class)
+    public ResponseEntity<ApiResponse<?>> handleGoogleLoginNotAllowed(
+            GoogleLoginNotAllowedException ex) {
+        return ResponseEntity.status(403)
+                .body(ApiResponse.of(403, ex.getMessage(), null));
+    }
+
     @ExceptionHandler(InvalidPasswordException.class)
     public ResponseEntity<ApiResponse<?>> handleInvalidPassword(InvalidPasswordException ex) {
         String message = messageSource.getMessage("error.password.invalid", null,

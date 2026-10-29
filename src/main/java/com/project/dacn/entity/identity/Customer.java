@@ -39,7 +39,7 @@ public class Customer extends BaseEntity {
     @Column(name = "customer_address")
     private String address;
 
-    @Column(name = "customer_phone", nullable = false, length = 20)
+    @Column(name = "customer_phone", length = 20)
     private String phone;
 
     @Override

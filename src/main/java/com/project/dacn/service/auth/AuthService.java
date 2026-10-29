@@ -3,6 +3,7 @@ package com.project.dacn.service.auth;
 import com.project.dacn.common.constant.UserStatus;
 import com.project.dacn.common.exception.AccountNotFoundException;
 import com.project.dacn.common.exception.EmailAlreadyExistsException;
+import com.project.dacn.common.exception.GoogleLoginNotAllowedException;
 import com.project.dacn.common.exception.InvalidPasswordException;
 import com.project.dacn.common.exception.InvalidTokenException;
 import com.project.dacn.common.exception.ResourceNotFoundException;
@@ -42,6 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -61,7 +63,7 @@ public class AuthService {
 
     public UserResponse register(RegisterRequest request) {
         // Normalize email to lowercase
-        String normalizedEmail = request.email().toLowerCase();
+        String normalizedEmail = request.email().toLowerCase(Locale.ROOT);
 
         // Check if email already exists
         if (userRepository.existsByEmail(normalizedEmail)) {
@@ -101,30 +103,27 @@ public class AuthService {
 
     public LoginResponse login(LoginRequest request, String userAgent, String ip) {
         // Normalize email to lowercase
-        String normalizedEmail = request.email().toLowerCase();
+        String normalizedEmail = request.email().toLowerCase(Locale.ROOT);
 
         // Find user
         User user = userRepository.findByEmail(normalizedEmail)
                 .orElseThrow(AccountNotFoundException::new);
 
         // Validate password
-        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        if (user.getPasswordHash() == null
+                || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw new InvalidPasswordException();
         }
 
-        // Check user status
-        if (user.getStatus() == UserStatus.LOCKED) {
-            throw new UserLockedException();
-        }
-        if (user.getStatus() == UserStatus.DELETED) {
-            throw new AccountNotFoundException();
-        }
+        ensureLoginAllowed(user);
 
-        // Update last login
+        return issueSession(user, userAgent, ip);
+    }
+
+    private LoginResponse issueSession(User user, String userAgent, String ip) {
         user.setLastLogin(Instant.now());
         userRepository.save(user);
 
-        // Generate tokens
         String tokenId = UUID.randomUUID().toString();
         String accessToken = jwtService.generateAccessToken(user.getUserId(), user.getEmail());
         String refreshToken = jwtService.generateRefreshToken(user.getUserId(), tokenId);
@@ -132,19 +131,76 @@ public class AuthService {
         RefreshToken token = RefreshToken.builder()
                 .tokenId(tokenId)
                 .user(user)
-                .expiresAt(Instant.now().plus(jwtService.getRefreshTokenExpirationMs(), ChronoUnit.MILLIS))
+                .expiresAt(Instant.now().plus(
+                        jwtService.getRefreshTokenExpirationMs(), ChronoUnit.MILLIS))
                 .userAgent(userAgent)
                 .ip(ip)
                 .revoked(false)
                 .build();
         refreshTokenRepository.save(token);
 
-        return new LoginResponse(
-                accessToken,
-                refreshToken,
-                jwtService.getAccessTokenExpirationSeconds(),
-                "Bearer"
-        );
+        return new LoginResponse(accessToken, refreshToken,
+                jwtService.getAccessTokenExpirationSeconds(), "Bearer");
+    }
+
+    private void ensureLoginAllowed(User user) {
+        if (user.getStatus() == UserStatus.LOCKED) {
+            throw new UserLockedException();
+        }
+        if (user.getStatus() == UserStatus.DELETED) {
+            throw new AccountNotFoundException();
+        }
+    }
+
+    public LoginResponse loginWithVerifiedGoogleEmail(
+            String verifiedEmail, String userAgent, String ip) {
+        String normalizedEmail = verifiedEmail.trim().toLowerCase(Locale.ROOT);
+        User user = userRepository.findByEmail(normalizedEmail).orElse(null);
+
+        if (user == null) {
+            user = createGoogleCustomer(verifiedEmail, normalizedEmail);
+        } else {
+            if (!user.getRole().getCode().equalsIgnoreCase("CUSTOMER")) {
+                throw new GoogleLoginNotAllowedException(
+                        "Google sign-in is only available for customer accounts; use email and password");
+            }
+            ensureLoginAllowed(user);
+            // Password registration does not verify email ownership; linking by
+            // email would give the account to whoever registered first.
+            // shortcut: also blocks Google after a future set-password flow; add a
+            // linked-identity (google_sub) column then.
+            if (user.getPasswordHash() != null) {
+                throw new GoogleLoginNotAllowedException(
+                        "This account already uses email and password; sign in with password");
+            }
+        }
+
+        return issueSession(user, userAgent, ip);
+    }
+
+    private User createGoogleCustomer(String originalEmail, String normalizedEmail) {
+        Role customerRole = roleRepository.findByCodeIgnoreCase("CUSTOMER")
+                .orElseThrow(() -> new IllegalStateException("CUSTOMER role not found"));
+
+        User user;
+        try {
+            user = userRepository.save(User.builder()
+                    .email(normalizedEmail)
+                    .role(customerRole)
+                    .build());
+        } catch (DataIntegrityViolationException ex) {
+            // Two first-time Google logins raced; the caller can retry and will sign in.
+            throw new EmailAlreadyExistsException("email already exists");
+        }
+
+        int at = originalEmail.indexOf('@');
+        String name = at > 0 ? originalEmail.substring(0, at) : originalEmail;
+
+        customerRepository.save(Customer.builder()
+                .user(user)
+                .name(name)
+                .build());
+        return user;
     }
 
     // Commit the revocation of a replayed token's sessions even though the
@@ -251,7 +307,8 @@ public class AuthService {
                 address,
                 user.getRole().getCode(),
                 user.getRole().getName(),
-                permissions
+                permissions,
+                user.getPasswordHash() != null
         );
     }
 
@@ -274,7 +331,8 @@ public class AuthService {
     public void changePassword(ChangePasswordRequest request, String currentRefreshToken) {
         User user = currentUser();
 
-        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+        if (user.getPasswordHash() == null
+                || !passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
             throw new InvalidPasswordException();
         }
 
