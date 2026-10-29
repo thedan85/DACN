@@ -80,6 +80,8 @@ app:
   auth:
     # Set true in production (HTTPS). Local dev over http must stay false.
     cookie-secure: ${AUTH_COOKIE_SECURE:false}
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:}
 
 shipping:
   ghtk:
