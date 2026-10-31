@@ -2,18 +2,24 @@ package com.project.dacn.repository.payment;
 
 import com.project.dacn.common.constant.PaymentStatus;
 import com.project.dacn.entity.payment.Payment;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
     Optional<Payment> findByPaymentId(String paymentId);
 
     Optional<Payment> findByOrder_OrderId(String orderId);
+
+    @EntityGraph(attributePaths = "order")
+    List<Payment> findByOrder_OrderIdIn(Collection<String> orderIds);
 
     Optional<Payment> findByTransactionId(String transactionId);
 

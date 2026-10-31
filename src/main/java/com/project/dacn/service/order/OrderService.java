@@ -8,9 +8,14 @@ import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.order.StaffOrderStatusUpdateRequest;
 import com.project.dacn.dto.response.order.OrderItemResponse;
 import com.project.dacn.dto.response.order.OrderResponse;
+import com.project.dacn.dto.response.payment.PaymentResponse;
+import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.order.OrderItem;
 import com.project.dacn.mapper.order.OrderMapper;
+import com.project.dacn.mapper.payment.PaymentMapper;
+import com.project.dacn.repository.catalog.MediaRepository;
+import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
@@ -24,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -34,7 +40,10 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final OrderMapper orderMapper;
+    private final PaymentMapper paymentMapper;
     private final VariantRepository variantRepository;
+    private final VariantAttributeValueRepository variantAttributeValueRepository;
+    private final MediaRepository mediaRepository;
     private final PaymentRepository paymentRepository;
 
     public PageResponse<OrderResponse> list(Long customerId, Pageable pageable) {
@@ -120,28 +129,108 @@ public class OrderService {
     }
 
     /**
-     * Maps a page of orders with one item query instead of one per order.
+     * Maps orders with one batched query per related table, so a page of
+     * orders costs a constant number of queries instead of one per row.
      */
     private List<OrderResponse> toResponses(List<Order> orders) {
         if (orders.isEmpty()) {
             return List.of();
         }
+        List<String> orderIds = orders.stream().map(Order::getOrderId).toList();
         Map<String, List<OrderItem>> itemsByOrder = orderItemRepository
-                .findByOrder_OrderIdIn(orders.stream().map(Order::getOrderId).toList())
-                .stream()
+                .findByOrder_OrderIdIn(orderIds).stream()
                 .collect(Collectors.groupingBy(item -> item.getOrder().getOrderId()));
+        Set<String> variantIds = itemsByOrder.values().stream()
+                .flatMap(List::stream)
+                .map(item -> item.getVariant().getVariantId())
+                .collect(Collectors.toSet());
+
+        Map<String, List<String>> attributesByVariant = variantIds.isEmpty()
+                ? Map.of()
+                : variantAttributeValueRepository.findByVariant_VariantIdIn(variantIds)
+                        .stream()
+                        .collect(Collectors.groupingBy(
+                                value -> value.getVariant().getVariantId(),
+                                Collectors.mapping(
+                                        value -> value.getAttributeValue().getValue(),
+                                        Collectors.toList())));
+        Map<String, String> thumbnailByVariant = variantIds.isEmpty()
+                ? Map.of()
+                : mediaRepository.findByVariant_VariantIdIn(variantIds).stream()
+                        .filter(media -> media.getUrl() != null && !media.getUrl().isBlank())
+                        .collect(Collectors.toMap(
+                                media -> media.getVariant().getVariantId(),
+                                Media::getUrl,
+                                (first, second) -> first));
+        Set<String> variantsWithoutThumbnail = variantIds.stream()
+                .filter(variantId -> !thumbnailByVariant.containsKey(variantId))
+                .collect(Collectors.toSet());
+        if (!variantsWithoutThumbnail.isEmpty()) {
+            Map<String, String> productIdByVariant = itemsByOrder.values().stream()
+                    .flatMap(List::stream)
+                    .filter(item -> variantsWithoutThumbnail.contains(
+                            item.getVariant().getVariantId()))
+                    .collect(Collectors.toMap(
+                            item -> item.getVariant().getVariantId(),
+                            item -> item.getVariant().getProduct().getProductId(),
+                            (first, second) -> first));
+            Map<String, String> productThumbnails =
+                    productThumbnails(Set.copyOf(productIdByVariant.values()));
+            productIdByVariant.forEach((variantId, productId) -> {
+                String url = productThumbnails.get(productId);
+                if (url != null) {
+                    thumbnailByVariant.put(variantId, url);
+                }
+            });
+        }
+        Map<String, PaymentResponse> paymentsByOrder = paymentRepository
+                .findByOrder_OrderIdIn(orderIds).stream()
+                .collect(Collectors.toMap(
+                        payment -> payment.getOrder().getOrderId(),
+                        paymentMapper::toPaymentResponse,
+                        (first, second) -> first));
+
         return orders.stream()
-                .map(order -> orderMapper.toOrderResponse(order,
-                        itemsByOrder.getOrDefault(order.getOrderId(), List.of()).stream()
-                                .map(orderMapper::toOrderItemResponse).toList()))
+                .map(order -> {
+                    List<OrderItemResponse> items = itemsByOrder
+                            .getOrDefault(order.getOrderId(), List.of()).stream()
+                            .map(item -> {
+                                String variantId = item.getVariant().getVariantId();
+                                return orderMapper.toOrderItemResponse(item,
+                                        thumbnailByVariant.get(variantId),
+                                        attributesByVariant.getOrDefault(variantId, List.of()));
+                            })
+                            .toList();
+                    return orderMapper.toOrderResponse(order, items,
+                            paymentsByOrder.get(order.getOrderId()));
+                })
                 .toList();
     }
 
+    /**
+     * Product-level image fallback, matching the public product-media endpoint:
+     * direct product media first, then media attached to a sibling variant.
+     */
+    private Map<String, String> productThumbnails(Set<String> productIds) {
+        Map<String, String> urls = mediaRepository.findByProduct_ProductIdIn(productIds).stream()
+                .filter(media -> media.getUrl() != null && !media.getUrl().isBlank())
+                .collect(Collectors.toMap(
+                        media -> media.getProduct().getProductId(),
+                        Media::getUrl,
+                        (first, second) -> first));
+        Set<String> missing = productIds.stream()
+                .filter(productId -> !urls.containsKey(productId))
+                .collect(Collectors.toSet());
+        if (!missing.isEmpty()) {
+            mediaRepository.findByVariant_Product_ProductIdIn(missing).stream()
+                    .filter(media -> media.getUrl() != null && !media.getUrl().isBlank())
+                    .forEach(media -> urls.putIfAbsent(
+                            media.getVariant().getProduct().getProductId(), media.getUrl()));
+        }
+        return urls;
+    }
+
     private OrderResponse toResponse(Order order) {
-        List<OrderItemResponse> items = orderItemRepository
-                .findByOrder_OrderId(order.getOrderId()).stream()
-                .map(orderMapper::toOrderItemResponse)
-                .toList();
-        return orderMapper.toOrderResponse(order, items);
+        return toResponses(List.of(order)).get(0);
     }
 }

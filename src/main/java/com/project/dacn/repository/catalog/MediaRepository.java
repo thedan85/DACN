@@ -4,10 +4,12 @@ import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.entity.catalog.Media;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -17,6 +19,15 @@ public interface MediaRepository extends JpaRepository<Media, Long> {
     List<Media> findByProduct_ProductId(String productId);
 
     List<Media> findByVariant_VariantId(String variantId);
+
+    @EntityGraph(attributePaths = "variant")
+    List<Media> findByVariant_VariantIdIn(Collection<String> variantIds);
+
+    @EntityGraph(attributePaths = "product")
+    List<Media> findByProduct_ProductIdIn(Collection<String> productIds);
+
+    @EntityGraph(attributePaths = {"variant", "variant.product"})
+    List<Media> findByVariant_Product_ProductIdIn(Collection<String> productIds);
 
     List<Media> findByVariant_Product_ProductId(String productId);
 

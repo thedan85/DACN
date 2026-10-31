@@ -16,6 +16,6 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
     Optional<OrderItem> findFirstByVariant_VariantIdAndOrder_Customer_IdAndOrder_StatusOrderByCreatedAtDesc(
             String variantId, Long customerId, OrderStatus status);
 
-    @EntityGraph(attributePaths = {"variant", "order"})
+    @EntityGraph(attributePaths = {"variant", "variant.product", "order"})
     List<OrderItem> findByOrder_OrderIdIn(Collection<String> orderIds);
 }

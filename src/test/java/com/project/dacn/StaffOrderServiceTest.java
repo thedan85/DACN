@@ -10,11 +10,17 @@ import com.project.dacn.dto.request.order.StaffOrderStatusUpdateRequest;
 import com.project.dacn.dto.response.order.OrderResponse;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.entity.catalog.Variant;
+import com.project.dacn.entity.catalog.VariantAttributeValue;
+import com.project.dacn.entity.catalog.AttributeValue;
+import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.order.OrderItem;
 import com.project.dacn.entity.payment.Payment;
 import com.project.dacn.mapper.order.OrderMapper;
+import com.project.dacn.mapper.payment.PaymentMapper;
+import com.project.dacn.repository.catalog.MediaRepository;
+import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
@@ -61,14 +67,23 @@ class StaffOrderServiceTest {
     @Mock
     PaymentRepository paymentRepository;
 
+    @Mock
+    VariantAttributeValueRepository variantAttributeValueRepository;
+
+    @Mock
+    MediaRepository mediaRepository;
+
     OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
+
+    PaymentMapper paymentMapper = Mappers.getMapper(PaymentMapper.class);
 
     OrderService service;
 
     @BeforeEach
     void setUp() {
         service = new OrderService(orderRepository, orderItemRepository, orderMapper,
-                variantRepository, paymentRepository);
+                paymentMapper, variantRepository, variantAttributeValueRepository,
+                mediaRepository, paymentRepository);
     }
 
     @Test
@@ -95,6 +110,40 @@ class StaffOrderServiceTest {
         when(orderItemRepository.findByOrder_OrderIdIn(List.of("ORD_1"))).thenReturn(List.of());
 
         assertThat(service.listForStaff(null, null, pageable).getContent()).hasSize(1);
+    }
+
+    @Test
+    void staffListEnrichesItemsAndPaymentInOneBatch() {
+        Pageable pageable = PageRequest.of(0, 20);
+        Order order = order(OrderStatus.CONFIRMED);
+        Variant variant = variant(20L);
+        when(orderRepository.searchForStaff("", null, pageable))
+                .thenReturn(new PageImpl<>(List.of(order), pageable, 1));
+        when(orderItemRepository.findByOrder_OrderIdIn(List.of("ORD_1")))
+                .thenReturn(List.of(item(order, variant, 2)));
+        when(variantAttributeValueRepository.findByVariant_VariantIdIn(any()))
+                .thenReturn(List.of(VariantAttributeValue.builder()
+                        .variant(variant)
+                        .attributeValue(AttributeValue.builder().value("Blue").build())
+                        .build()));
+        when(mediaRepository.findByVariant_VariantIdIn(any())).thenReturn(List.of());
+        when(mediaRepository.findByProduct_ProductIdIn(any()))
+                .thenReturn(List.of(Media.builder()
+                        .product(variant.getProduct())
+                        .url("https://img.test/thumb.webp").build()));
+        when(paymentRepository.findByOrder_OrderIdIn(List.of("ORD_1")))
+                .thenReturn(List.of(payment(order, PaymentStatus.CONFIRMED)));
+
+        OrderResponse response = service.listForStaff(null, null, pageable)
+                .getContent().get(0);
+
+        assertThat(response.items()).singleElement().satisfies(enriched -> {
+            assertThat(enriched.productName()).isEqualTo("P");
+            assertThat(enriched.thumbnail()).isEqualTo("https://img.test/thumb.webp");
+            assertThat(enriched.attributes()).containsExactly("Blue");
+        });
+        assertThat(response.payment()).isNotNull();
+        assertThat(response.payment().status()).isEqualTo(PaymentStatus.CONFIRMED);
     }
 
     @Test
@@ -126,7 +175,7 @@ class StaffOrderServiceTest {
     void acceptConfirmsPendingOrder() {
         when(orderRepository.findWithLockByOrderId("ORD_1"))
                 .thenReturn(Optional.of(order(OrderStatus.PENDING)));
-        when(orderItemRepository.findByOrder_OrderId("ORD_1")).thenReturn(List.of());
+        when(orderItemRepository.findByOrder_OrderIdIn(List.of("ORD_1"))).thenReturn(List.of());
 
         OrderResponse response = service.updateStatusByStaff("ORD_1",
                 new StaffOrderStatusUpdateRequest(OrderStatus.CONFIRMED));
@@ -145,6 +194,8 @@ class StaffOrderServiceTest {
         when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(order));
         when(orderRepository.findByOrderId("ORD_1")).thenReturn(Optional.of(order));
         when(orderItemRepository.findByOrder_OrderId("ORD_1")).thenReturn(List.of(
+                item(order, first, 2), item(order, second, 3)));
+        when(orderItemRepository.findByOrder_OrderIdIn(List.of("ORD_1"))).thenReturn(List.of(
                 item(order, first, 2), item(order, second, 3)));
         when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
 
@@ -166,6 +217,7 @@ class StaffOrderServiceTest {
         when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(order));
         when(orderRepository.findByOrderId("ORD_1")).thenReturn(Optional.of(order));
         when(orderItemRepository.findByOrder_OrderId("ORD_1")).thenReturn(List.of());
+        when(orderItemRepository.findByOrder_OrderIdIn(List.of("ORD_1"))).thenReturn(List.of());
         when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
 
         service.updateStatusByStaff("ORD_1",
@@ -210,7 +262,7 @@ class StaffOrderServiceTest {
         Order order = order(status);
         when(orderRepository.findWithLockByOrderId("ORD_1"))
                 .thenReturn(Optional.of(order));
-        when(orderItemRepository.findByOrder_OrderId("ORD_1")).thenReturn(List.of());
+        when(orderItemRepository.findByOrder_OrderIdIn(List.of("ORD_1"))).thenReturn(List.of());
 
         OrderResponse response = service.completeByAdmin("ORD_1");
 

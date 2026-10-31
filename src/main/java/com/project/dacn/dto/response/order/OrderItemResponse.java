@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 
 @Schema(example = """
         {
@@ -12,7 +13,10 @@ import java.time.Instant;
           "sku": "FISH-EMBER-TETRA",
           "quantity": 2,
           "unitPrice": 15000.00,
-          "createdAt": "2026-10-27T02:57:14.486697Z"
+          "createdAt": "2026-10-27T02:57:14.486697Z",
+          "productName": "Ember Tetra",
+          "thumbnail": "https://res.cloudinary.com/demo/image/upload/ember_tetra.webp",
+          "attributes": ["Blue"]
         }
         """)
 public record OrderItemResponse(
@@ -21,5 +25,8 @@ public record OrderItemResponse(
         String sku,
         Integer quantity,
         BigDecimal unitPrice,
-        Instant createdAt) {
+        Instant createdAt,
+        String productName,
+        String thumbnail,
+        List<String> attributes) {
 }

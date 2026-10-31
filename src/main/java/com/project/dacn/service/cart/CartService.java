@@ -182,13 +182,14 @@ public class CartService {
         Payment payment = paymentMapper.toPayment(new PaymentCreateRequest(
                 saved.getOrderId(), req.method(), total, null));
         payment.setOrder(saved);
-        paymentRepository.save(payment);
+        Payment savedPayment = paymentRepository.save(payment);
         cartItemRepository.deleteByCart_Id(cart.getId());
         log.info("Checked out cart {} to order {} (total {}) for customer {}",
                 cart.getCartId(), saved.getOrderId(), total, customerId);
         List<OrderItemResponse> lineResponses = savedLines.stream()
                 .map(orderMapper::toOrderItemResponse).toList();
-        return orderMapper.toOrderResponse(saved, lineResponses);
+        return orderMapper.toOrderResponse(saved, lineResponses,
+                paymentMapper.toPaymentResponse(savedPayment));
     }
 
     private Customer requireCustomer(Long customerId) {
