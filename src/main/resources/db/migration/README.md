@@ -7,7 +7,29 @@
 - `V10`–`V15` — business IDs, slugs, media FKs
 - `V16` — RBAC seed (renamed from `V9`; DB history already records it as 16)
 - `V26__order_customer_index.sql` — order history composite index. Its
-  `create index` blocks writes while it builds; before deploying against a
-  database with live traffic, build it by hand with `CREATE INDEX CONCURRENTLY`
-  (it cannot run inside Flyway's transaction — same note as `V2`).
+  `create index` blocks writes while it builds. Before deploying against a
+  database with live traffic, run this once by hand, outside a transaction:
+
+  ```sql
+  CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_customer_id_id
+      ON orders (customer_id, id desc);
+  ```
+
+  If a cancelled build left an invalid index, `IF NOT EXISTS` still sees it.
+  Check for that before starting the app:
+
+  ```sql
+  select indisvalid from pg_index
+  where indexrelid = 'idx_orders_customer_id_id'::regclass;
+  ```
+
+  If it returns false, drop and rebuild the index. Then drop the old index
+  concurrently too:
+
+  ```sql
+  DROP INDEX CONCURRENTLY IF EXISTS idx_orders_customer_id;
+  ```
+
+  V26 then skips both steps. Never edit an applied V26: Flyway validates its
+  checksum.
 - `R__refreshable_reference_data.sql` — repeatable reference data

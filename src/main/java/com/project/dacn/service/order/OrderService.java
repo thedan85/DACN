@@ -43,7 +43,7 @@ public class OrderService {
     }
 
     public OrderResponse get(Long customerId, String orderId) {
-        Order order = orderRepository.findByOrderIdAndCustomer_Id(orderId, customerId)
+        Order order = orderRepository.findWithCustomerByOrderIdAndCustomer_Id(orderId, customerId)
                 .orElseThrow(() -> new ResourceNotFoundException("order not found: " + orderId));
         return toResponse(order);
     }
