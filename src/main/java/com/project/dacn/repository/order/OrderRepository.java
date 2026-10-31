@@ -18,6 +18,7 @@ import java.util.Optional;
 public interface OrderRepository extends JpaRepository<Order, Long> {
     Optional<Order> findByOrderId(String orderId);
 
+    @EntityGraph(attributePaths = "customer")
     Optional<Order> findByOrderIdAndCustomer_Id(String orderId, Long customerId);
 
     @EntityGraph(attributePaths = "customer")

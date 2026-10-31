@@ -156,6 +156,22 @@ class StaffOrderPersistenceTest {
     }
 
     @Test
+    void customerOrderDetailLoadsInTwoStatements() {
+        Long customerId = order.getCustomer().getId();
+        entityManager.flush();
+        entityManager.clear();
+        Statistics stats = entityManager.getEntityManagerFactory()
+                .unwrap(SessionFactory.class).getStatistics();
+        stats.clear();
+
+        OrderResponse response = service.get(customerId, order.getOrderId());
+
+        assertThat(response.items()).hasSize(1);
+        // order + customer in one join, then one item query
+        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(2);
+    }
+
+    @Test
     void staffSearchMatchesOrderIdContactFieldsAndStatus() {
         var page = PageRequest.of(0, 20);
 
