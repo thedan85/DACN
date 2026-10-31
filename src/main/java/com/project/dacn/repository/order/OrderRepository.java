@@ -21,6 +21,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @EntityGraph(attributePaths = "customer")
     Optional<Order> findByOrderIdAndCustomer_Id(String orderId, Long customerId);
 
+    boolean existsByOrderIdAndCustomer_Id(String orderId, Long customerId);
+
     @EntityGraph(attributePaths = "customer")
     Page<Order> findByCustomer_IdOrderByIdDesc(Long customerId, Pageable pageable);
 

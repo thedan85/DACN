@@ -87,8 +87,9 @@ public class ReviewService {
     }
 
     public PageResponse<ReviewResponse> listForOrder(Long customerId, String orderId, Pageable pageable) {
-        orderRepository.findByOrderIdAndCustomer_Id(orderId, customerId)
-                .orElseThrow(() -> new ResourceNotFoundException("order not found: " + orderId));
+        if (!orderRepository.existsByOrderIdAndCustomer_Id(orderId, customerId)) {
+            throw new ResourceNotFoundException("order not found: " + orderId);
+        }
         return toPage(reviewRepository.findByOrderItem_Order_OrderIdOrderByCreatedAtDesc(
                 orderId, pageable), false);
     }

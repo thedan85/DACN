@@ -25,6 +25,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -100,6 +101,17 @@ class PaymentServiceTest {
 
         assertThatThrownBy(() -> service.createVnpayUrl(99L, "ORD_1", "1.2.3.4"))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void getRejectsForeignOrder() {
+        when(orderRepository.findByOrderIdAndCustomer_Id("ORD_1", 99L))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.get(99L, "ORD_1"))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(paymentRepository);
     }
 
     private static Order order(String orderId, OrderStatus status, String total) {

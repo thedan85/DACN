@@ -228,8 +228,8 @@ class ReviewServiceTest {
     @Test
     void listsReviewsForOwnedOrder() {
         Fixture f = fixture(OrderStatus.COMPLETED);
-        when(orderRepository.findByOrderIdAndCustomer_Id("ORD_1", 42L))
-                .thenReturn(Optional.of(f.order));
+        when(orderRepository.existsByOrderIdAndCustomer_Id("ORD_1", 42L))
+                .thenReturn(true);
         when(reviewRepository.findByOrderItem_Order_OrderIdOrderByCreatedAtDesc(
                 eq("ORD_1"), any(Pageable.class)))
                 .thenReturn(pageOf(f));
@@ -245,8 +245,8 @@ class ReviewServiceTest {
 
     @Test
     void hidesReviewsForForeignOrder() {
-        when(orderRepository.findByOrderIdAndCustomer_Id("ORD_1", 42L))
-                .thenReturn(Optional.empty());
+        when(orderRepository.existsByOrderIdAndCustomer_Id("ORD_1", 42L))
+                .thenReturn(false);
 
         assertThatThrownBy(() -> service.listForOrder(42L, "ORD_1", PageRequest.of(0, 10)))
                 .isInstanceOf(ResourceNotFoundException.class);
