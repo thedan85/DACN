@@ -46,8 +46,11 @@ public class OrderService {
     private final MediaRepository mediaRepository;
     private final PaymentRepository paymentRepository;
 
-    public PageResponse<OrderResponse> list(Long customerId, Pageable pageable) {
-        Page<Order> page = orderRepository.findByCustomer_IdOrderByIdDesc(customerId, pageable);
+    public PageResponse<OrderResponse> list(Long customerId, OrderStatus status, String q,
+                                            Instant createdAfter, Pageable pageable) {
+        String query = q == null ? "" : q.trim();
+        Page<Order> page = orderRepository.searchForCustomer(
+                customerId, query, status, createdAfter, pageable);
         return PageResponse.from(page, toResponses(page.getContent()));
     }
 

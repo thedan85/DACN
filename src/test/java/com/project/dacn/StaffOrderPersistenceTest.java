@@ -15,6 +15,7 @@ import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.order.OrderItem;
 import com.project.dacn.entity.payment.Payment;
 import com.project.dacn.mapper.order.OrderMapper;
+import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.catalog.ProductRepository;
@@ -52,6 +53,11 @@ class StaffOrderPersistenceTest {
         @Bean
         OrderMapper orderMapper() {
             return Mappers.getMapper(OrderMapper.class);
+        }
+
+        @Bean
+        PaymentMapper paymentMapper() {
+            return Mappers.getMapper(PaymentMapper.class);
         }
     }
 
@@ -147,16 +153,23 @@ class StaffOrderPersistenceTest {
                 .unwrap(SessionFactory.class).getStatistics();
         stats.clear();
 
-        PageResponse<OrderResponse> page = service.list(customerId, PageRequest.of(0, 20));
+        service.list(customerId, null, order.getOrderId(), null, PageRequest.of(0, 20));
+        long singleOrderStatements = stats.getPrepareStatementCount();
+        assertThat(singleOrderStatements).isLessThanOrEqualTo(7);
+        entityManager.clear();
+        stats.clear();
+
+        PageResponse<OrderResponse> page = service.list(
+                customerId, null, null, null, PageRequest.of(0, 20));
 
         assertThat(page.getContent()).hasSize(5)
                 .allSatisfy(o -> assertThat(o.items()).hasSize(1));
-        // page + count + one batched item query
-        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(3);
+        // Page, items, attributes, variant media, product media, fallback media, payments.
+        assertThat(stats.getPrepareStatementCount()).isEqualTo(singleOrderStatements);
     }
 
     @Test
-    void customerOrderDetailLoadsInTwoStatements() {
+    void customerOrderDetailLoadsEnrichmentInBatches() {
         Long customerId = order.getCustomer().getId();
         entityManager.flush();
         entityManager.clear();
@@ -167,8 +180,8 @@ class StaffOrderPersistenceTest {
         OrderResponse response = service.get(customerId, order.getOrderId());
 
         assertThat(response.items()).hasSize(1);
-        // order + customer in one join, then one item query
-        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(2);
+        // Order and customer share one query; six queries batch the enrichment.
+        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(7);
     }
 
     @Test
