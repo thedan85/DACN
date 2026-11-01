@@ -18,16 +18,30 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.hibernate.resource.jdbc.spi.StatementInspector;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@DataJpaTest
+@DataJpaTest(properties = "spring.jpa.properties.hibernate.session_factory.statement_inspector="
+        + "com.project.dacn.CustomerOrderSearchPersistenceTest$SqlCapture")
 @ActiveProfiles("test")
 class CustomerOrderSearchPersistenceTest {
+
+    public static class SqlCapture implements StatementInspector {
+        static final ThreadLocal<List<String>> queries = ThreadLocal.withInitial(ArrayList::new);
+
+        @Override
+        public String inspect(String sql) {
+            queries.get().add(sql);
+            return sql;
+        }
+    }
 
     @Autowired OrderRepository orderRepository;
     @Autowired RoleRepository roleRepository;
@@ -35,6 +49,43 @@ class CustomerOrderSearchPersistenceTest {
     @Autowired CustomerRepository customerRepository;
     @Autowired JdbcTemplate jdbc;
     @PersistenceContext EntityManager entityManager;
+
+    @Test
+    void absentDateHasExplicitSqlTypeForPostgres() {
+        Customer jane = customer("sql-type@x.com");
+        order(jane, "ORD_TYPED", OrderStatus.PENDING);
+        SqlCapture.queries.get().clear();
+
+        orderRepository.searchForCustomer(jane.getId(), "", null, null, PageRequest.of(0, 1));
+
+        // PostgreSQL cannot infer an untyped timestamp used only by IS NULL.
+        assertThat(SqlCapture.queries.get()).filteredOn(sql -> sql.startsWith("select"))
+                .hasSize(2)
+                .allSatisfy(sql -> assertThat(sql).contains("cast(? as timestamp"));
+        SqlCapture.queries.remove();
+    }
+
+    @Test
+    void orderIdSearchTreatsSqlWildcardsLiterally() {
+        Customer jane = customer("literal@x.com");
+        order(jane, "ORD_A12", OrderStatus.PENDING);
+        order(jane, "ORD__12", OrderStatus.PENDING);
+        order(jane, "ORD_100%\\", OrderStatus.PENDING);
+
+        assertThat(orderRepository.searchForCustomer(jane.getId(), "_12", null, null,
+                PageRequest.of(0, 1)).getContent()).extracting(Order::getOrderId)
+                .containsExactly("ORD__12");
+        assertThat(orderRepository.searchForCustomer(jane.getId(), "%", null, null,
+                PageRequest.of(0, 1)).getContent()).extracting(Order::getOrderId)
+                .containsExactly("ORD_100%\\");
+        assertThat(orderRepository.searchForCustomer(jane.getId(), "\\", null, null,
+                PageRequest.of(0, 1)).getContent()).extracting(Order::getOrderId)
+                .containsExactly("ORD_100%\\");
+        assertThat(orderRepository.searchForCustomer(jane.getId(), "_12", null, null,
+                PageRequest.of(0, 1)).getTotalElements()).isEqualTo(1);
+        assertThat(orderRepository.searchForCustomer(jane.getId(), "%", null, null,
+                PageRequest.of(0, 1)).getTotalElements()).isEqualTo(1);
+    }
 
     @Test
     void filtersByCustomerStatusAndOrderIdNewestFirst() {
