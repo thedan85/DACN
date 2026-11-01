@@ -11,6 +11,7 @@ import com.project.dacn.repository.identity.CustomerRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -50,6 +51,11 @@ class CustomerOrderSearchPersistenceTest {
     @Autowired JdbcTemplate jdbc;
     @PersistenceContext EntityManager entityManager;
 
+    @AfterEach
+    void clearCapturedSql() {
+        SqlCapture.queries.remove();
+    }
+
     @Test
     void absentDateHasExplicitSqlTypeForPostgres() {
         Customer jane = customer("sql-type@x.com");
@@ -62,7 +68,6 @@ class CustomerOrderSearchPersistenceTest {
         assertThat(SqlCapture.queries.get()).filteredOn(sql -> sql.startsWith("select"))
                 .hasSize(2)
                 .allSatisfy(sql -> assertThat(sql).contains("cast(? as timestamp"));
-        SqlCapture.queries.remove();
     }
 
     @Test
@@ -158,6 +163,36 @@ class CustomerOrderSearchPersistenceTest {
                 jane.getId(), "", null, cutoff, PageRequest.of(0, 10));
         assertThat(page.getContent()).extracting(Order::getOrderId)
                 .containsExactly("ORD_RECENT");
+    }
+
+    @Test
+    void createdAfterCountsAndPagesOnlyMatchingOrders() {
+        Customer jane = customer("date-pages@x.com");
+        Order old = order(jane, "ORD_OLD", OrderStatus.PENDING);
+        order(jane, "ORD_RECENT_1", OrderStatus.PENDING);
+        order(jane, "ORD_RECENT_2", OrderStatus.PENDING);
+        order(jane, "ORD_RECENT_3", OrderStatus.PENDING);
+        Instant cutoff = Instant.parse("2026-01-01T00:00:00Z");
+
+        orderRepository.flush();
+        jdbc.update("update orders set created_at = ? where id = ?",
+                Timestamp.from(Instant.parse("2025-12-31T23:59:59Z")), old.getId());
+        jdbc.update("update orders set created_at = ? where order_id like 'ORD_RECENT%'",
+                Timestamp.from(cutoff));
+        entityManager.clear();
+
+        Page<Order> first = orderRepository.searchForCustomer(
+                jane.getId(), "", null, cutoff, PageRequest.of(0, 2));
+        assertThat(first.getTotalElements()).isEqualTo(3);
+        assertThat(first.getTotalPages()).isEqualTo(2);
+        assertThat(first.getContent()).extracting(Order::getOrderId)
+                .containsExactly("ORD_RECENT_3", "ORD_RECENT_2");
+
+        Page<Order> second = orderRepository.searchForCustomer(
+                jane.getId(), "", null, cutoff, PageRequest.of(1, 2));
+        assertThat(second.getTotalElements()).isEqualTo(3);
+        assertThat(second.getContent()).extracting(Order::getOrderId)
+                .containsExactly("ORD_RECENT_1");
     }
 
     private Customer customer(String email) {

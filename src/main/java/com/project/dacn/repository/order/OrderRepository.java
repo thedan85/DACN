@@ -26,7 +26,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     boolean existsByOrderIdAndCustomer_Id(String orderId, Long customerId);
 
     @EntityGraph(attributePaths = "customer")
-    @Query(value = """
+    @Query("""
             select o from Order o
             where o.customer.id = :customerId
               and (:status is null or o.status = :status)
@@ -34,14 +34,6 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                    escape :#{escapeCharacter()})
               and (cast(:createdAfter as Instant) is null or o.createdAt >= :createdAfter)
             order by o.id desc
-            """,
-            countQuery = """
-            select count(o) from Order o
-            where o.customer.id = :customerId
-              and (:status is null or o.status = :status)
-              and (:q = '' or lower(o.orderId) like lower(concat('%', :#{escape(#q)}, '%'))
-                   escape :#{escapeCharacter()})
-              and (cast(:createdAfter as Instant) is null or o.createdAt >= :createdAfter)
             """)
     Page<Order> searchForCustomer(@Param("customerId") Long customerId,
                                   @Param("q") String q,

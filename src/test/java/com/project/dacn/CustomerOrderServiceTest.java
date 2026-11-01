@@ -24,9 +24,11 @@ import org.springframework.data.domain.Pageable;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -46,17 +48,28 @@ class CustomerOrderServiceTest {
     void trimsOrderIdSearchAndDelegatesFilters() {
         Instant cutoff = Instant.parse("2026-01-01T00:00:00Z");
         Pageable pageable = PageRequest.of(2, 10);
-        when(orderRepository.searchForCustomer(7L, "ORD", OrderStatus.CONFIRMED,
+        String query = "x".repeat(100);
+        when(orderRepository.searchForCustomer(7L, query, OrderStatus.CONFIRMED,
                 cutoff, pageable)).thenReturn(Page.empty(pageable));
 
         PageResponse<OrderResponse> response = service.list(
-                7L, OrderStatus.CONFIRMED, "  ORD  ", cutoff, pageable);
+                7L, OrderStatus.CONFIRMED, "  " + query + "  ", cutoff, pageable);
 
         assertThat(response.getContent()).isEmpty();
         assertThat(response.getPage()).isEqualTo(2);
         assertThat(response.getSize()).isEqualTo(10);
-        verify(orderRepository).searchForCustomer(7L, "ORD", OrderStatus.CONFIRMED,
+        verify(orderRepository).searchForCustomer(7L, query, OrderStatus.CONFIRMED,
                 cutoff, pageable);
+    }
+
+    @Test
+    void rejectsTrimmedOrderIdSearchLongerThan100Characters() {
+        String tooLong = "  " + "x".repeat(101) + "  ";
+
+        assertThatThrownBy(() -> service.list(7L, null, tooLong, null, PageRequest.of(0, 10)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("100");
+        verifyNoInteractions(orderRepository);
     }
 
     @Test
