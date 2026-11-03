@@ -320,6 +320,25 @@ class ProductServiceTest {
     }
 
     @Test
+    void createDefaultsOmittedStatusToActive() {
+        Product mapped = Product.builder()
+                .name("P")
+                .slug("p")
+                .description("d")
+                .build();
+        mapped.setStatus(null);
+        when(mapper.toProduct(any(ProductCreateRequest.class))).thenReturn(mapped);
+        when(repo.countBySlugIncludingDeleted(any())).thenReturn(0L);
+        when(repo.saveAndFlush(mapped)).thenReturn(mapped);
+        when(repo.save(mapped)).thenReturn(mapped);
+        when(mapper.toProductResponse(mapped, null, null, 0)).thenReturn(response(null, null, 0));
+
+        service.create(new ProductCreateRequest("P", "d", null, null, null, null));
+
+        assertThat(mapped.getStatus()).isEqualTo(ProductStatus.ACTIVE);
+    }
+
+    @Test
     void getMissingThrowsNotFound() {
         when(repo.findBySlugIgnoreCase("nope")).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.getBySlug("nope")).isInstanceOf(ResourceNotFoundException.class);
