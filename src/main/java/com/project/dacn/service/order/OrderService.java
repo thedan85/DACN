@@ -37,6 +37,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class OrderService {
 
+    private static final int MAX_ORDER_SEARCH_LENGTH = 100;
+
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final OrderMapper orderMapper;
@@ -46,8 +48,15 @@ public class OrderService {
     private final MediaRepository mediaRepository;
     private final PaymentRepository paymentRepository;
 
-    public PageResponse<OrderResponse> list(Long customerId, Pageable pageable) {
-        Page<Order> page = orderRepository.findByCustomer_IdOrderByIdDesc(customerId, pageable);
+    public PageResponse<OrderResponse> list(Long customerId, OrderStatus status, String q,
+                                            Instant createdAfter, Pageable pageable) {
+        String query = q == null ? "" : q.trim();
+        if (query.length() > MAX_ORDER_SEARCH_LENGTH) {
+            throw new IllegalArgumentException(
+                    "order search query must be at most " + MAX_ORDER_SEARCH_LENGTH + " characters");
+        }
+        Page<Order> page = orderRepository.searchForCustomer(
+                customerId, query, status, createdAfter, pageable);
         return PageResponse.from(page, toResponses(page.getContent()));
     }
 
