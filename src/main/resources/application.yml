@@ -80,6 +80,9 @@ app:
   auth:
     # Set true in production (HTTPS). Local dev over http must stay false.
     cookie-secure: ${AUTH_COOKIE_SECURE:false}
+    # Temporary local debugging switch: false bypasses all auth rate limits.
+    # Leave unset (default true) in every deployed environment.
+    rate-limit-enabled: ${AUTH_RATE_LIMIT_ENABLED:true}
     # Use None only when frontend and API are on different registrable domains.
     cookie-same-site: ${AUTH_COOKIE_SAME_SITE:Strict}
     google:

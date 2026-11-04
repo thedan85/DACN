@@ -3,6 +3,7 @@ package com.project.dacn.security;
 import com.project.dacn.common.exception.RateLimitExceededException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -36,7 +37,15 @@ public class RateLimiter {
     private final StringRedisTemplate redis;
     private final AtomicLong lastWarn = new AtomicLong();
 
+    // Local debugging escape hatch. Set AUTH_RATE_LIMIT_ENABLED=false in .env to
+    // bypass all limits; production must keep this at the default (true).
+    @Value("${app.auth.rate-limit-enabled:true}")
+    private boolean enabled = true;
+
     public void check(String key, int max, Duration window) {
+        if (!enabled) {
+            return;
+        }
         try {
             Long result = redis.execute(SLIDING_WINDOW, List.of(key),
                     Long.toString(window.toMillis()),
