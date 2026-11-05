@@ -60,6 +60,8 @@ payment:
     pay-url: ${VNPAY_PAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
     return-url: ${VNPAY_RETURN_URL:http://localhost:8080/api/v1/webhooks/vnpay/return}
     ipn-url: ${VNPAY_IPN_URL:http://localhost:8080/api/v1/webhooks/vnpay/ipn}
+    # Where the browser lands after payment; the order id is appended.
+    frontend-return-url: ${VNPAY_FRONTEND_RETURN_URL:http://localhost:3000/account/orders}
     version: "2.1.0"
     command: pay
     curr-code: VND

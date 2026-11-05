@@ -63,6 +63,14 @@ public class PaymentService {
                 .orElseThrow(() -> new ResourceNotFoundException("payment not found: " + orderId));
     }
 
+    /** Resolves the order behind a VNPay transaction reference for the return redirect. */
+    @Transactional(readOnly = true)
+    public String orderIdForPayment(String paymentId) {
+        return paymentRepository.findByPaymentId(paymentId)
+                .map(payment -> payment.getOrder().getOrderId())
+                .orElse(null);
+    }
+
     /**
      * Applies a signature-verified VNPay IPN. Settlement is a conditional
      * UPDATE, so duplicate/concurrent IPNs settle at most once.

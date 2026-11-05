@@ -2,6 +2,7 @@ package com.project.dacn.integration.payment.vnpay;
 
 import com.project.dacn.service.payment.PaymentService;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -11,6 +12,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class VnpayWebhookControllerTest {
@@ -18,10 +20,12 @@ class VnpayWebhookControllerTest {
     private static final VnpaySignatureService SIGNATURE =
             new VnpaySignatureService(props());
 
+    private static final String FRONTEND_ORDERS = "http://localhost:3000/account/orders";
+
     private final PaymentService paymentService = mock(PaymentService.class);
 
     private final VnpayWebhookController controller =
-            new VnpayWebhookController(SIGNATURE, paymentService);
+            new VnpayWebhookController(SIGNATURE, paymentService, props());
 
     @Test
     void ipnAcceptsValidSignatureAndSettles() {
@@ -72,6 +76,61 @@ class VnpayWebhookControllerTest {
         when(paymentService.handleIpn(any())).thenReturn(PaymentService.IpnResult.FAILED);
 
         assertThat(controller.ipn(signedParams())).containsEntry("RspCode", "00");
+    }
+
+    @Test
+    void returnSettlesValidSignatureAndRedirectsToOrder() {
+        Map<String, String> params = signedParams();
+        when(paymentService.handleIpn(any())).thenReturn(PaymentService.IpnResult.CONFIRMED);
+        when(paymentService.orderIdForPayment("PAY_abc")).thenReturn("ORD_abc");
+
+        var response = controller.returnPage(params);
+
+        verify(paymentService).handleIpn(params);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SEE_OTHER);
+        assertThat(response.getHeaders().getLocation())
+                .hasToString(FRONTEND_ORDERS + "/ORD_abc?payment=success");
+    }
+
+    @Test
+    void returnRedirectsFailedPaymentToOrder() {
+        Map<String, String> params = signedParams();
+        params.put("vnp_ResponseCode", "24");
+        params.put("vnp_SecureHash", SIGNATURE.sign(SIGNATURE.canonical(params)));
+        when(paymentService.handleIpn(any())).thenReturn(PaymentService.IpnResult.FAILED);
+        when(paymentService.orderIdForPayment("PAY_abc")).thenReturn("ORD_abc");
+
+        var response = controller.returnPage(params);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SEE_OTHER);
+        assertThat(response.getHeaders().getLocation())
+                .hasToString(FRONTEND_ORDERS + "/ORD_abc?payment=failed");
+    }
+
+    @Test
+    void returnDoesNotSettleTamperedSignature() {
+        Map<String, String> params = signedParams();
+        params.put("vnp_Amount", "999");
+
+        var response = controller.returnPage(params);
+
+        verifyNoInteractions(paymentService);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SEE_OTHER);
+        assertThat(response.getHeaders().getLocation())
+                .hasToString(FRONTEND_ORDERS + "?payment=invalid");
+    }
+
+    @Test
+    void returnRedirectsUnknownPaymentToOrderList() {
+        Map<String, String> params = signedParams();
+        when(paymentService.handleIpn(any())).thenReturn(PaymentService.IpnResult.ORDER_NOT_FOUND);
+        when(paymentService.orderIdForPayment("PAY_abc")).thenReturn(null);
+
+        var response = controller.returnPage(params);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SEE_OTHER);
+        assertThat(response.getHeaders().getLocation())
+                .hasToString(FRONTEND_ORDERS + "?payment=success");
     }
 
     private static Map<String, String> signedParams() {

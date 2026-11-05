@@ -13,6 +13,7 @@ public class VnpayProperties {
     private String payUrl;
     private String returnUrl;
     private String ipnUrl;
+    private String frontendReturnUrl = "http://localhost:3000/account/orders";
     private String version = "2.1.0";
     private String command = "pay";
     private String currCode = "VND";

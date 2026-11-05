@@ -1,14 +1,18 @@
 package com.project.dacn.integration.payment.vnpay;
 
-import com.project.dacn.common.response.ApiResponse;
 import com.project.dacn.service.payment.PaymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.util.UriUtils;
 
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 @RestController
@@ -17,8 +21,11 @@ import java.util.Map;
 @Slf4j
 public class VnpayWebhookController {
 
+    private static final String SUCCESS_CODE = "00";
+
     private final VnpaySignatureService signatureService;
     private final PaymentService paymentService;
+    private final VnpayProperties properties;
 
     /**
      * VNPay IPN. Response shape is fixed by VNPay: 00 = received,
@@ -44,17 +51,40 @@ public class VnpayWebhookController {
     }
 
     /**
-     * Browser redirect after payment. Shows the verified result; the order is
-     * only settled from the IPN above.
+     * Browser redirect after payment. Settles here as well as from the IPN so a
+     * missing IPN (for example an unreachable tunnel) cannot leave a paid order
+     * pending. Settlement is idempotent, so both callbacks are safe. The browser
+     * is then sent back to the storefront order page.
      */
     @GetMapping("/return")
-    public ApiResponse<Map<String, String>> returnPage(@RequestParam Map<String, String> params) {
+    public ResponseEntity<Void> returnPage(@RequestParam Map<String, String> params) {
         boolean valid = signatureService.verifyParams(params);
-        log.info("VNPay return txn {} response {} verified {}",
-                params.get("vnp_TxnRef"), params.get("vnp_ResponseCode"), valid);
-        return ApiResponse.ok(Map.of(
-                "valid", String.valueOf(valid),
-                "txnRef", String.valueOf(params.get("vnp_TxnRef")),
-                "responseCode", String.valueOf(params.get("vnp_ResponseCode"))));
+        boolean success = SUCCESS_CODE.equals(params.get("vnp_ResponseCode"));
+        String txnRef = params.get("vnp_TxnRef");
+        String orderId = null;
+
+        if (valid) {
+            var result = paymentService.handleIpn(params);
+            orderId = paymentService.orderIdForPayment(txnRef);
+            log.info("VNPay return txn {} response {} settlement {}",
+                    txnRef, params.get("vnp_ResponseCode"), result);
+        } else {
+            log.warn("VNPay return signature mismatch for txn {}", txnRef);
+        }
+
+        String outcome = !valid ? "invalid" : success ? "success" : "failed";
+        String base = properties.getFrontendReturnUrl();
+        if (base == null || base.isBlank()) {
+            base = "/";
+        }
+        StringBuilder target = new StringBuilder(
+                base.endsWith("/") ? base.substring(0, base.length() - 1) : base);
+        if (orderId != null && !orderId.isBlank()) {
+            target.append('/').append(UriUtils.encodePathSegment(orderId, StandardCharsets.UTF_8));
+        }
+        target.append("?payment=").append(outcome);
+        return ResponseEntity.status(HttpStatus.SEE_OTHER)
+                .location(URI.create(target.toString()))
+                .build();
     }
 }
