@@ -141,6 +141,8 @@ class CartCheckoutTest {
 
             assertThat(o.status()).isEqualTo(OrderStatus.PENDING);
             assertThat(o.total()).isEqualByComparingTo(new BigDecimal("20.00"));
+            assertThat(o.items()).hasSize(1);
+            assertThat(o.items().get(0).attributes()).isNotNull().isEmpty();
             verify(cartItemRepository).deleteByCart_Id(10L);
             verify(variantRepository, never()).save(any(Variant.class));
             assertThat(service.getDetail(1L).items()).isEmpty();

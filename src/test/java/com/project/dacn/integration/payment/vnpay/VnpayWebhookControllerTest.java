@@ -62,6 +62,32 @@ class VnpayWebhookControllerTest {
         assertThat(controller.ipn(params)).containsEntry("RspCode", "99");
     }
 
+    @Test
+    void returnSettlesValidSignature() {
+        Map<String, String> params = signedParams();
+        when(settlement.settle(any(), any(), anyBoolean(), any()))
+                .thenReturn(PaymentSettlementService.Result.SETTLED);
+
+        var body = controller.returnPage(params);
+
+        org.mockito.Mockito.verify(settlement).settle(
+                org.mockito.ArgumentMatchers.eq("ORD_abc"),
+                org.mockito.ArgumentMatchers.eq(new java.math.BigDecimal("150000.00")),
+                org.mockito.ArgumentMatchers.eq(true),
+                org.mockito.ArgumentMatchers.eq("123456"));
+        assertThat(body.getData()).containsEntry("valid", "true");
+    }
+
+    @Test
+    void returnDoesNotSettleTamperedSignature() {
+        Map<String, String> params = signedParams();
+        params.put("vnp_Amount", "999");
+
+        controller.returnPage(params);
+
+        org.mockito.Mockito.verifyNoInteractions(settlement);
+    }
+
     private static Map<String, String> signedParams() {
         Map<String, String> params = new LinkedHashMap<>();
         params.put("vnp_TmnCode", "TMN01");

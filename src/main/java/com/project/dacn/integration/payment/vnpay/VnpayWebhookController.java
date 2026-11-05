@@ -69,12 +69,25 @@ public class VnpayWebhookController {
     }
 
     /**
-     * Browser redirect after payment. Shows the verified result; the order is
-     * only settled from the IPN above.
+     * Browser redirect after payment. Settles here as well as from the IPN so a
+     * missing IPN (for example an unreachable tunnel) cannot leave a paid order
+     * pending. Settlement is idempotent, so both callbacks are safe.
      */
     @GetMapping("/return")
     public ApiResponse<Map<String, String>> returnPage(@RequestParam Map<String, String> params) {
         boolean valid = signatureService.verifyParams(params);
+        if (valid) {
+            try {
+                BigDecimal amount = new BigDecimal(params.get("vnp_Amount")).movePointLeft(2);
+                boolean success = SUCCESS_CODE.equals(params.get("vnp_ResponseCode"));
+                var result = settlementService.settle(
+                        params.get("vnp_TxnRef"), amount, success, params.get("vnp_TransactionNo"));
+                log.info("VNPay return txn {} settlement {}",
+                        params.get("vnp_TxnRef"), result);
+            } catch (NumberFormatException | NullPointerException e) {
+                log.warn("VNPay return txn {} has invalid amount", params.get("vnp_TxnRef"));
+            }
+        }
         log.info("VNPay return txn {} response {} verified {}",
                 params.get("vnp_TxnRef"), params.get("vnp_ResponseCode"), valid);
         return ApiResponse.ok(Map.of(
