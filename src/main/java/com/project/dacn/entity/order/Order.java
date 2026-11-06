@@ -54,6 +54,9 @@ public class Order extends BaseEntity {
     @Column(name = "order_phone", nullable = false, length = 20)
     private String phone;
 
+    @Column(name = "event_sequence", nullable = false)
+    private long eventSequence;
+
     @Override
     protected String getBusinessId() {
         return orderId;

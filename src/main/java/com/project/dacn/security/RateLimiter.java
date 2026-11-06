@@ -1,6 +1,7 @@
 package com.project.dacn.security;
 
 import com.project.dacn.common.exception.RateLimitExceededException;
+import com.project.dacn.common.exception.RateLimitUnavailableException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
@@ -36,7 +37,16 @@ public class RateLimiter {
     private final StringRedisTemplate redis;
     private final AtomicLong lastWarn = new AtomicLong();
 
+    /** Requires confirmed Redis admission instead of failing open. */
+    public void checkStrict(String key, int max, Duration window) {
+        check(key, max, window, true);
+    }
+
     public void check(String key, int max, Duration window) {
+        check(key, max, window, false);
+    }
+
+    private void check(String key, int max, Duration window, boolean strict) {
         try {
             Long result = redis.execute(SLIDING_WINDOW, List.of(key),
                     Long.toString(window.toMillis()),
@@ -45,7 +55,13 @@ public class RateLimiter {
             if (result != null && result == 0L) {
                 throw new RateLimitExceededException("too many requests, try again later");
             }
+            if (strict && (result == null || result != 1L)) {
+                throw new RateLimitUnavailableException();
+            }
         } catch (DataAccessException e) {
+            if (strict) {
+                throw new RateLimitUnavailableException();
+            }
             long now = System.currentTimeMillis();
             long last = lastWarn.get();
             if (now - last >= 60_000 && lastWarn.compareAndSet(last, now)) {

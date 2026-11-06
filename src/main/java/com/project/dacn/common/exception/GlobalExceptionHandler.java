@@ -1,6 +1,7 @@
 package com.project.dacn.common.exception;
 
 import com.project.dacn.common.response.ApiResponse;
+import com.project.dacn.integration.realtime.RealtimeRequestValidationException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
@@ -78,6 +79,19 @@ public class GlobalExceptionHandler {
         }
         return ResponseEntity.badRequest()
                 .body(ApiResponse.of(400, message, null));
+    }
+
+    @ExceptionHandler(RealtimeRequestValidationException.class)
+    public ResponseEntity<ApiResponse<?>> handleRealtimeValidation(RealtimeRequestValidationException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.of(400, "invalid realtime credential request", null));
+    }
+
+    @ExceptionHandler(com.project.dacn.integration.realtime.RealtimeUnavailableException.class)
+    public ResponseEntity<ApiResponse<?>> handleRealtimeUnavailable(
+            com.project.dacn.integration.realtime.RealtimeUnavailableException ex) {
+        return ResponseEntity.status(503)
+                .body(ApiResponse.of(503, "realtime credentials unavailable", null));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)

@@ -53,6 +53,10 @@ public class SecurityConfig {
                         // Payment providers must call these without a token; they verify signatures.
                         .requestMatchers("/api/v1/webhooks/**").permitAll()
 
+                        // Guests get short-lived Realtime credentials; a supplied invalid
+                        // bearer is rejected by the controller, never downgraded.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/realtime/credentials").permitAll()
+
                         // Session endpoints.
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login",
                                 "/api/v1/auth/google", "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()

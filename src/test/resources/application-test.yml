@@ -26,3 +26,8 @@ cloudinary:
 
 jwt:
   secret: test-secret-key-please-change-min-256-bits-hs256-algorithm-requires-this-length
+
+app:
+  realtime:
+    # H2 does not have the PostgreSQL retention tables or functions.
+    retention-enabled: false
