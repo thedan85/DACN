@@ -6,6 +6,7 @@ import com.project.dacn.dto.request.cart.CartItemUpdateRequest;
 import com.project.dacn.dto.response.cart.CartDetailResponse;
 import com.project.dacn.dto.response.cart.CartItemResponse;
 import com.project.dacn.dto.response.cart.CartResponse;
+import com.project.dacn.dto.response.cart.CompatibilityResponse;
 import com.project.dacn.entity.cart.Cart;
 import com.project.dacn.entity.cart.CartItem;
 import org.mapstruct.BeanMapping;
@@ -61,7 +62,8 @@ public interface CartMapper {
         return item.getVariant().getPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
     }
 
-    default CartDetailResponse toDetail(Cart cart, List<CartItemResponse> items) {
+    default CartDetailResponse toDetail(Cart cart, List<CartItemResponse> items,
+            CompatibilityResponse compatibility) {
         List<CartItemResponse> safeItems = items == null ? List.of() : items;
         int totalQuantity = safeItems.stream()
                 .mapToInt(i -> i.quantity() == null ? 0 : i.quantity())
@@ -81,6 +83,7 @@ public interface CartMapper {
                 customerId,
                 customerName,
                 safeItems,
+                compatibility,
                 totalQuantity,
                 totalAmount,
                 cart == null ? null : cart.getCreatedAt(),

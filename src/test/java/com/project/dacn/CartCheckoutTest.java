@@ -31,6 +31,7 @@ import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
 import com.project.dacn.service.cart.CartService;
+import com.project.dacn.service.cart.CompatibilityService;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -102,6 +103,9 @@ class CartCheckoutTest {
         @Mock
         PaymentRepository paymentRepository;
 
+        @Mock
+        CompatibilityService compatibilityService;
+
         CartMapper cartMapper = Mappers.getMapper(CartMapper.class);
 
         OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
@@ -115,7 +119,7 @@ class CartCheckoutTest {
             service = new CartService(customerRepository, variantRepository,
                     cartRepository, cartItemRepository, cartMapper,
                     orderRepository, orderItemRepository, paymentRepository, orderMapper,
-                    paymentMapper);
+                    paymentMapper, compatibilityService);
         }
 
         @Test
@@ -236,7 +240,7 @@ class CartCheckoutTest {
     @Nested
     @DataJpaTest
     @ActiveProfiles("test")
-    @Import({CartService.class, CheckoutMapperTestConfig.class})
+    @Import({CartService.class, CompatibilityService.class, CheckoutMapperTestConfig.class})
     class CartCheckoutPersistenceTest {
 
         @Autowired

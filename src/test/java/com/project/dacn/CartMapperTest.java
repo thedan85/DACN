@@ -2,6 +2,7 @@ package com.project.dacn;
 
 import com.project.dacn.dto.response.cart.CartDetailResponse;
 import com.project.dacn.dto.response.cart.CartItemResponse;
+import com.project.dacn.dto.response.cart.CompatibilityResponse;
 import com.project.dacn.entity.cart.Cart;
 import com.project.dacn.entity.cart.CartItem;
 import com.project.dacn.entity.catalog.Media;
@@ -40,9 +41,20 @@ class CartMapperTest {
                                 .customer(Customer.builder().id(1L).customerId("CUS_1").name("C").build())
                                 .build();
 
-                CartDetailResponse detail = mapper.toDetail(cart, List.of());
+                CartDetailResponse detail = mapper.toDetail(cart, List.of(), null);
 
                 assertThat(detail.customerId()).isEqualTo("CUS_1");
+        }
+
+        @Test
+        void detailPassesCompatibilityThrough() {
+                Cart cart = Cart.builder().cartId("CART_1").build();
+                CompatibilityResponse compatibility = new CompatibilityResponse(
+                                CompatibilityResponse.Verdict.CAUTION, "check", List.of(), 200);
+
+                CartDetailResponse detail = mapper.toDetail(cart, List.of(), compatibility);
+
+                assertThat(detail.compatibility()).isSameAs(compatibility);
         }
 
         @Test
@@ -52,7 +64,7 @@ class CartMapperTest {
                 CartItemResponse b = new CartItemResponse("CI_b", "c", "VAR_b", "S2", 1,
                                 null, null, "p", "P", null, 3, null, null);
                 Cart cart = Cart.builder().customer(Customer.builder().name("C").build()).build();
-                CartDetailResponse detail = mapper.toDetail(cart, List.of(a, b));
+                CartDetailResponse detail = mapper.toDetail(cart, List.of(a, b), null);
                 assertThat(detail.totalQuantity()).isEqualTo(3);
                 assertThat(detail.totalAmount()).isEqualByComparingTo(new BigDecimal("20.00"));
         }

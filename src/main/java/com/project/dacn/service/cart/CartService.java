@@ -10,6 +10,7 @@ import com.project.dacn.dto.request.order.OrderCreateRequest;
 import com.project.dacn.dto.request.payment.PaymentCreateRequest;
 import com.project.dacn.dto.response.cart.CartDetailResponse;
 import com.project.dacn.dto.response.cart.CartItemResponse;
+import com.project.dacn.dto.response.cart.CompatibilityResponse;
 import com.project.dacn.dto.response.order.OrderItemResponse;
 import com.project.dacn.dto.response.order.OrderResponse;
 import com.project.dacn.entity.cart.Cart;
@@ -57,12 +58,14 @@ public class CartService {
     private final PaymentRepository paymentRepository;
     private final OrderMapper orderMapper;
     private final PaymentMapper paymentMapper;
+    private final CompatibilityService compatibilityService;
 
     public CartDetailResponse getDetail(Long customerId) {
         Cart cart = getOrCreate(customerId);
         List<CartItem> items = cartItemRepository.findWithDetailsByCart_Id(cart.getId());
         List<CartItemResponse> responses = items.stream().map(mapper::toCartItemResponse).toList();
-        return mapper.toDetail(cart, responses);
+        CompatibilityResponse compatibility = compatibilityService.evaluate(items);
+        return mapper.toDetail(cart, responses, compatibility);
     }
 
     public CartItemResponse addItem(Long customerId, CartItemAddRequest req) {
