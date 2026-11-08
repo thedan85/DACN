@@ -3,6 +3,7 @@ package com.project.dacn.repository.catalog;
 import com.project.dacn.entity.catalog.Product;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -18,9 +19,38 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     /**
      * Matches the {@code uq_products_slug} index on {@code lower(product_slug)}.
      * Soft-deleted products stay hidden by the entity's SQL restriction.
+     * Category and thumbnail are fetched up front: every storefront mapper
+     * reads both, and each lazy load here is a separate round trip.
      */
+    @EntityGraph(attributePaths = {"category", "thumbnail"})
     @Query("SELECT p FROM Product p WHERE lower(p.slug) = lower(:slug)")
     Optional<Product> findBySlugIgnoreCase(@Param("slug") String slug);
+
+    /**
+     * Detail-page base graph in one round trip: product, category, thumbnail,
+     * product attributes and variants. Attribute rows repeat for every variant
+     * (at most 8 x 3 here), and the service dedupes them by business id.
+     * Deleted products stay hidden by the entity's SQL restriction; deleted
+     * variants are filtered explicitly because the join is an entity join.
+     */
+    @Query("""
+            select new com.project.dacn.repository.catalog.ProductDetailBaseRow(
+                p.productId, p.slug, p.name, p.description, p.detailDescription, p.status,
+                c.categoryId, c.name, t.url, t.mediaId, p.createdAt, p.updatedAt,
+                pav.productValueId, pa.attributeId, pa.name,
+                av.attributeValueId, av.value, pav.createdAt,
+                v.variantId, v.sku, v.price, v.stock)
+            from Product p
+            left join p.category c
+            left join p.thumbnail t
+            left join ProductAttributeValue pav on pav.product = p
+            left join pav.attribute pa
+            left join pav.attributeValue av
+            left join Variant v on v.product = p and v.deleted = false
+            where lower(p.slug) = lower(:slug)
+            order by pav.id, v.id
+            """)
+    List<ProductDetailBaseRow> findDetailBaseBySlug(@Param("slug") String slug);
 
     /**
      * Uniqueness checks must see soft-deleted rows too: the DB unique index

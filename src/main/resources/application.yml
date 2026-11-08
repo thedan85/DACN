@@ -40,6 +40,13 @@ spring:
       ssl:
         enabled: ${REDIS_SSL_ENABLED:false}
 
+catalog:
+  cache:
+    redis:
+      # Remote Redis RTT measured p95 ~117 ms; the 200 ms code default timed
+      # out intermittently and silently fell back to Postgres.
+      command-timeout: 1s
+
 server:
   port: 8080
   # Cloudflare Tunnel connects over loopback; never expose the app directly.
