@@ -26,6 +26,10 @@ public final class Permissions {
     public static final String ORDER_READ = "order:read";
     public static final String ORDER_UPDATE = "order:update";
     public static final String ORDER_COMPLETE = "order:complete";
+    public static final String USER_READ = "user:read";
+    public static final String USER_CREATE = "user:create";
+    public static final String USER_UPDATE = "user:update";
+    public static final String USER_DELETE = "user:delete";
 
     /**
      * Optional-privilege check: a token holding this permission may see DRAFT

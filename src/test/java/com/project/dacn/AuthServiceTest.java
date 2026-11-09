@@ -288,6 +288,25 @@ class AuthServiceTest {
     }
 
     @Test
+    void lockedUser_oldAccessToken_rejectedByMe() throws Exception {
+        authService.register(registerRequest("locked-access@test.com"));
+        LoginResponse login = authService.login(
+                new LoginRequest("locked-access@test.com", "password123"), null, null);
+
+        // Lock the user AFTER the access token was issued. The next request must
+        // not accept the still-unexpired token.
+        User user = userRepository.findByEmail("locked-access@test.com").orElseThrow();
+        user.setStatus(UserStatus.LOCKED);
+        userRepository.save(user);
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + login.accessToken()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void me_withToken_200_seesPermissions() throws Exception {
         // EMPLOYEE user has product:create (seeded above).
         Role employeeRole = roleRepository.findByCodeIgnoreCase("EMPLOYEE").orElseThrow();

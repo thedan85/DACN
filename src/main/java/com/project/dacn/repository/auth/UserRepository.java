@@ -2,8 +2,10 @@ package com.project.dacn.repository.auth;
 
 import com.project.dacn.entity.auth.User;
 import com.project.dacn.common.constant.UserStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -64,4 +66,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByEmail(String email);
 
     List<User> findByStatusNot(UserStatus status);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM User u WHERE lower(u.role.code) = :roleCode AND u.status = :status")
+    List<User> findByRoleCodeAndStatusForUpdate(
+            @Param("roleCode") String roleCode,
+            @Param("status") UserStatus status);
 }

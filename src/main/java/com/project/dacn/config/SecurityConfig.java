@@ -114,6 +114,15 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/staff/orders/**").hasAuthority(Permissions.ORDER_UPDATE)
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/orders/*/complete")
                         .hasAuthority(Permissions.ORDER_COMPLETE)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/users", "/api/v1/admin/users/**")
+                        .hasAuthority(Permissions.USER_READ)
+                        .requestMatchers(HttpMethod.POST, "/api/v1/admin/users")
+                        .hasAuthority(Permissions.USER_CREATE)
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/admin/users/*/status",
+                                "/api/v1/admin/users/*/role")
+                        .hasAuthority(Permissions.USER_UPDATE)
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/admin/users/*")
+                        .hasAuthority(Permissions.USER_DELETE)
 
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex

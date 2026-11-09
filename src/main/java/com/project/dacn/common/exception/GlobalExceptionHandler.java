@@ -67,6 +67,14 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(409, ex.getMessage(), null));
     }
 
+    @ExceptionHandler(UserRuleViolationException.class)
+    public ResponseEntity<ApiResponse<?>> handleUserRuleViolation(UserRuleViolationException ex) {
+        String message = messageSource.getMessage(ex.getMessageKey(), ex.getArgs(),
+                ex.getMessageKey(), LocaleContextHolder.getLocale());
+        return ResponseEntity.status(409)
+                .body(ApiResponse.of(409, message, null));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<?>> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()

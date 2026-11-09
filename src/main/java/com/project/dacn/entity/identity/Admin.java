@@ -39,6 +39,12 @@ public class Admin extends BaseEntity {
     @Column(name = "admin_name", nullable = false)
     private String name;
 
+    @Column(name = "admin_phone", length = 20)
+    private String phone;
+
+    @Column(name = "admin_address")
+    private String address;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "admin_status", nullable = false, length = 20)
     @lombok.Builder.Default
