@@ -13,11 +13,10 @@ import com.project.dacn.dto.response.catalog.VariantDetailResponse;
 import com.project.dacn.dto.response.catalog.VariantResponse;
 import com.project.dacn.dto.response.engagement.ReviewResponse;
 import com.project.dacn.entity.catalog.Product;
-import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.mapper.catalog.CatalogMapperImpl;
 import com.project.dacn.repository.catalog.CategoryRepository;
 import com.project.dacn.repository.catalog.MediaRepository;
-import com.project.dacn.repository.catalog.ProductAttributeValueRepository;
+import com.project.dacn.repository.catalog.ProductDetailBaseRow;
 import com.project.dacn.repository.catalog.ProductPriceRange;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
@@ -142,7 +141,6 @@ class CatalogCacheSerializationTest {
         // A real CatalogCache over an in-memory StringRedisTemplate stand-in.
         ProductService service = new ProductService(productRepo, mock(CategoryRepository.class),
                 variantRepo, mock(MediaRepository.class),
-                mock(ProductAttributeValueRepository.class),
                 mock(VariantAttributeValueRepository.class), mock(ReviewService.class),
                 new CatalogMapperImpl(),
                 new CatalogCache(inMemoryRedis(), mapper));
@@ -179,27 +177,20 @@ class CatalogCacheSerializationTest {
 
     @Test
     void secondIdenticalDetailRequestIsServedFromTheAggregateCache() {
-        Product product = Product.builder().id(1L).productId("PRD_1").slug("ember-tetra")
-                .name("Ember Tetra").description("d").status(ProductStatus.ACTIVE).build();
         ProductRepository productRepo = mock(ProductRepository.class);
         VariantRepository variantRepo = mock(VariantRepository.class);
-        ProductAttributeValueRepository productAttributeRepo =
-                mock(ProductAttributeValueRepository.class);
         VariantAttributeValueRepository variantAttributeRepo =
                 mock(VariantAttributeValueRepository.class);
         MediaRepository mediaRepo = mock(MediaRepository.class);
         ReviewService reviewService = mock(ReviewService.class);
 
-        when(productRepo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(product));
-        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of(
-                new ProductPriceRange(1L, new BigDecimal("179000.00"),
-                        new BigDecimal("179000.00"), 4L)));
-        when(productAttributeRepo.findByProduct_ProductId("PRD_1")).thenReturn(List.of());
-        when(variantRepo.findByProduct_ProductId("PRD_1")).thenReturn(List.of(
-                Variant.builder().variantId("ember-tetra-default").sku("SKU-1")
-                        .price(new BigDecimal("179000.00")).stock(4).build()));
+        when(productRepo.findDetailBaseBySlug("ember-tetra")).thenReturn(List.of(
+                new ProductDetailBaseRow("PRD_1", "ember-tetra", "Ember Tetra", "d", null,
+                        ProductStatus.ACTIVE, null, null, null, null, null, null,
+                        null, null, null, null, null, null,
+                        "ember-tetra-default", "SKU-1", new BigDecimal("179000.00"), 4)));
         when(variantAttributeRepo.findByVariant_Product_ProductId("PRD_1")).thenReturn(List.of());
-        when(mediaRepo.findByVariant_Product_ProductId("PRD_1")).thenReturn(List.of());
+        when(mediaRepo.findByProductOrVariantProductId("PRD_1")).thenReturn(List.of());
         when(reviewService.listForProduct("PRD_1", false, PageRequest.of(0, 20)))
                 .thenReturn(new PageResponse<>(List.of(), 0, 20, 0, 0));
         VariantRepository.VariantStockView stock = mock(VariantRepository.VariantStockView.class);
@@ -209,14 +200,13 @@ class CatalogCacheSerializationTest {
                 .thenReturn(List.of(stock));
 
         ProductService service = new ProductService(productRepo, mock(CategoryRepository.class),
-                variantRepo, mediaRepo, productAttributeRepo, variantAttributeRepo, reviewService,
+                variantRepo, mediaRepo, variantAttributeRepo, reviewService,
                 new CatalogMapperImpl(), new CatalogCache(inMemoryRedis(), mapper));
 
         ProductDetailResponse first = service.getDetail("ember-tetra", false, PageRequest.of(0, 20));
         ProductDetailResponse second = service.getDetail("ember-tetra", false, PageRequest.of(0, 20));
 
-        verify(productRepo, times(1)).findBySlugIgnoreCase("ember-tetra");
-        verify(variantRepo, times(1)).findByProduct_ProductId("PRD_1");
+        verify(productRepo, times(1)).findDetailBaseBySlug("ember-tetra");
         verify(reviewService, times(1)).listForProduct("PRD_1", false, PageRequest.of(0, 20));
         verify(variantRepo, times(1)).findStockByVariantIdIn(List.of("ember-tetra-default"));
         assertThat(first.variants().get(0).stock()).isEqualTo(4);

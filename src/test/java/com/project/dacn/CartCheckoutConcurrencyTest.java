@@ -21,6 +21,7 @@ import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
 import com.project.dacn.service.cart.CartService;
+import com.project.dacn.service.cart.CompatibilityService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,7 +48,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @DataJpaTest
 @ActiveProfiles("test")
-@Import({CartCheckoutTest.CheckoutMapperTestConfig.class, CartService.class})
+@Import({CartCheckoutTest.CheckoutMapperTestConfig.class, CartService.class, CompatibilityService.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class CartCheckoutConcurrencyTest {
 

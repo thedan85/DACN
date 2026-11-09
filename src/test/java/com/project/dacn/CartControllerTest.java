@@ -2,6 +2,7 @@ package com.project.dacn;
 
 import com.project.dacn.controller.cart.CartController;
 import com.project.dacn.dto.response.cart.CartDetailResponse;
+import com.project.dacn.dto.response.cart.CompatibilityResponse;
 import com.project.dacn.security.CustomerIdentity;
 import com.project.dacn.security.JwtAuthenticationFilter;
 import com.project.dacn.service.cart.CartService;
@@ -43,19 +44,27 @@ class CartControllerTest {
         @Test
         void getAutoCreatesCart() throws Exception {
                 var detail = new CartDetailResponse("cart-1", "CUS_1", "Jane", List.of(),
+                                new CompatibilityResponse(CompatibilityResponse.Verdict.CAUTION,
+                                                "Some species need monitoring before cohabitation.",
+                                                List.of(), 200),
                                 0, BigDecimal.ZERO, null, null);
                 when(identity.requireCustomerId(any())).thenReturn(42L);
                 when(service.getDetail(42L)).thenReturn(detail);
                 mockMvc.perform(get("/api/v1/cart"))
                                 .andExpect(status().isOk())
-                                .andExpect(jsonPath("$.data.cartId").value("cart-1"));
+                                .andExpect(jsonPath("$.data.cartId").value("cart-1"))
+                                .andExpect(jsonPath("$.data.compatibility.verdict").value("CAUTION"));
         }
 
         @Test
         void clientSuppliedCustomerHeaderIsIgnored() throws Exception {
                 when(identity.requireCustomerId(any())).thenReturn(42L);
                 when(service.getDetail(42L)).thenReturn(new CartDetailResponse(
-                                "cart-1", "CUS_42", "Jane", List.of(), 0, BigDecimal.ZERO, null, null));
+                                "cart-1", "CUS_42", "Jane", List.of(),
+                                new CompatibilityResponse(CompatibilityResponse.Verdict.INFO,
+                                                "Add another fish species to check compatibility.",
+                                                List.of(), null),
+                                0, BigDecimal.ZERO, null, null));
 
                 mockMvc.perform(get("/api/v1/cart").header("X-Customer-Id", "999"))
                                 .andExpect(status().isOk());

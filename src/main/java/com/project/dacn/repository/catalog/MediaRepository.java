@@ -48,6 +48,21 @@ public interface MediaRepository extends JpaRepository<Media, Long> {
 
     List<Media> findByVariant_Product_ProductId(String productId);
 
+    /**
+     * Product-level and variant-level media in one query. The detail page
+     * needs the product thumbnail for single-variant products whose variant
+     * carries no media, and a second lookup would be another round trip.
+     */
+    @EntityGraph(attributePaths = {"product", "variant"})
+    @Query("""
+            select m from Media m
+            left join m.product p
+            left join m.variant v
+            left join v.product vp
+            where p.productId = :productId or vp.productId = :productId
+            """)
+    List<Media> findByProductOrVariantProductId(@Param("productId") String productId);
+
     Page<Media> findByProduct_ProductId(String productId, Pageable pageable);
 
     Page<Media> findByVariant_Product_ProductId(String productId, Pageable pageable);

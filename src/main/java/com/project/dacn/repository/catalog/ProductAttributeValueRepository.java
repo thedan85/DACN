@@ -6,12 +6,16 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 public interface ProductAttributeValueRepository extends JpaRepository<ProductAttributeValue, Long> {
     @EntityGraph(attributePaths = {"attribute", "attributeValue"})
     List<ProductAttributeValue> findByProduct_ProductId(String productId);
+
+    @EntityGraph(attributePaths = {"attribute", "attributeValue"})
+    List<ProductAttributeValue> findByProduct_ProductIdIn(Collection<String> productIds);
 
     @EntityGraph(attributePaths = {"attribute", "attributeValue"})
     Page<ProductAttributeValue> findByProduct_ProductId(String productId, Pageable pageable);

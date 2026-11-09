@@ -7,6 +7,7 @@ import com.project.dacn.dto.request.cart.CartItemAddRequest;
 import com.project.dacn.dto.request.cart.CartItemUpdateRequest;
 import com.project.dacn.dto.response.cart.CartDetailResponse;
 import com.project.dacn.dto.response.cart.CartItemResponse;
+import com.project.dacn.dto.response.cart.CompatibilityResponse;
 import com.project.dacn.entity.auth.Role;
 import com.project.dacn.entity.auth.User;
 import com.project.dacn.entity.cart.Cart;
@@ -28,6 +29,7 @@ import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
 import com.project.dacn.service.cart.CartService;
+import com.project.dacn.service.cart.CompatibilityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -51,6 +53,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -100,6 +103,9 @@ class CartServiceTest {
         @Mock
         PaymentRepository paymentRepository;
 
+        @Mock
+        CompatibilityService compatibilityService;
+
         CartMapper mapper = Mappers.getMapper(CartMapper.class);
 
         OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
@@ -113,7 +119,7 @@ class CartServiceTest {
             service = new CartService(customerRepository, variantRepository,
                     cartRepository, cartItemRepository, mapper,
                     orderRepository, orderItemRepository, paymentRepository, orderMapper,
-                    paymentMapper);
+                    paymentMapper, compatibilityService);
         }
 
         @Test
@@ -185,6 +191,21 @@ class CartServiceTest {
             service.getDetail(1L);
 
             verify(customerRepository, never()).findById(anyLong());
+        }
+
+        @Test
+        void detailIncludesCompatibility() {
+            givenCart();
+            Variant v = variant(10);
+            CartItem existing = item(cart(customer()), v, 2);
+            when(cartItemRepository.findWithDetailsByCart_Id(10L)).thenReturn(List.of(existing));
+            CompatibilityResponse compatibility = new CompatibilityResponse(
+                    CompatibilityResponse.Verdict.SAFE, "ok", List.of(), 75);
+            when(compatibilityService.evaluate(anyList())).thenReturn(compatibility);
+
+            CartDetailResponse detail = service.getDetail(1L);
+
+            assertThat(detail.compatibility()).isSameAs(compatibility);
         }
 
         @Test
@@ -281,7 +302,7 @@ class CartServiceTest {
     @Nested
     @DataJpaTest
     @ActiveProfiles("test")
-    @Import({ CartService.class, MapperTestConfig.class })
+    @Import({ CartService.class, CompatibilityService.class, MapperTestConfig.class })
     class CartServiceTotalsPersistenceTest {
 
         @Autowired

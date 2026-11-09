@@ -18,6 +18,7 @@ import com.project.dacn.repository.catalog.AttributeValueRepository;
 import com.project.dacn.repository.catalog.CategoryRepository;
 import com.project.dacn.repository.catalog.MediaRepository;
 import com.project.dacn.repository.catalog.ProductAttributeValueRepository;
+import com.project.dacn.repository.catalog.ProductDetailBaseRow;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
@@ -136,6 +137,53 @@ class CatalogPersistenceTest {
         assertThat(ranges).hasSize(1);
         assertThat(ranges.get(0).minPrice()).isEqualByComparingTo("179000");
         assertThat(ranges.get(0).maxPrice()).isEqualByComparingTo("199000");
+    }
+
+    @Test
+    void detailBaseProjectionFlattensAttributesAndActiveVariants() {
+        Category category = categoryRepository.save(Category.builder()
+                .name("Detail Cat").slug("detail-cat").build());
+        Product product = productRepository.save(Product.builder()
+                .name("Detail Base").description("d").status(ProductStatus.ACTIVE)
+                .category(category).build());
+
+        Attribute attribute = attributeRepository.save(Attribute.builder().name("Temp").build());
+        AttributeValue value = attributeValueRepository.save(AttributeValue.builder()
+                .attribute(attribute).value("25C").build());
+        productAttributeValueRepository.save(ProductAttributeValue.builder()
+                .product(product).attribute(attribute).attributeValue(value).build());
+
+        Variant first = variantRepository.save(Variant.builder().product(product).sku("DB-1")
+                .price(new BigDecimal("10.00")).stock(3).build());
+        Variant second = variantRepository.save(Variant.builder().product(product).sku("DB-2")
+                .price(new BigDecimal("20.00")).stock(4).build());
+        variantRepository.save(Variant.builder().product(product).sku("DB-DELETED")
+                .price(new BigDecimal("99.00")).stock(1).deleted(true).build());
+
+        Media thumbnail = mediaRepository.save(Media.builder()
+                .url("https://img/detail.jpg").product(product).build());
+        product.setThumbnail(thumbnail);
+        productRepository.save(product);
+        entityManager.flush();
+        entityManager.clear();
+
+        List<ProductDetailBaseRow> rows =
+                productRepository.findDetailBaseBySlug("detail-base");
+
+        // 1 product attribute x 2 active variants; the deleted variant is filtered.
+        assertThat(rows).hasSize(2);
+        assertThat(rows).extracting(ProductDetailBaseRow::variantId)
+                .containsExactlyInAnyOrder(first.getVariantId(), second.getVariantId());
+        assertThat(rows).allSatisfy(row -> {
+            assertThat(row.productId()).isEqualTo(product.getProductId());
+            assertThat(row.categoryName()).isEqualTo("Detail Cat");
+            assertThat(row.thumbnail()).isEqualTo("https://img/detail.jpg");
+            assertThat(row.thumbnailMediaId()).isEqualTo(thumbnail.getMediaId());
+            assertThat(row.productValueId()).isEqualTo(
+                    product.getProductId() + "-" + attribute.getAttributeId());
+            assertThat(row.attributeName()).isEqualTo("Temp");
+            assertThat(row.attributeValue()).isEqualTo("25C");
+        });
     }
 
     @Test

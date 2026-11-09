@@ -43,6 +43,18 @@ import java.util.List;
               "updatedAt": "2026-10-27T02:57:14.486697Z"
             }
           ],
+          "compatibility": {
+            "verdict": "CAUTION",
+            "summary": "Some species need monitoring before cohabitation.",
+            "checks": [
+              {
+                "code": "TEMPERATURE",
+                "status": "WARN",
+                "message": "Shared temperature range is only 24-26 °C."
+              }
+            ],
+            "recommendedTankLitres": 200
+          },
           "totalQuantity": 3,
           "totalAmount": 38000.00,
           "createdAt": "2026-10-27T02:57:14.486697Z",
@@ -54,6 +66,7 @@ public record CartDetailResponse(
         String customerId,
         String customerName,
         List<CartItemResponse> items,
+        CompatibilityResponse compatibility,
         int totalQuantity,
         BigDecimal totalAmount,
         Instant createdAt,

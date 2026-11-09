@@ -15,13 +15,12 @@ import com.project.dacn.dto.response.catalog.VariantDetailResponse;
 import com.project.dacn.dto.response.engagement.ReviewResponse;
 import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.catalog.Product;
-import com.project.dacn.entity.catalog.ProductAttributeValue;
 import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.catalog.VariantAttributeValue;
 import com.project.dacn.mapper.catalog.CatalogMapper;
 import com.project.dacn.repository.catalog.CategoryRepository;
 import com.project.dacn.repository.catalog.MediaRepository;
-import com.project.dacn.repository.catalog.ProductAttributeValueRepository;
+import com.project.dacn.repository.catalog.ProductDetailBaseRow;
 import com.project.dacn.repository.catalog.ProductPriceRange;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
@@ -76,9 +75,6 @@ class ProductServiceTest {
 
     @Mock
     MediaRepository mediaRepo;
-
-    @Mock
-    ProductAttributeValueRepository productAttributeValueRepo;
 
     @Mock
     VariantAttributeValueRepository variantAttributeValueRepo;
@@ -464,24 +460,13 @@ class ProductServiceTest {
 
     @Test
     void detailGroupsVariantAttributesAndMediaAndLoadsReviews() {
-        Product p = product(1L);
-        ProductResponse base = response(null, null, 0);
         when(cache.currentGeneration("product")).thenReturn(OptionalLong.empty());
-        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
-        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
-        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(base);
+        when(repo.findDetailBaseBySlug("ember-tetra")).thenReturn(List.of(
+                detailRow("PAV_1", "VAR_1", "SKU-1", "100", 5),
+                detailRow("PAV_1", "VAR_2", "SKU-2", "200", 0)));
 
         ProductAttributeValueResponse productAttribute = new ProductAttributeValueResponse(
                 "PAV_1", "PRD_1", "ATTR_1", "Temperature", "AV_1", "25C", null);
-        when(productAttributeValueRepo.findByProduct_ProductId("PRD_1"))
-                .thenReturn(List.of(ProductAttributeValue.builder().build()));
-        when(mapper.toProductAttributeValueResponse(any())).thenReturn(productAttribute);
-
-        Variant v1 = Variant.builder().variantId("VAR_1").sku("SKU-1")
-                .price(new BigDecimal("100")).stock(5).build();
-        Variant v2 = Variant.builder().variantId("VAR_2").sku("SKU-2")
-                .price(new BigDecimal("200")).stock(0).build();
-        when(variantRepo.findByProduct_ProductId("PRD_1")).thenReturn(List.of(v1, v2));
 
         VariantAttributeValueResponse variantAttribute = new VariantAttributeValueResponse(
                 "VAV_1", "VAR_1", "ATTR_2", "Color", "AV_2", "Red", null);
@@ -490,7 +475,7 @@ class ProductServiceTest {
         when(mapper.toVariantAttributeValueResponse(any())).thenReturn(variantAttribute);
 
         MediaResponse media = new MediaResponse("MED_1", "url", null, "VAR_1", false, null, null);
-        when(mediaRepo.findByVariant_Product_ProductId("PRD_1"))
+        when(mediaRepo.findByProductOrVariantProductId("PRD_1"))
                 .thenReturn(List.of(Media.builder().build()));
         when(mapper.toMediaResponse(any())).thenReturn(media);
 
@@ -501,7 +486,10 @@ class ProductServiceTest {
 
         ProductDetailResponse result = service.getDetail("ember-tetra", false, PageRequest.of(0, 20));
 
-        assertThat(result.product()).isSameAs(base);
+        assertThat(result.product().productId()).isEqualTo("PRD_1");
+        assertThat(result.product().minPrice()).isEqualByComparingTo("100");
+        assertThat(result.product().maxPrice()).isEqualByComparingTo("200");
+        assertThat(result.product().stock()).isEqualTo(5);
         assertThat(result.attributes()).containsExactly(productAttribute);
         assertThat(result.variants()).hasSize(2);
         assertThat(result.variants().get(0).variantId()).isEqualTo("VAR_1");
@@ -535,8 +523,7 @@ class ProductServiceTest {
         assertThat(result.product().stock()).isEqualTo(5);
         assertThat(result.variants()).extracting(VariantDetailResponse::stock)
                 .containsExactly(5, 0);
-        verifyNoInteractions(repo, mediaRepo, productAttributeValueRepo,
-                variantAttributeValueRepo, reviewService);
+        verifyNoInteractions(repo, mediaRepo, variantAttributeValueRepo, reviewService);
     }
 
     @Test
@@ -554,28 +541,14 @@ class ProductServiceTest {
 
     @Test
     void detailCacheMissStoresAggregateWithStockScrubbed() {
-        Product p = product(1L);
-        ProductResponse base = response(null, null, 0);
         when(cache.currentGeneration("product")).thenReturn(OptionalLong.of(9));
         when(cache.get(any(), any())).thenReturn(Optional.empty());
-        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
-        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
-        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(base);
-
-        ProductAttributeValueResponse productAttribute = new ProductAttributeValueResponse(
-                "PAV_1", "PRD_1", "ATTR_1", "Temperature", "AV_1", "25C", null);
-        when(productAttributeValueRepo.findByProduct_ProductId("PRD_1"))
-                .thenReturn(List.of(ProductAttributeValue.builder().build()));
-        when(mapper.toProductAttributeValueResponse(any())).thenReturn(productAttribute);
-
-        Variant v1 = Variant.builder().variantId("VAR_1").sku("SKU-1")
-                .price(new BigDecimal("100")).stock(5).build();
-        Variant v2 = Variant.builder().variantId("VAR_2").sku("SKU-2")
-                .price(new BigDecimal("200")).stock(0).build();
-        when(variantRepo.findByProduct_ProductId("PRD_1")).thenReturn(List.of(v1, v2));
+        when(repo.findDetailBaseBySlug("ember-tetra")).thenReturn(List.of(
+                detailRow("PAV_1", "VAR_1", "SKU-1", "100", 5),
+                detailRow("PAV_1", "VAR_2", "SKU-2", "200", 0)));
         when(variantAttributeValueRepo.findByVariant_Product_ProductId("PRD_1"))
                 .thenReturn(List.of());
-        when(mediaRepo.findByVariant_Product_ProductId("PRD_1")).thenReturn(List.of());
+        when(mediaRepo.findByProductOrVariantProductId("PRD_1")).thenReturn(List.of());
         when(reviewService.listForProduct("PRD_1", false, PageRequest.of(0, 20)))
                 .thenReturn(new PageResponse<>(List.of(), 0, 20, 0, 0));
 
@@ -588,17 +561,13 @@ class ProductServiceTest {
         assertThat(stored.getValue().product().stock()).isNull();
         assertThat(stored.getValue().variants())
                 .allSatisfy(variant -> assertThat(variant.stock()).isNull());
-        assertThat(result.product().stock()).isZero();
+        assertThat(result.product().stock()).isEqualTo(5);
         assertThat(result.variants().get(0).stock()).isEqualTo(5);
     }
 
     @Test
     void detailSkipsAggregateCacheForNonStandardReviewPage() {
-        Product p = product(1L);
-        when(cache.currentGeneration("product")).thenReturn(OptionalLong.of(9));
-        when(cache.get(any(), any())).thenReturn(Optional.empty());
-        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
-        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(response(null, null, 0));
+        when(repo.findDetailBaseBySlug("ember-tetra")).thenReturn(List.of(productDetailRow()));
         when(reviewService.listForProduct("PRD_1", false, PageRequest.of(0, 7)))
                 .thenReturn(new PageResponse<>(List.of(), 0, 7, 3, 1));
 
@@ -614,12 +583,8 @@ class ProductServiceTest {
 
     @Test
     void detailSkipsAggregateCacheWhenReviewPageIsSorted() {
-        Product p = product(1L);
         PageRequest sorted = PageRequest.of(0, 20, Sort.by("rating").ascending());
-        when(cache.currentGeneration("product")).thenReturn(OptionalLong.of(9));
-        when(cache.get(any(), any())).thenReturn(Optional.empty());
-        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
-        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(response(null, null, 0));
+        when(repo.findDetailBaseBySlug("ember-tetra")).thenReturn(List.of(productDetailRow()));
         when(reviewService.listForProduct("PRD_1", false, sorted))
                 .thenReturn(new PageResponse<>(List.of(), 0, 20, 0, 0));
 
@@ -631,10 +596,7 @@ class ProductServiceTest {
 
     @Test
     void detailExposesReviewCustomerIdOnlyToStaff() {
-        Product p = product(1L);
-        ProductResponse base = response(null, null, 0);
-        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
-        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(base);
+        when(repo.findDetailBaseBySlug("ember-tetra")).thenReturn(List.of(productDetailRow()));
         ReviewResponse staffReview = new ReviewResponse(
                 "REV_1", "VAR_1", "CUS_1", "An", false, 5, "nice", null, null);
         when(reviewService.listForProduct("PRD_1", true, PageRequest.of(1, 5)))
@@ -652,21 +614,13 @@ class ProductServiceTest {
 
     @Test
     void detailPutsTheDefaultVariantFirst() {
-        Product p = product(1L);
-        ProductResponse base = response(null, null, 0);
         when(cache.currentGeneration("product")).thenReturn(OptionalLong.empty());
-        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
-        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
-        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(base);
-        when(productAttributeValueRepo.findByProduct_ProductId("PRD_1")).thenReturn(List.of());
-        when(variantRepo.findByProduct_ProductId("PRD_1")).thenReturn(List.of(
-                Variant.builder().variantId("ember-tetra-gold").sku("SKU-G")
-                        .price(new BigDecimal("100")).stock(5).build(),
-                Variant.builder().variantId("ember-tetra-default").sku("SKU-D")
-                        .price(new BigDecimal("100")).stock(5).build()));
+        when(repo.findDetailBaseBySlug("ember-tetra")).thenReturn(List.of(
+                detailRow(null, "ember-tetra-gold", "SKU-G", "100", 5),
+                detailRow(null, "ember-tetra-default", "SKU-D", "100", 5)));
         when(variantAttributeValueRepo.findByVariant_Product_ProductId("PRD_1"))
                 .thenReturn(List.of());
-        when(mediaRepo.findByVariant_Product_ProductId("PRD_1")).thenReturn(List.of());
+        when(mediaRepo.findByProductOrVariantProductId("PRD_1")).thenReturn(List.of());
         when(reviewService.listForProduct("PRD_1", false, PageRequest.of(0, 20)))
                 .thenReturn(new PageResponse<>(List.of(), 0, 20, 0, 0));
 
@@ -678,24 +632,14 @@ class ProductServiceTest {
 
     @Test
     void detailFallsBackToThumbnailForOnlyVariantWithoutMedia() {
-        Product p = product(1L);
-        ProductResponse base = new ProductResponse("PRD_1", "ember-tetra", "P", "d", null,
-                "https://img", "MED_9", ProductStatus.ACTIVE, null, null, null, null, 0,
-                null, null);
         when(cache.currentGeneration("product")).thenReturn(OptionalLong.empty());
-        when(repo.findBySlugIgnoreCase("ember-tetra")).thenReturn(Optional.of(p));
-        when(variantRepo.findPriceRangesByProductIds(List.of(1L))).thenReturn(List.of());
-        when(mapper.toProductResponse(p, null, null, 0)).thenReturn(base);
-
-        Variant only = Variant.builder().variantId("VAR_1").sku("SKU-1")
-                .price(new BigDecimal("100")).stock(5).build();
-        when(variantRepo.findByProduct_ProductId("PRD_1")).thenReturn(List.of(only));
-        when(mediaRepo.findByVariant_Product_ProductId("PRD_1")).thenReturn(List.of());
+        when(repo.findDetailBaseBySlug("ember-tetra"))
+                .thenReturn(List.of(thumbnailDetailRow("VAR_1")));
 
         Media thumbnail = Media.builder().mediaId("MED_9").url("https://img").build();
         MediaResponse thumbnailResponse = new MediaResponse(
                 "MED_9", "https://img", "PRD_1", null, false, null, null);
-        when(mediaRepo.findByMediaId("MED_9")).thenReturn(Optional.of(thumbnail));
+        when(mediaRepo.findByProductOrVariantProductId("PRD_1")).thenReturn(List.of(thumbnail));
         when(mapper.toMediaResponse(thumbnail)).thenReturn(thumbnailResponse);
         when(reviewService.listForProduct("PRD_1", false, PageRequest.of(0, 20)))
                 .thenReturn(new PageResponse<>(List.of(), 0, 20, 0, 0));
@@ -704,6 +648,30 @@ class ProductServiceTest {
 
         assertThat(result.variants()).singleElement()
                 .satisfies(variant -> assertThat(variant.media()).containsExactly(thumbnailResponse));
+    }
+
+    private static ProductDetailBaseRow productDetailRow() {
+        return detailRow(null, null, null, null, null);
+    }
+
+    private static ProductDetailBaseRow detailRow(String productValueId, String variantId,
+            String sku, String price, Integer stock) {
+        return new ProductDetailBaseRow("PRD_1", "ember-tetra", "P", "d", null,
+                ProductStatus.ACTIVE, null, null, null, null, null, null,
+                productValueId,
+                productValueId == null ? null : "ATTR_1",
+                productValueId == null ? null : "Temperature",
+                productValueId == null ? null : "AV_1",
+                productValueId == null ? null : "25C",
+                null,
+                variantId, sku, price == null ? null : new BigDecimal(price), stock);
+    }
+
+    private static ProductDetailBaseRow thumbnailDetailRow(String variantId) {
+        return new ProductDetailBaseRow("PRD_1", "ember-tetra", "P", "d", null,
+                ProductStatus.ACTIVE, null, null, "https://img", "MED_9", null, null,
+                null, null, null, null, null, null,
+                variantId, "SKU-1", new BigDecimal("100"), 5);
     }
 
     private static VariantDetailResponse variantDetail(String variantId, Integer stock) {
