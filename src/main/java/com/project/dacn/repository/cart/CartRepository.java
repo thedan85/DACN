@@ -2,6 +2,7 @@ package com.project.dacn.repository.cart;
 
 import com.project.dacn.entity.cart.Cart;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -12,6 +13,8 @@ import java.util.Optional;
 public interface CartRepository extends JpaRepository<Cart, Long> {
     Optional<Cart> findByCartId(String cartId);
 
+    /** Cart detail maps the customer name, so load it with the cart. */
+    @EntityGraph(attributePaths = "customer")
     Optional<Cart> findByCustomer_Id(Long customerId);
 
     /**

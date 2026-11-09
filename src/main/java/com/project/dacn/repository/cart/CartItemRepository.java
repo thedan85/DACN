@@ -16,6 +16,8 @@ public interface CartItemRepository extends JpaRepository<CartItem, Long> {
 
     void deleteByCart_Id(Long cartId);
 
-    @EntityGraph(attributePaths = {"variant", "variant.product", "variant.product.thumbnail"})
+    @EntityGraph(attributePaths = {
+            "variant", "variant.product", "variant.product.thumbnail",
+            "variant.product.category", "variant.product.category.parent"})
     List<CartItem> findWithDetailsByCart_Id(Long cartId);
 }
