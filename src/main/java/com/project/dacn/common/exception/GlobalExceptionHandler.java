@@ -75,6 +75,14 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(409, message, null));
     }
 
+    @ExceptionHandler(RoleRuleViolationException.class)
+    public ResponseEntity<ApiResponse<?>> handleRoleRuleViolation(RoleRuleViolationException ex) {
+        String message = messageSource.getMessage(ex.getMessageKey(), ex.getArgs(),
+                ex.getMessageKey(), LocaleContextHolder.getLocale());
+        return ResponseEntity.status(409)
+                .body(ApiResponse.of(409, message, null));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<?>> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()
