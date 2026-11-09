@@ -2,8 +2,8 @@
 
 ## Lettuce timeouts (set in `RedisConfig`)
 
-- command timeout: `catalog.cache.redis.command-timeout`, default 200 ms
-- connect timeout: `catalog.cache.redis.connect-timeout`, default 500 ms
+- command timeout: `catalog.cache.redis.command-timeout`, default 1 s (override with `REDIS_COMMAND_TIMEOUT`)
+- connect timeout: `catalog.cache.redis.connect-timeout`, default 2 s (override with `REDIS_CONNECT_TIMEOUT`)
 - `disconnectedBehavior = REJECT_COMMANDS` (commands fail immediately while disconnected instead of queueing)
 
 Raise the timeouts only if Redis is remote or TLS adds latency; keep them well below the endpoint's own latency budget. Catalog reads fall back to Postgres on any Redis failure; these settings bound the cost of that fallback.

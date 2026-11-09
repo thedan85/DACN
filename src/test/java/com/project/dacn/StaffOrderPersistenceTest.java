@@ -164,8 +164,9 @@ class StaffOrderPersistenceTest {
 
         assertThat(page.getContent()).hasSize(5)
                 .allSatisfy(o -> assertThat(o.items()).hasSize(1));
-        // Page, items, attributes, variant media, product media, fallback media, payments.
-        assertThat(stats.getPrepareStatementCount()).isEqualTo(singleOrderStatements);
+        // Page, items, attributes, order-item media, payments.
+        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(5);
+        assertThat(singleOrderStatements).isLessThanOrEqualTo(5);
     }
 
     @Test
@@ -180,8 +181,8 @@ class StaffOrderPersistenceTest {
         OrderResponse response = service.get(customerId, order.getOrderId());
 
         assertThat(response.items()).hasSize(1);
-        // Order and customer share one query; six queries batch the enrichment.
-        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(7);
+        // Order and customer share one query; five queries batch the enrichment.
+        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(5);
     }
 
     @Test

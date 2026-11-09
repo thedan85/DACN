@@ -59,7 +59,8 @@ public class CartService {
     private final PaymentMapper paymentMapper;
 
     public CartDetailResponse getDetail(Long customerId) {
-        Cart cart = getOrCreate(customerId);
+        Cart cart = cartRepository.findByCustomer_Id(customerId)
+                .orElseGet(() -> createCart(customerId));
         List<CartItem> items = cartItemRepository.findWithDetailsByCart_Id(cart.getId());
         List<CartItemResponse> responses = items.stream().map(mapper::toCartItemResponse).toList();
         return mapper.toDetail(cart, responses);
@@ -198,18 +199,20 @@ public class CartService {
     }
 
     private Cart requireCart(Long customerId) {
-        requireCustomer(customerId);
         return cartRepository.findByCustomer_Id(customerId)
                 .orElseThrow(() -> new ResourceNotFoundException("cart not found: " + customerId));
     }
 
     private Cart getOrCreate(Long customerId) {
+        return cartRepository.findByCustomer_Id(customerId)
+                .orElseGet(() -> createCart(customerId));
+    }
+
+    private Cart createCart(Long customerId) {
         Customer customer = requireCustomer(customerId);
-        return cartRepository.findByCustomer_Id(customerId).orElseGet(() -> {
-            Cart cart = cartRepository.save(Cart.builder().customer(customer).build());
-            log.info("Created cart {} for customer {}", cart.getCartId(), customerId);
-            return cart;
-        });
+        Cart cart = cartRepository.save(Cart.builder().customer(customer).build());
+        log.info("Created cart {} for customer {}", cart.getCartId(), customerId);
+        return cart;
     }
 
     private Variant requireSellable(String variantId) {

@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -163,34 +164,38 @@ public class OrderService {
                                 Collectors.mapping(
                                         value -> value.getAttributeValue().getValue(),
                                         Collectors.toList())));
-        Map<String, String> thumbnailByVariant = variantIds.isEmpty()
-                ? Map.of()
-                : mediaRepository.findByVariant_VariantIdIn(variantIds).stream()
-                        .filter(media -> media.getUrl() != null && !media.getUrl().isBlank())
-                        .collect(Collectors.toMap(
-                                media -> media.getVariant().getVariantId(),
-                                Media::getUrl,
-                                (first, second) -> first));
-        Set<String> variantsWithoutThumbnail = variantIds.stream()
-                .filter(variantId -> !thumbnailByVariant.containsKey(variantId))
+        Set<String> productIds = itemsByOrder.values().stream()
+                .flatMap(List::stream)
+                .map(item -> item.getVariant().getProduct().getProductId())
                 .collect(Collectors.toSet());
-        if (!variantsWithoutThumbnail.isEmpty()) {
-            Map<String, String> productIdByVariant = itemsByOrder.values().stream()
-                    .flatMap(List::stream)
-                    .filter(item -> variantsWithoutThumbnail.contains(
-                            item.getVariant().getVariantId()))
-                    .collect(Collectors.toMap(
-                            item -> item.getVariant().getVariantId(),
-                            item -> item.getVariant().getProduct().getProductId(),
-                            (first, second) -> first));
-            Map<String, String> productThumbnails =
-                    productThumbnails(Set.copyOf(productIdByVariant.values()));
-            productIdByVariant.forEach((variantId, productId) -> {
-                String url = productThumbnails.get(productId);
-                if (url != null) {
-                    thumbnailByVariant.put(variantId, url);
-                }
-            });
+        Map<String, String> variantThumbnails = new HashMap<>();
+        Map<String, String> productThumbnails = new HashMap<>();
+        List<Media> media = variantIds.isEmpty()
+                ? List.of()
+                : mediaRepository.findForOrderItems(variantIds, productIds);
+        // Variant media wins for the variant; direct product media wins over a
+        // sibling variant's image as the product-level fallback.
+        for (Media item : media) {
+            String url = item.getUrl();
+            if (url == null || url.isBlank()) {
+                continue;
+            }
+            if (item.getVariant() != null) {
+                variantThumbnails.putIfAbsent(item.getVariant().getVariantId(), url);
+            }
+            if (item.getProduct() != null) {
+                productThumbnails.putIfAbsent(item.getProduct().getProductId(), url);
+            }
+        }
+        for (Media item : media) {
+            if (item.getVariant() == null || item.getVariant().getProduct() == null) {
+                continue;
+            }
+            String url = item.getUrl();
+            if (url != null && !url.isBlank()) {
+                productThumbnails.putIfAbsent(
+                        item.getVariant().getProduct().getProductId(), url);
+            }
         }
         Map<String, PaymentResponse> paymentsByOrder = paymentRepository
                 .findByOrder_OrderIdIn(orderIds).stream()
@@ -205,8 +210,13 @@ public class OrderService {
                             .getOrDefault(order.getOrderId(), List.of()).stream()
                             .map(item -> {
                                 String variantId = item.getVariant().getVariantId();
+                                String thumbnail = variantThumbnails.get(variantId);
+                                if (thumbnail == null) {
+                                    thumbnail = productThumbnails.get(
+                                            item.getVariant().getProduct().getProductId());
+                                }
                                 return orderMapper.toOrderItemResponse(item,
-                                        thumbnailByVariant.get(variantId),
+                                        thumbnail,
                                         attributesByVariant.getOrDefault(variantId, List.of()));
                             })
                             .toList();
@@ -214,29 +224,6 @@ public class OrderService {
                             paymentsByOrder.get(order.getOrderId()));
                 })
                 .toList();
-    }
-
-    /**
-     * Product-level image fallback, matching the public product-media endpoint:
-     * direct product media first, then media attached to a sibling variant.
-     */
-    private Map<String, String> productThumbnails(Set<String> productIds) {
-        Map<String, String> urls = mediaRepository.findByProduct_ProductIdIn(productIds).stream()
-                .filter(media -> media.getUrl() != null && !media.getUrl().isBlank())
-                .collect(Collectors.toMap(
-                        media -> media.getProduct().getProductId(),
-                        Media::getUrl,
-                        (first, second) -> first));
-        Set<String> missing = productIds.stream()
-                .filter(productId -> !urls.containsKey(productId))
-                .collect(Collectors.toSet());
-        if (!missing.isEmpty()) {
-            mediaRepository.findByVariant_Product_ProductIdIn(missing).stream()
-                    .filter(media -> media.getUrl() != null && !media.getUrl().isBlank())
-                    .forEach(media -> urls.putIfAbsent(
-                            media.getVariant().getProduct().getProductId(), media.getUrl()));
-        }
-        return urls;
     }
 
     private OrderResponse toResponse(Order order) {

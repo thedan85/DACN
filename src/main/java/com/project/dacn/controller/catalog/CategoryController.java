@@ -7,10 +7,12 @@ import com.project.dacn.dto.request.catalog.CategoryUpdateRequest;
 import com.project.dacn.dto.response.catalog.CategoryResponse;
 import com.project.dacn.security.Permissions;
 import com.project.dacn.service.catalog.CategoryService;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,16 +29,24 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class CategoryController {
 
+    private static final String PUBLIC_CACHE = "public, max-age=300, stale-while-revalidate=600";
+
     private final CategoryService service;
 
     @GetMapping
-    public ApiResponse<PageResponse<CategoryResponse>> list(@ParameterObject Pageable pageable) {
-        return ApiResponse.ok(service.list(pageable));
+    public ApiResponse<PageResponse<CategoryResponse>> list(
+            @ParameterObject Pageable pageable, HttpServletResponse response) {
+        PageResponse<CategoryResponse> result = service.list(pageable);
+        response.setHeader(HttpHeaders.CACHE_CONTROL, PUBLIC_CACHE);
+        return ApiResponse.ok(result);
     }
 
     @GetMapping("/{categoryId}")
-    public ApiResponse<CategoryResponse> get(@PathVariable String categoryId) {
-        return ApiResponse.ok(service.get(categoryId));
+    public ApiResponse<CategoryResponse> get(@PathVariable String categoryId,
+            HttpServletResponse response) {
+        CategoryResponse result = service.get(categoryId);
+        response.setHeader(HttpHeaders.CACHE_CONTROL, PUBLIC_CACHE);
+        return ApiResponse.ok(result);
     }
 
     @PostMapping

@@ -50,6 +50,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -118,6 +119,7 @@ class CartServiceTest {
         @Test
         void addBumpsExistingQty() {
             givenCart();
+            when(customerRepository.findById(1L)).thenReturn(Optional.of(customer()));
             Variant v = variant(10);
             when(variantRepository.findWithProductByVariantId("VAR_20")).thenReturn(Optional.of(v));
             CartItem existing = item(cart(customer()), v, 2);
@@ -176,6 +178,16 @@ class CartServiceTest {
         }
 
         @Test
+        void detailDoesNotReloadCustomerWhenCartExists() {
+            givenCart();
+            when(cartItemRepository.findWithDetailsByCart_Id(10L)).thenReturn(List.of());
+
+            service.getDetail(1L);
+
+            verify(customerRepository, never()).findById(anyLong());
+        }
+
+        @Test
         void otherCustomersItemThrows404() {
             givenCart();
             Cart otherCart = Cart.builder().id(20L).cartId("cart-2").customer(customer()).build();
@@ -201,6 +213,7 @@ class CartServiceTest {
         @Test
         void concurrentInsertRaceMergesAsBump() {
             givenCart();
+            when(customerRepository.findById(1L)).thenReturn(Optional.of(customer()));
             Variant v = variant(10);
             when(variantRepository.findWithProductByVariantId("VAR_20")).thenReturn(Optional.of(v));
             CartItem raced = item(cart(customer()), v, 2);
@@ -240,10 +253,8 @@ class CartServiceTest {
         }
 
         private void givenCart() {
-            Customer c = customer();
-            when(customerRepository.findById(1L)).thenReturn(Optional.of(c));
             when(cartRepository.findByCustomer_Id(1L))
-                    .thenReturn(Optional.of(cart(c)));
+                    .thenReturn(Optional.of(cart(customer())));
         }
 
         private Customer customer() {

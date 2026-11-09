@@ -54,32 +54,34 @@ class PaymentServiceTest {
     }
 
     @Test
-    void createUrlSignsOrderIdAndWholeVndAmount() {
+    void createUrlSignsPaymentIdAndWholeVndAmount() {
         Order order = order("ORD_1", OrderStatus.PENDING, "150000.00");
         Payment payment = payment("PAY_1", order, PaymentMethod.E_WALLET,
                 PaymentStatus.PENDING, "150000.00");
-        when(orderRepository.findByOrderIdAndCustomer_Id("ORD_1", 7L)).thenReturn(Optional.of(order));
-        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
+        when(paymentRepository.findWithOrderByOrderIdAndCustomerId("ORD_1", 7L))
+                .thenReturn(Optional.of(payment));
 
         String url = service.createVnpayUrl(7L, "ORD_1", "1.2.3.4").payUrl();
 
         assertThat(url).startsWith("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?");
-        assertThat(url).contains("vnp_TxnRef=ORD_1");
+        assertThat(url).contains("vnp_TxnRef=PAY_1");
         assertThat(url).contains("vnp_Amount=15000000");
         assertThat(url).contains("vnp_IpAddr=1.2.3.4");
         assertThat(url).contains("vnp_SecureHash=");
+        verifyNoInteractions(orderRepository);
     }
 
     @Test
     void createUrlRejectsCodOrder() {
         Order order = order("ORD_1", OrderStatus.PENDING, "10.00");
         Payment payment = payment("PAY_1", order, PaymentMethod.COD, PaymentStatus.PENDING, "10.00");
-        when(orderRepository.findByOrderIdAndCustomer_Id("ORD_1", 7L)).thenReturn(Optional.of(order));
-        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
+        when(paymentRepository.findWithOrderByOrderIdAndCustomerId("ORD_1", 7L))
+                .thenReturn(Optional.of(payment));
 
         assertThatThrownBy(() -> service.createVnpayUrl(7L, "ORD_1", "1.2.3.4"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("COD");
+        verifyNoInteractions(orderRepository);
     }
 
     @Test
@@ -87,31 +89,36 @@ class PaymentServiceTest {
         Order order = order("ORD_1", OrderStatus.PENDING, "10.00");
         Payment payment = payment("PAY_1", order, PaymentMethod.E_WALLET,
                 PaymentStatus.CONFIRMED, "10.00");
-        when(orderRepository.findByOrderIdAndCustomer_Id("ORD_1", 7L)).thenReturn(Optional.of(order));
-        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
+        when(paymentRepository.findWithOrderByOrderIdAndCustomerId("ORD_1", 7L))
+                .thenReturn(Optional.of(payment));
 
         assertThatThrownBy(() -> service.createVnpayUrl(7L, "ORD_1", "1.2.3.4"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("CONFIRMED");
+        verifyNoInteractions(orderRepository);
     }
 
     @Test
     void createUrlRejectsForeignOrder() {
+        when(paymentRepository.findWithOrderByOrderIdAndCustomerId("ORD_1", 99L))
+                .thenReturn(Optional.empty());
         when(orderRepository.findByOrderIdAndCustomer_Id("ORD_1", 99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.createVnpayUrl(99L, "ORD_1", "1.2.3.4"))
-                .isInstanceOf(ResourceNotFoundException.class);
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("order not found");
     }
 
     @Test
     void getRejectsForeignOrder() {
+        when(paymentRepository.findWithOrderByOrderIdAndCustomerId("ORD_1", 99L))
+                .thenReturn(Optional.empty());
         when(orderRepository.findByOrderIdAndCustomer_Id("ORD_1", 99L))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.get(99L, "ORD_1"))
-                .isInstanceOf(ResourceNotFoundException.class);
-
-        verifyNoInteractions(paymentRepository);
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("order not found");
     }
 
     private static Order order(String orderId, OrderStatus status, String total) {

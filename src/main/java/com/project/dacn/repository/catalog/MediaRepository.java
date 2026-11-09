@@ -29,6 +29,23 @@ public interface MediaRepository extends JpaRepository<Media, Long> {
     @EntityGraph(attributePaths = {"variant", "variant.product"})
     List<Media> findByVariant_Product_ProductIdIn(Collection<String> productIds);
 
+    /**
+     * All thumbnails an order page can use in one query: media attached to the
+     * ordered variants, to their products, or to sibling variants of those
+     * products.
+     */
+    @Query("""
+            select m from Media m
+            left join fetch m.variant v
+            left join fetch v.product vp
+            left join fetch m.product p
+            where v.variantId in :variantIds
+               or p.productId in :productIds
+               or vp.productId in :productIds
+            """)
+    List<Media> findForOrderItems(@Param("variantIds") Collection<String> variantIds,
+                                  @Param("productIds") Collection<String> productIds);
+
     List<Media> findByVariant_Product_ProductId(String productId);
 
     Page<Media> findByProduct_ProductId(String productId, Pageable pageable);

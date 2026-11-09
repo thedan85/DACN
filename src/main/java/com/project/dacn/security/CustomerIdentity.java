@@ -23,6 +23,12 @@ public class CustomerIdentity {
                 || auth instanceof AnonymousAuthenticationToken) {
             throw new AccessDeniedException("authentication required");
         }
+        if (auth.getPrincipal() instanceof AuthenticatedUser user) {
+            if (user.customerId() == null) {
+                throw new AccessDeniedException("customer profile not found");
+            }
+            return user.customerId();
+        }
         return customerRepository.findByUser_UserId(auth.getName())
                 .map(Customer::getId)
                 .orElseThrow(() -> new AccessDeniedException("customer profile not found"));

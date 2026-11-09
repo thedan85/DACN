@@ -35,10 +35,8 @@ public class PaymentService {
 
     @Transactional(readOnly = true)
     public PaymentUrlResponse createVnpayUrl(Long customerId, String orderId, String ipAddress) {
-        Order order = orderRepository.findByOrderIdAndCustomer_Id(orderId, customerId)
-                .orElseThrow(() -> new ResourceNotFoundException("order not found: " + orderId));
-        Payment payment = paymentRepository.findByOrder_OrderId(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("payment not found: " + orderId));
+        Payment payment = requirePayment(customerId, orderId);
+        Order order = payment.getOrder();
         if (payment.getMethod() == PaymentMethod.COD) {
             throw new IllegalArgumentException("COD order does not need a payment URL");
         }
@@ -56,11 +54,22 @@ public class PaymentService {
 
     @Transactional(readOnly = true)
     public PaymentResponse get(Long customerId, String orderId) {
-        orderRepository.findByOrderIdAndCustomer_Id(orderId, customerId)
-                .orElseThrow(() -> new ResourceNotFoundException("order not found: " + orderId));
-        return paymentRepository.findByOrder_OrderId(orderId)
-                .map(paymentMapper::toPaymentResponse)
-                .orElseThrow(() -> new ResourceNotFoundException("payment not found: " + orderId));
+        return paymentMapper.toPaymentResponse(requirePayment(customerId, orderId));
+    }
+
+    /**
+     * One query on the happy path. Only an empty result pays for the
+     * follow-up order lookup that distinguishes "no such order" from
+     * "order exists but has no payment".
+     */
+    private Payment requirePayment(Long customerId, String orderId) {
+        return paymentRepository.findWithOrderByOrderIdAndCustomerId(orderId, customerId)
+                .orElseGet(() -> {
+                    if (orderRepository.findByOrderIdAndCustomer_Id(orderId, customerId).isEmpty()) {
+                        throw new ResourceNotFoundException("order not found: " + orderId);
+                    }
+                    throw new ResourceNotFoundException("payment not found: " + orderId);
+                });
     }
 
     /** Resolves the order behind a VNPay transaction reference for the return redirect. */

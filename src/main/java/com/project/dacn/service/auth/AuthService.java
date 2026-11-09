@@ -28,6 +28,7 @@ import com.project.dacn.repository.auth.RolePermissionRepository;
 import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
+import com.project.dacn.security.AuthenticatedUser;
 import com.project.dacn.security.GoogleTokenVerifier;
 import com.project.dacn.security.JwtService;
 import io.jsonwebtoken.JwtException;
@@ -341,6 +342,10 @@ public class AuthService {
     public MeResponse me() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
 
+        if (auth != null && auth.getPrincipal() instanceof AuthenticatedUser principal) {
+            return toMeResponse(principal);
+        }
+
         User user = userRepository.findByUserId(auth.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("user not found"));
 
@@ -383,7 +388,33 @@ public class AuthService {
                         : request.address().trim());
         customerRepository.save(customer);
 
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof AuthenticatedUser principal) {
+            return new MeResponse(
+                    principal.userId(),
+                    principal.email(),
+                    customer.getName(),
+                    customer.getPhone(),
+                    customer.getAddress(),
+                    principal.roleCode(),
+                    principal.roleName(),
+                    principal.permissions(),
+                    principal.hasPassword());
+        }
         return me();
+    }
+
+    private MeResponse toMeResponse(AuthenticatedUser principal) {
+        return new MeResponse(
+                principal.userId(),
+                principal.email(),
+                principal.name(),
+                principal.phone(),
+                principal.address(),
+                principal.roleCode(),
+                principal.roleName(),
+                principal.permissions(),
+                principal.hasPassword());
     }
 
     public void changePassword(ChangePasswordRequest request, String currentRefreshToken) {

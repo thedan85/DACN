@@ -12,6 +12,7 @@ import com.project.dacn.dto.request.auth.LoginRequest;
 import com.project.dacn.dto.request.auth.RefreshRequest;
 import com.project.dacn.dto.request.auth.RegisterRequest;
 import com.project.dacn.dto.response.auth.LoginResponse;
+import com.project.dacn.dto.response.auth.MeResponse;
 import com.project.dacn.entity.auth.Permission;
 import com.project.dacn.entity.auth.Role;
 import com.project.dacn.entity.auth.RolePermission;
@@ -23,18 +24,24 @@ import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
 import com.project.dacn.security.GoogleTokenVerifier;
+import com.project.dacn.security.AuthenticatedUser;
 import com.project.dacn.security.JwtService;
 import com.project.dacn.security.RateLimiter;
 import com.project.dacn.security.RefreshTokenCookie;
 import com.project.dacn.service.auth.AuthService;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -97,6 +104,11 @@ class AuthServiceTest {
     private JwtService jwtService;
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @BeforeEach
     void seedRbac() {
@@ -304,6 +316,27 @@ class AuthServiceTest {
                 .andExpect(jsonPath("$.data.email").value("me-employee@test.com"))
                 .andExpect(jsonPath("$.data.roleCode").value("EMPLOYEE"))
                 .andExpect(jsonPath("$.data.permissions", hasItem("product:create")));
+    }
+
+    @Test
+    void meReadsProfileFromAuthenticatedPrincipalWithoutQuery() {
+        AuthenticatedUser principal = new AuthenticatedUser(
+                "USR_ME", "me@example.com", "Me Customer", "0901234567", "addr",
+                "customer", "Customer", List.of("product:read"), true,
+                42L, "hash", true, true);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        principal, null, principal.getAuthorities()));
+        Statistics stats = entityManager.getEntityManagerFactory()
+                .unwrap(SessionFactory.class).getStatistics();
+        stats.clear();
+
+        MeResponse me = authService.me();
+
+        assertThat(me.userId()).isEqualTo("USR_ME");
+        assertThat(me.name()).isEqualTo("Me Customer");
+        assertThat(me.permissions()).containsExactly("product:read");
+        assertThat(stats.getPrepareStatementCount()).isZero();
     }
 
     @Test

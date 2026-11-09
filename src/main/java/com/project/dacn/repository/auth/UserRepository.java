@@ -20,6 +20,39 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @EntityGraph(attributePaths = "role")
     Optional<User> findByGoogleSub(String googleSub);
 
+    /**
+     * One row per permission grant. Scalar projection rather than an entity
+     * graph, so the principal reflects committed rows even when the caller's
+     * persistence context already holds the same user and role.
+     * Columns: userId, email, passwordHash, status, roleCode, roleName,
+     * permission code, customer id, customer name, phone, address.
+     */
+    @Query("""
+            select u.userId, u.email, u.passwordHash, u.status,
+                   r.code, r.name, p.code,
+                   c.id, c.name, c.phone, c.address
+            from User u
+            join u.role r
+            left join r.permissions rp
+            left join rp.permission p
+            left join u.customer c
+            where u.userId = :userId
+            """)
+    List<Object[]> findPrincipalRowsByUserId(@Param("userId") String userId);
+
+    @Query("""
+            select u.userId, u.email, u.passwordHash, u.status,
+                   r.code, r.name, p.code,
+                   c.id, c.name, c.phone, c.address
+            from User u
+            join u.role r
+            left join r.permissions rp
+            left join rp.permission p
+            left join u.customer c
+            where u.email = :email
+            """)
+    List<Object[]> findPrincipalRowsByEmail(@Param("email") String email);
+
     // Native queries bypass @SQLRestriction so deleted rows can answer with a
     // clear "account deleted" error instead of failing on a unique insert.
     @Query(value = "SELECT * FROM users WHERE lower(user_email) = lower(:email)", nativeQuery = true)

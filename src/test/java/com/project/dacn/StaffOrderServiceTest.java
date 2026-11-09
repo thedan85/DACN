@@ -126,8 +126,7 @@ class StaffOrderServiceTest {
                         .variant(variant)
                         .attributeValue(AttributeValue.builder().value("Blue").build())
                         .build()));
-        when(mediaRepository.findByVariant_VariantIdIn(any())).thenReturn(List.of());
-        when(mediaRepository.findByProduct_ProductIdIn(any()))
+        when(mediaRepository.findForOrderItems(any(), any()))
                 .thenReturn(List.of(Media.builder()
                         .product(variant.getProduct())
                         .url("https://img.test/thumb.webp").build()));
@@ -144,6 +143,7 @@ class StaffOrderServiceTest {
         });
         assertThat(response.payment()).isNotNull();
         assertThat(response.payment().status()).isEqualTo(PaymentStatus.CONFIRMED);
+        verify(mediaRepository).findForOrderItems(any(), any());
     }
 
     @Test

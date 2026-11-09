@@ -3,6 +3,8 @@ package com.project.dacn.repository.catalog;
 import com.project.dacn.entity.catalog.Product;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -16,9 +18,18 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     Optional<Product> findByProductId(String productId);
 
     /**
+     * Listing pages map category and thumbnail for every row; join them in
+     * the page query instead of paying two extra lazy round trips per page.
+     */
+    @Override
+    @EntityGraph(attributePaths = {"category", "thumbnail"})
+    Page<Product> findAll(Specification<Product> spec, Pageable pageable);
+
+    /**
      * Matches the {@code uq_products_slug} index on {@code lower(product_slug)}.
      * Soft-deleted products stay hidden by the entity's SQL restriction.
      */
+    @EntityGraph(attributePaths = {"category", "thumbnail"})
     @Query("SELECT p FROM Product p WHERE lower(p.slug) = lower(:slug)")
     Optional<Product> findBySlugIgnoreCase(@Param("slug") String slug);
 
