@@ -35,24 +35,24 @@ public class AdminUserQueryRepository {
     private static final String NAME_EXPRESSION = """
             CASE lower(r.role_code)
                 WHEN 'customer' THEN c.customer_name
-                WHEN 'employee' THEN e.employee_name
                 WHEN 'admin' THEN a.admin_name
+                ELSE e.employee_name
             END
             """;
 
     private static final String PHONE_EXPRESSION = """
             CASE lower(r.role_code)
                 WHEN 'customer' THEN c.customer_phone
-                WHEN 'employee' THEN e.employee_phone
                 WHEN 'admin' THEN a.admin_phone
+                ELSE e.employee_phone
             END
             """;
 
     private static final String ADDRESS_EXPRESSION = """
             CASE lower(r.role_code)
                 WHEN 'customer' THEN c.customer_address
-                WHEN 'employee' THEN e.employee_address
                 WHEN 'admin' THEN a.admin_address
+                ELSE e.employee_address
             END
             """;
 

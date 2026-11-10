@@ -1,10 +1,11 @@
 # DACN — Project Context
 
 > Onboarding/context document for the DACN backend repository.
-> Verified against source and local docs on **2026-11-09**. No application code,
-> migrations, or tests were changed while producing this document. The test
-> status below comes from the existing Surefire XML reports, not a fresh test
-> run. The user confirmed that V29 is applied on the shared Supabase database.
+> Verified against source and local docs on **2026-11-10**. The latest test
+> status comes from a fresh `.\mvnw.cmd clean test` run: **659 tests, 0 failures,
+> 0 errors, 10 skipped**. The user confirmed that V29 is applied on the shared
+> Supabase database; V30 is new in this repository and has not been confirmed
+> applied there.
 
 ---
 
@@ -17,8 +18,9 @@ for an aquarium/fish store. It covers:
   attributes, media.
 - Storefront catalog: search, filtering, sorting, product detail with reviews.
 - Accounts and RBAC: JWT access/refresh tokens, Google sign-in, roles and
-  permissions, customer/staff/admin profiles, and admin user management
-  (list/detail/create/lock-unlock/change-role/soft-delete).
+  permissions, customer/staff/admin profiles, admin user management
+  (list/detail/create/lock-unlock/change-role/soft-delete), and admin
+  role/permission management.
 - Cart and checkout with stock validation, concurrency protection, and a
   fish-compatibility advisory on the cart.
 - Orders: customer history, staff accept/reject, admin completion.
@@ -40,9 +42,10 @@ repository (`/FE-DACN` is gitignored).
 | Main app class | `src/main/java/com/project/dacn/DacnApplication.java` |
 | Server | `127.0.0.1:8080` (intentionally loopback-only; Cloudflare Tunnel is the expected public entry) |
 | Database | PostgreSQL in dev/prod (`ddl-auto: validate`), H2 `MODE=PostgreSQL` + `create-drop` in tests |
-| Migrations | Flyway `V1`–`V29` plus repeatable migrations; **V29 is applied on the shared Supabase DB (2026-11-06 07:14:49, success)** |
+| Migrations | Flyway `V1`–`V30` plus repeatable migrations; **V29 is applied on the shared Supabase DB (2026-11-06 07:14:49, success)**; V30 is new locally |
 | Auth | Implemented: JWT access/refresh, HttpOnly refresh cookie, Google ID token, RBAC, rate limiting |
-| Admin users | Implemented: list, detail, create staff, lock/unlock, change role, soft delete; last-active-admin guard |
+| Admin users | Implemented: list, detail, create staff, lock/unlock, change role (including custom roles), soft delete; last-active-admin guard |
+| Admin roles | Implemented: list permissions, list/detail roles, update role, replace permission set, create role, soft delete; admin guard |
 | Catalog | Complete vertical: CRUD, search, filtering, Redis cache, Cloudinary uploads |
 | Cart → checkout → order | Implemented, including stock decrement, concurrency tests, and a fish-compatibility advisory |
 | VNPay | URL creation, IPN and return handling, idempotent settlement |
@@ -52,7 +55,7 @@ repository (`/FE-DACN` is gitignored).
 | Statistics/reporting | Not implemented |
 | Wishlist | Not implemented |
 | Mail, WebSocket, RabbitMQ | Mail/WebSocket dependencies are unused placeholders; RabbitMQ is not in `pom.xml` at all |
-| Tests | Latest local Surefire reports: **609 tests, 0 failures, 10 skipped** (see §12) |
+| Tests | Latest fresh local run: **659 tests, 0 failures, 0 errors, 10 skipped** (see §12) |
 
 ---
 
@@ -276,7 +279,8 @@ Pagination uses Spring conventions:
 | Reviews | `/api/v1/variants/{variantId}/reviews`, `/api/v1/reviews/{reviewId}`, `/api/v1/orders/{orderId}/reviews`, `/api/v1/staff/orders/{orderId}/reviews` | verified-purchase rule |
 | Staff orders | `/api/v1/staff/orders`, `/api/v1/staff/orders/{orderId}/status` | `order:read` / `order:update` |
 | Admin orders | `/api/v1/admin/orders/{orderId}/complete` | `order:complete` |
-| Admin users | `/api/v1/admin/users`, `/api/v1/admin/users/{userId}`, `.../{userId}/status`, `.../{userId}/role` | list/detail (`user:read`), create (`user:create`), lock/unlock + change role (`user:update`), soft delete (`user:delete`) |
+| Admin users | `/api/v1/admin/users`, `/api/v1/admin/users/{userId}`, `.../{userId}/status`, `.../{userId}/role` | list/detail (`user:read`), create (`user:create`), lock/unlock + change role (`user:update`), soft delete (`user:delete`); role changes accept any existing, non-deleted role except `customer` |
+| Admin roles | `/api/v1/admin/permissions`, `/api/v1/admin/roles`, `/api/v1/admin/roles/{roleId}`, `.../{roleId}/permissions` | read (`role:read`), update (`role:update`), create (`role:create`), delete (`role:delete`); `PUT` replaces the whole permission set |
 | Webhooks | `/api/v1/webhooks/vnpay/{ipn,return}`, `/api/v1/webhooks/momo` | public but signature-verified |
 
 ### Product create/update shape
@@ -356,9 +360,16 @@ only see `ACTIVE` products and non-deleted variants.
 - URL rules and `@PreAuthorize` both use constants from
   `security/Permissions` (e.g. `product:create`, `order:read`, `user:read`).
 - Admin user endpoints use `user:read`, `user:create`, `user:update`, and
-  `user:delete` at both URL and method level. Lock/unlock and role changes
-  revoke the target's refresh tokens; the service blocks self-lock,
-  self-demote, self-delete, and removing the last active admin.
+  `user:delete` at both URL and method level. Locking and soft-deleting revoke
+  the target's refresh tokens; the service blocks self-lock, self-demote,
+  self-delete, and removing the last active admin. Role changes accept any
+  existing, non-deleted role except `customer`; custom roles use the Employee
+  profile.
+- Admin role endpoints use `role:read`, `role:create`, `role:update`, and
+  `role:delete`. `GET /api/v1/admin/permissions` and `GET /api/v1/admin/roles`
+  are read-only; `PUT /roles/{roleId}/permissions` replaces the whole set.
+  The admin role must keep every `user:*` and `role:*` permission, and system
+  or assigned roles cannot be deleted.
 - Roles seeded in real migrations are lowercase: `admin`, `employee`,
   `customer`. Code compares role codes case-insensitively.
 - Customers are resolved from the authenticated principal via
@@ -558,6 +569,7 @@ Migrations live in `src/main/resources/db/migration/`:
 | `V26` | Customer order composite index (manual `CONCURRENTLY` guidance in `migration/README.md`) |
 | `V28` | Lookup indexes |
 | `V29` | Admin user management: admin phone/address, nullable employee phone, `user:*` permissions |
+| `V30` | RBAC admin role API: four `role:*` permissions granted to the admin role |
 
 Also:
 
@@ -574,6 +586,10 @@ Also:
 for the `admin` role. The migration is idempotent (`ADD COLUMN IF NOT EXISTS`,
 `DROP NOT NULL`, `ON CONFLICT DO NOTHING`).
 
+`V30` adds `role:read`, `role:create`, `role:update`, and `role:delete` and
+grants them to the admin role. It is part of the RBAC admin API work and has not
+been confirmed applied on the shared database.
+
 Because `ddl-auto: validate` is used, the app will fail to start if migrations
 have not created the expected schema. Flyway is disabled in the base profile;
 use `dev` or `prod`.
@@ -582,17 +598,17 @@ use `dev` or `prod`.
 
 ## 12. Tests and current status
 
-- Test sources: `src/test/java/com/project/dacn/` (74 test classes; 75 Java
-  files including the `TestProtectedController` fixture).
+- Test sources: `src/test/java/com/project/dacn/` (78 Java files; 77 test
+  classes produced Surefire XML reports).
 - Test stack: JUnit 5, Mockito, Spring Test, MockMvc, H2, Testcontainers.
 - CI: `.github/workflows/backend-tests.yml` runs `./mvnw -B test` on pushes to
   `main`/`dev` and on pull requests, and fails if the PostgreSQL/Testcontainers
   reports are missing or skipped.
 
-### Latest recorded run (from existing `target/surefire-reports` XML)
+### Latest full run (`.\mvnw.cmd clean test`, 2026-11-10)
 
 ```text
-files=74  tests=609  failures=0  errors=0  skipped=10
+files=77  tests=659  failures=0  errors=0  skipped=10
 ```
 
 The `.txt` summaries show `0` tests for `CartCheckoutTest` and
@@ -606,14 +622,14 @@ The 10 skipped tests are the container/Redis-dependent suites
 There is **no failing test** in the latest reports. The old
 `PaymentServiceTest.createUrlSignsOrderIdAndWholeVndAmount` mismatch is fixed:
 the test is now `createUrlSignsPaymentIdAndWholeVndAmount` and expects
-`vnp_TxnRef=PAY_1`. The newest suite is
-`AdminUserMutationControllerTest` (17 tests); `AdminUserControllerTest` now has
-11 tests.
+`vnp_TxnRef=PAY_1`. The newest suites are
+`AdminUserMutationControllerTest` (28 tests), `AdminUserControllerTest` (12),
+`AdminRoleMutationControllerTest` (19), `AdminRoleLifecycleControllerTest`
+(11), and `AdminRoleControllerTest` (8).
 
-The reports were produced on a JDK `26.0.1` runtime even though the POM targets
-Java `21`; that is the runtime used for the last local run, not a project
-requirement change. The suite was **not re-run while updating this document**;
-treat the numbers as the last recorded state.
+The latest full run was executed while updating this document on 2026-11-10
+with a JDK `26.0.1` runtime even though the POM targets Java `21`; that is the
+local runtime, not a project requirement change.
 
 ### Testing gotchas
 
@@ -678,8 +694,11 @@ back to code defaults or hardcoded handler messages.
 
 ## 14. Known gaps / sensible next steps
 
-V29 and admin user management are complete. Remaining gaps, ordered roughly by
-impact:
+V29, V30, admin user management, and the RBAC admin role API are complete.
+Step 7 added custom-role assignment: `POST` and `PATCH` on the admin user API
+accept any existing, non-deleted role except `customer`, custom roles use the
+Employee profile, and their permissions apply on the next request with the same
+token. Remaining gaps, ordered roughly by impact:
 
 1. **Implement notifications.** Entity, repository, DTOs and constants exist;
    no `NotificationService`/`NotificationController`.
@@ -726,6 +745,9 @@ impact:
 | `docs/redis-cache-deployment.md` | Cache TTLs, eviction, generation counters, rate limiting, Cloudflare notes |
 | `docs/seed-data.md` | Dev/Swagger demo accounts and reset SQL |
 | `docs/vnpay-payment-test.md` | VNPay tunnel/manual test guide — **contains secrets; stale return behavior** |
+| `docs/admin-users-api.md` | Frontend admin user API reference; role changes now accept custom roles |
+| `docs/admin-roles-api.md` | Frontend admin role/permission API reference |
+| `docs/rbac-admin-step0-analysis.md` … `docs/rbac-admin-step7-result.md` | RBAC admin API design, per-step evidence, and the Step 7 custom-role assignment report |
 | `docs/admin-users-step0-analysis.md` | Historical step-0 admin user API design (written when V28 was the latest migration) |
 | `docs/step_1_result.md` | Historical JWT filter lock fix, permissions, V29 text, and the then-failing payment test |
 | `docs/step_2_result.md` | Historical admin user list/detail implementation and test evidence; superseded by the mutation endpoints |
@@ -758,8 +780,9 @@ impact:
 3. Read `ProductService` + `ProductController` + `CatalogCache`.
 4. Read `CartService.checkout`, `CompatibilityService`, `OrderService`,
    `PaymentService`, `PaymentSettlementService`.
-5. Read `AdminUserController` + `AdminUserService` for the newest auth slice.
-6. Skim `BaseEntity` and the 23 entities, then `V1`/`V12`/`V29` migrations;
-   V29 is already applied on the shared DB.
+5. Read `AdminUserController` + `AdminUserService`, then
+   `AdminRoleController` + `AdminRoleService` for the newest auth slice.
+6. Skim `BaseEntity` and the 23 entities, then `V1`/`V12`/`V29`/`V30`
+   migrations; V29 is applied on the shared DB, V30 is new locally.
 7. Run `.\mvnw.cmd clean test` and confirm the current suite state before
    changing anything.

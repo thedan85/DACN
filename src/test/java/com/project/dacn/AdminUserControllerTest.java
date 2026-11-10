@@ -339,12 +339,51 @@ class AdminUserControllerTest {
                 .andExpect(jsonPath("$.code").value(404));
     }
 
+    @Test
+    void listAndDetail_customRoleUserShowEmployeeProfile() throws Exception {
+        Role supportRole = customRole("SUPPORT", "Support");
+        User supportUser = user("support@test.com", supportRole, UserStatus.ACTIVE);
+        employeeProfile(supportUser, "Support Staff", "0900000008", "Support Desk");
+        entityManager.flush();
+
+        String token = login("admin@test.com");
+
+        mockMvc.perform(get("/api/v1/admin/users")
+                        .param("keyword", "Support Staff")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].email").value("support@test.com"))
+                .andExpect(jsonPath("$.data.content[0].name").value("Support Staff"))
+                .andExpect(jsonPath("$.data.content[0].phone").value("0900000008"))
+                .andExpect(jsonPath("$.data.content[0].roleCode").value("support"));
+
+        mockMvc.perform(get("/api/v1/admin/users/" + supportUser.getUserId())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("Support Staff"))
+                .andExpect(jsonPath("$.data.phone").value("0900000008"))
+                .andExpect(jsonPath("$.data.address").value("Support Desk"))
+                .andExpect(jsonPath("$.data.roleCode").value("support"))
+                .andExpect(jsonPath("$.data.roleName").value("Support"));
+    }
+
     private Role role(String code, String name) {
         return roleRepository.findByCodeIgnoreCase(code).orElseGet(() -> roleRepository.save(
                 Role.builder()
                         .code(code)
                         .name(name)
                         .system(true)
+                        .deleted(false)
+                        .build()));
+    }
+
+    private Role customRole(String code, String name) {
+        return roleRepository.findByCodeIgnoreCase(code).orElseGet(() -> roleRepository.save(
+                Role.builder()
+                        .code(code)
+                        .name(name)
+                        .system(false)
                         .deleted(false)
                         .build()));
     }
