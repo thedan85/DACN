@@ -44,7 +44,7 @@ Error responses use the same envelope with `data: null`; the HTTP status matches
 - **The admin role must keep every `user:*` and `role:*` permission.** A `PUT` that would remove any permission whose resource is `user` or `role` returns `409`.
 - **System roles cannot be deleted.** Any role with `system: true` returns `409` on delete.
 - **A role assigned to any user cannot be deleted.** This includes users whose status is `DELETED`; the check is not limited to active users.
-- **Custom roles created through `POST /roles` cannot yet be assigned to users through the admin user API.** The admin user role-change endpoint currently accepts only `employee` and `admin`. Custom-role assignment is a separate, pending change.
+- **Custom roles can be assigned to users through the admin user API.** `PATCH /api/v1/admin/users/{userId}/role` accepts any existing, non-deleted role code except `customer`. Assigned custom roles use the Employee profile, and their permissions apply on the next request with the same access token.
 
 Other conventions:
 
@@ -672,6 +672,6 @@ Real generic examples:
 }
 ```
 
-## Custom-role assignment status
+## Custom-role assignment
 
-Custom roles created with `POST /api/v1/admin/roles` exist and can be read and edited, but they **cannot yet be assigned to users through the admin user API**. `PATCH /api/v1/admin/users/{userId}/role` currently accepts only `employee` and `admin`. Custom-role assignment is pending a separate change and is not part of this API surface.
+Custom roles created with `POST /api/v1/admin/roles` can be assigned to users through `PATCH /api/v1/admin/users/{userId}/role`. The admin user API accepts any existing, non-deleted role code except `customer`; unknown or soft-deleted codes return `409`. Custom roles use the Employee profile, and their permission set applies on the next request made with the same access token.

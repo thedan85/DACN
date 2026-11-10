@@ -124,7 +124,7 @@ public class AdminUserService {
         }
 
         String roleCode = normalize(request.roleCode());
-        if (!roleCode.equals("employee") && !roleCode.equals("admin")) {
+        if (roleCode.equals("customer")) {
             throw new UserRuleViolationException("error.user.role.invalid");
         }
 
@@ -202,7 +202,7 @@ public class AdminUserService {
         String currentRole = roleCodeOf(target);
         String requestedRole = normalize(request.roleCode());
 
-        if (!requestedRole.equals("employee") && !requestedRole.equals("admin")) {
+        if (requestedRole.equals("customer")) {
             throw new UserRuleViolationException("error.user.role.invalid");
         }
         if (currentRole.equals("customer")) {
@@ -212,7 +212,7 @@ public class AdminUserService {
             return get(userId);
         }
 
-        boolean demote = currentRole.equals("admin") && requestedRole.equals("employee");
+        boolean demote = currentRole.equals("admin") && !requestedRole.equals("admin");
         String actor = currentActorId();
         if (demote && Objects.equals(actor, userId)) {
             throw new UserRuleViolationException("error.user.self.demote");
@@ -316,15 +316,14 @@ public class AdminUserService {
                     .map(customer -> new Profile(
                             customer.getName(), customer.getPhone(), customer.getAddress()))
                     .orElse(Profile.EMPTY);
-            case "employee" -> employeeRepository.findByUser_UserId(user.getUserId())
-                    .map(employee -> new Profile(
-                            employee.getName(), employee.getPhone(), employee.getAddress()))
-                    .orElse(Profile.EMPTY);
             case "admin" -> adminRepository.findByUser_UserId(user.getUserId())
                     .map(admin -> new Profile(
                             admin.getName(), admin.getPhone(), admin.getAddress()))
                     .orElse(Profile.EMPTY);
-            default -> Profile.EMPTY;
+            default -> employeeRepository.findByUser_UserId(user.getUserId())
+                    .map(employee -> new Profile(
+                            employee.getName(), employee.getPhone(), employee.getAddress()))
+                    .orElse(Profile.EMPTY);
         };
     }
 

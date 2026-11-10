@@ -32,7 +32,7 @@ Error responses use the same envelope with `data: null` and an HTTP status that 
 
 ## Conventions
 
-- `roleCode` is returned in lowercase: `customer`, `employee`, or `admin`.
+- `roleCode` is returned in lowercase: `customer`, `employee`, `admin`, or a custom role code.
 - `status` is returned as `ACTIVE` or `LOCKED`. Soft-deleted users are never returned by these endpoints.
 - `page` is zero-based.
 - `lastLogin` is nullable.
@@ -198,7 +198,7 @@ Real `404` example:
 
 Required permission: `user:create`
 
-Creates only an `employee` or `admin`. The email is trimmed and lowercased before the duplicate check. The duplicate check includes soft-deleted users. The matching employee or admin profile is created in the same transaction, and the password is stored as a BCrypt hash.
+Creates a user for any existing, non-deleted role except `customer`. The role code is trimmed, matched ignoring case, and returned in lowercase. A `customer` role is rejected. The `admin` role creates an Admin profile; every other staff role, including a custom role, creates an Employee profile. The email is trimmed and lowercased before the duplicate check. The duplicate check includes soft-deleted users. The profile is created in the same transaction, and the password is stored as a BCrypt hash.
 
 ### Request body
 
@@ -209,7 +209,7 @@ Creates only an `employee` or `admin`. The email is trimmed and lowercased befor
 | `name` | Yes | Not blank, maximum 255 characters |
 | `phone` | Yes | 10–15 digits, optional leading `+` |
 | `address` | No | Maximum 255 characters |
-| `roleCode` | Yes | `employee` or `admin` only |
+| `roleCode` | Yes | Any existing, non-deleted role code except `customer`. Case-insensitive. |
 
 ```json
 {
@@ -253,7 +253,7 @@ The password above is a test-only fixture, not a real credential.
 | `400` | Bean-validation failure, including a blank/invalid field |
 | `401` | Missing, invalid, expired, or locked token |
 | `403` | Authenticated but missing `user:create` |
-| `409` | Duplicate email, invalid role, or missing staff phone at the service layer |
+| `409` | Duplicate email, unknown/soft-deleted role, `customer` role, or missing staff phone at the service layer |
 
 Real `400` validation example:
 
@@ -267,7 +267,7 @@ Real `409` duplicate-email example (also used for a soft-deleted email):
 {"code":409,"message":"Email already exists","data":null}
 ```
 
-Real `409` invalid-role example:
+Real `409` unknown-role example (a soft-deleted role returns the same response):
 
 ```json
 {"code":409,"message":"Invalid role; only employee and admin are supported","data":null}
@@ -335,7 +335,7 @@ Real `409` self-lock example:
 
 Required permission: `user:update`
 
-Accepts only `employee` or `admin`. The value is trimmed and case-insensitive. A customer target cannot be changed. Changing to the same role is a no-op that returns the current detail. Changing role creates the missing target profile from the current profile's name/phone/address; the old profile is not deleted.
+Accepts any existing, non-deleted role code except `customer`. The value is trimmed and matched ignoring case. A customer target cannot be changed. `admin` targets use the Admin profile; every other staff role, including a custom role, uses the Employee profile. Changing to the same role is a no-op that returns the current detail. Changing role creates the missing target profile from the current profile's name/phone/address; the old profile is not deleted. A custom role's permissions are visible on the next request with the same access token.
 
 ### Request body
 
@@ -373,9 +373,9 @@ Accepts only `employee` or `admin`. The value is trimmed and case-insensitive. A
 | `401` | Missing, invalid, expired, or locked token |
 | `403` | Authenticated but missing `user:update` |
 | `404` | User does not exist or is soft-deleted |
-| `409` | Invalid role, customer target, self-demote, or last-active-admin rule |
+| `409` | Unknown or soft-deleted role, `customer` requested role, customer target, self-demote, or last-active-admin rule |
 
-Real `409` invalid-role example:
+Real `409` unknown-role example (a soft-deleted role or a requested `customer` role returns the same response):
 
 ```json
 {"code":409,"message":"Invalid role; only employee and admin are supported","data":null}
@@ -434,11 +434,11 @@ Real `409` self-delete example:
 | Message key | English message | Rule |
 |---|---|---|
 | `error.email.exists` | Email already exists | Create email duplicates an existing row, including a soft-deleted row; comparison is case-insensitive |
-| `error.user.role.invalid` | Invalid role; only employee and admin are supported | Create role or PATCH role is not `employee`/`admin` |
+| `error.user.role.invalid` | Invalid role; only employee and admin are supported | Create or PATCH requests an unknown or soft-deleted role, or a `customer` role where it is not allowed |
 | `error.user.customer.role` | Customer role cannot be changed | PATCH role targets a customer |
 | `error.user.status.invalid` | Invalid status; only ACTIVE and LOCKED are supported | PATCH status is invalid, blank at the service layer, or `DELETED` |
 | `error.user.self.lock` | You cannot lock your own account | Admin locks their own account |
-| `error.user.self.demote` | You cannot demote your own administrator account | Admin changes their own role to employee |
+| `error.user.self.demote` | You cannot demote your own administrator account | Admin changes their own role to any non-admin role |
 | `error.user.self.delete` | You cannot delete your own account | Admin deletes their own account |
 | `error.user.last.admin` | Cannot modify the last active administrator | Lock, demote, or delete would leave zero active admins |
 | `error.user.profile.phone` | A phone number is required for a staff profile | Service-level defensive check when the phone is blank after trimming |

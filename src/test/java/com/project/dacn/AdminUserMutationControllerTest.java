@@ -299,6 +299,165 @@ class AdminUserMutationControllerTest {
     }
 
     @Test
+    void createCustomRole_201_createsEmployeeProfile() throws Exception {
+        customRole("SUPPORT", "Support");
+        String token = login("admin@test.com").accessToken();
+
+        mockMvc.perform(post("/api/v1/admin/users")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody("new-support@test.com", "support")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.code").value(201))
+                .andExpect(jsonPath("$.data.roleCode").value("support"))
+                .andExpect(jsonPath("$.data.roleName").value("Support"))
+                .andExpect(jsonPath("$.data.name").value("New Staff"))
+                .andExpect(jsonPath("$.data.phone").value("0912345678"))
+                .andExpect(jsonPath("$.data.address").value("New Address"));
+
+        User created = userRepository.findByEmail("new-support@test.com").orElseThrow();
+        Employee profile = employeeRepository.findByUser_UserId(created.getUserId()).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(profile.getName()).isEqualTo("New Staff");
+        org.assertj.core.api.Assertions.assertThat(profile.getPhone()).isEqualTo("0912345678");
+        org.assertj.core.api.Assertions.assertThat(
+                adminRepository.findByUser_UserId(created.getUserId())).isEmpty();
+    }
+
+    @Test
+    void role_employeeToCustomRole_sameAccessTokenSeesCustomPermissions() throws Exception {
+        Role supportRole = customRole("SUPPORT", "Support");
+        grant(supportRole, permission("product:create", "Create Product", "product", "create"));
+        entityManager.flush();
+
+        Session employeeSession = login("employee@test.com");
+        String adminToken = login("admin@test.com").accessToken();
+
+        mockMvc.perform(patch("/api/v1/admin/users/" + employeeUser.getUserId() + "/role")
+                        .header("Authorization", bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"roleCode\":\"SUPPORT\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.roleCode").value("support"))
+                .andExpect(jsonPath("$.data.roleName").value("Support"))
+                .andExpect(jsonPath("$.data.name").value("Employee User"))
+                .andExpect(jsonPath("$.data.phone").value("0900000003"))
+                .andExpect(jsonPath("$.data.address").value("Employee Desk"))
+                .andExpect(jsonPath("$.data.permissions",
+                        containsInAnyOrder("product:create")));
+
+        org.assertj.core.api.Assertions.assertThat(
+                employeeRepository.findByUser_UserId(employeeUser.getUserId())).isPresent();
+        org.assertj.core.api.Assertions.assertThat(
+                adminRepository.findByUser_UserId(employeeUser.getUserId())).isEmpty();
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", bearer(employeeSession.accessToken())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.roleCode").value("SUPPORT"))
+                .andExpect(jsonPath("$.data.roleName").value("Support"))
+                .andExpect(jsonPath("$.data.permissions",
+                        containsInAnyOrder("product:create")));
+    }
+
+    @Test
+    void role_customRoleToAdmin_200_createsAdminProfile() throws Exception {
+        Role supportRole = customRole("SUPPORT", "Support");
+        User customUser = user("custom-role@test.com", supportRole, UserStatus.ACTIVE);
+        employeeProfile(customUser, "Custom Staff", "0900000006", "Custom Desk");
+        entityManager.flush();
+
+        String token = login("admin@test.com").accessToken();
+
+        mockMvc.perform(patch("/api/v1/admin/users/" + customUser.getUserId() + "/role")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"roleCode\":\"admin\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.roleCode").value("admin"))
+                .andExpect(jsonPath("$.data.roleName").value("Administrator"))
+                .andExpect(jsonPath("$.data.name").value("Custom Staff"))
+                .andExpect(jsonPath("$.data.phone").value("0900000006"))
+                .andExpect(jsonPath("$.data.address").value("Custom Desk"))
+                .andExpect(jsonPath("$.data.permissions", containsInAnyOrder(
+                        "user:read", "user:create", "user:update", "user:delete")));
+
+        Admin profile = adminRepository.findByUser_UserId(customUser.getUserId()).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(profile.getName()).isEqualTo("Custom Staff");
+        org.assertj.core.api.Assertions.assertThat(profile.getPhone()).isEqualTo("0900000006");
+        org.assertj.core.api.Assertions.assertThat(profile.getAddress()).isEqualTo("Custom Desk");
+        org.assertj.core.api.Assertions.assertThat(
+                employeeRepository.findByUser_UserId(customUser.getUserId())).isPresent();
+    }
+
+    @Test
+    void create_unknownRole_409() throws Exception {
+        String token = login("admin@test.com").accessToken();
+
+        mockMvc.perform(post("/api/v1/admin/users")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createBody("unknown-role@test.com", "missing_role")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value(
+                        "Invalid role; only employee and admin are supported"));
+    }
+
+    @Test
+    void role_softDeletedRole_409() throws Exception {
+        deletedRole("LEGACY", "Legacy");
+        String token = login("admin@test.com").accessToken();
+
+        mockMvc.perform(patch("/api/v1/admin/users/" + employeeUser.getUserId() + "/role")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"roleCode\":\"legacy\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value(
+                        "Invalid role; only employee and admin are supported"));
+    }
+
+    @Test
+    void selfDemoteToCustomRole_409() throws Exception {
+        customRole("SUPPORT", "Support");
+        String token = login("admin@test.com").accessToken();
+
+        mockMvc.perform(patch("/api/v1/admin/users/" + adminActor.getUserId() + "/role")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"roleCode\":\"support\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value(
+                        "You cannot demote your own administrator account"));
+    }
+
+    @Test
+    void lastActiveAdmin_cannotBeDemotedToCustomRole_409() throws Exception {
+        customRole("SUPPORT", "Support");
+        String adminToken = login("admin@test.com").accessToken();
+        String employeeToken = login("employee@test.com").accessToken();
+
+        mockMvc.perform(patch("/api/v1/admin/users/" + secondAdmin.getUserId() + "/status")
+                        .header("Authorization", bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"LOCKED\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/api/v1/admin/users/" + adminActor.getUserId() + "/role")
+                        .header("Authorization", bearer(employeeToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"roleCode\":\"support\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value(
+                        "Cannot modify the last active administrator"));
+    }
+
+    @Test
     void create_duplicateEmailDifferentCase_409() throws Exception {
         String token = login("admin@test.com").accessToken();
 
@@ -666,6 +825,25 @@ class AdminUserMutationControllerTest {
                         .system(true)
                         .deleted(false)
                         .build()));
+    }
+
+    private Role customRole(String code, String name) {
+        return roleRepository.findByCodeIgnoreCase(code).orElseGet(() -> roleRepository.save(
+                Role.builder()
+                        .code(code)
+                        .name(name)
+                        .system(false)
+                        .deleted(false)
+                        .build()));
+    }
+
+    private Role deletedRole(String code, String name) {
+        return roleRepository.save(Role.builder()
+                .code(code)
+                .name(name)
+                .system(false)
+                .deleted(true)
+                .build());
     }
 
     private Permission permission(String code, String name, String resource, String action) {
