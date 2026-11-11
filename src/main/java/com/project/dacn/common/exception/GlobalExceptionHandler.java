@@ -113,6 +113,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(502, "UPLOAD_FAILED: " + ex.getMessage(), null));
     }
 
+    @ExceptionHandler(com.project.dacn.integration.shipping.ShippingException.class)
+    public ResponseEntity<ApiResponse<?>> handleShipping(
+            com.project.dacn.integration.shipping.ShippingException ex) {
+        return ResponseEntity.status(502).body(ApiResponse.of(502, ex.getMessage(), null));
+    }
+
     @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
     public ResponseEntity<ApiResponse<?>> handleOversize(
             org.springframework.web.multipart.MaxUploadSizeExceededException ex) {

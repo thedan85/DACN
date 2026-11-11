@@ -5,6 +5,7 @@ import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.controller.order.StaffOrderController;
 import com.project.dacn.dto.request.order.StaffOrderStatusUpdateRequest;
 import com.project.dacn.dto.response.order.OrderResponse;
+import com.project.dacn.integration.shipping.ShippingException;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.security.CustomUserDetailsService;
 import com.project.dacn.security.JwtService;
@@ -25,6 +26,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -91,6 +93,22 @@ class StaffOrderControllerTest {
 
         verify(service).updateStatusByStaff("ORD_1",
                 new StaffOrderStatusUpdateRequest(OrderStatus.CONFIRMED));
+    }
+
+    @Test
+    void shipReturnsUpdatedOrder() throws Exception {
+        when(service.shipOrder("ORD_1", null)).thenReturn(order(OrderStatus.CONFIRMED));
+        mockMvc.perform(post("/api/v1/staff/orders/ORD_1/ship"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderId").value("ORD_1"));
+    }
+
+    @Test
+    void shipReturns502WhenGhnFails() throws Exception {
+        when(service.shipOrder("ORD_1", null)).thenThrow(new ShippingException("GHN: bad ward"));
+        mockMvc.perform(post("/api/v1/staff/orders/ORD_1/ship"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.message").value("GHN: bad ward"));
     }
 
     private OrderResponse order(OrderStatus status) {

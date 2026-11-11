@@ -3,6 +3,7 @@ package com.project.dacn;
 import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.response.order.OrderResponse;
+import com.project.dacn.integration.shipping.ghn.GhnClient;
 import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.catalog.MediaRepository;
@@ -42,6 +43,7 @@ class CustomerOrderServiceTest {
     @Mock VariantAttributeValueRepository variantAttributeValueRepository;
     @Mock MediaRepository mediaRepository;
     @Mock PaymentRepository paymentRepository;
+    @Mock GhnClient ghnClient;
     @InjectMocks OrderService service;
 
     @Test

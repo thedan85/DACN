@@ -14,6 +14,7 @@ import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.order.OrderItem;
 import com.project.dacn.entity.payment.Payment;
+import com.project.dacn.integration.shipping.ghn.GhnClient;
 import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.auth.RoleRepository;
@@ -38,6 +39,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.math.BigDecimal;
 
@@ -47,6 +49,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("test")
 @Import({OrderService.class, StaffOrderPersistenceTest.MapperConfig.class})
 class StaffOrderPersistenceTest {
+
+    @MockitoBean
+    GhnClient ghnClient;
 
     @TestConfiguration
     static class MapperConfig {

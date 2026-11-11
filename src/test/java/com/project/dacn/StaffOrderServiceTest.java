@@ -17,6 +17,7 @@ import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.order.OrderItem;
 import com.project.dacn.entity.payment.Payment;
+import com.project.dacn.integration.shipping.ghn.GhnClient;
 import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.catalog.MediaRepository;
@@ -73,6 +74,9 @@ class StaffOrderServiceTest {
     @Mock
     MediaRepository mediaRepository;
 
+    @Mock
+    GhnClient ghnClient;
+
     OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
 
     PaymentMapper paymentMapper = Mappers.getMapper(PaymentMapper.class);
@@ -83,7 +87,7 @@ class StaffOrderServiceTest {
     void setUp() {
         service = new OrderService(orderRepository, orderItemRepository, orderMapper,
                 paymentMapper, variantRepository, variantAttributeValueRepository,
-                mediaRepository, paymentRepository);
+                mediaRepository, paymentRepository, ghnClient);
     }
 
     @Test

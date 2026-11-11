@@ -3,6 +3,7 @@ package com.project.dacn.controller.order;
 import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.common.response.ApiResponse;
 import com.project.dacn.common.response.PageResponse;
+import com.project.dacn.dto.request.order.ShipOrderRequest;
 import com.project.dacn.dto.request.order.StaffOrderStatusUpdateRequest;
 import com.project.dacn.dto.response.order.OrderResponse;
 import com.project.dacn.security.Permissions;
@@ -16,6 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -48,5 +50,13 @@ public class StaffOrderController {
             @PathVariable String orderId,
             @Valid @RequestBody StaffOrderStatusUpdateRequest request) {
         return ApiResponse.ok(service.updateStatusByStaff(orderId, request));
+    }
+
+    @PostMapping("/{orderId}/ship")
+    @PreAuthorize("hasAuthority('" + Permissions.ORDER_UPDATE + "')")
+    public ApiResponse<OrderResponse> ship(
+            @PathVariable String orderId,
+            @RequestBody(required = false) ShipOrderRequest request) {
+        return ApiResponse.ok(service.shipOrder(orderId, request));
     }
 }
