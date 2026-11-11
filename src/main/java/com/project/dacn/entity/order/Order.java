@@ -3,6 +3,7 @@ package com.project.dacn.entity.order;
 import com.project.dacn.entity.BaseEntity;
 import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.entity.identity.Customer;
+import com.project.dacn.entity.payment.Payment;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,6 +12,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -53,6 +55,10 @@ public class Order extends BaseEntity {
 
     @Column(name = "order_phone", nullable = false, length = 20)
     private String phone;
+
+    /** Inverse side of {@link Payment#getOrder()}; read-only. */
+    @OneToOne(mappedBy = "order", fetch = FetchType.LAZY)
+    private Payment payment;
 
     @Override
     protected String getBusinessId() {

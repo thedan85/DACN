@@ -6,6 +6,7 @@ public record LoginResponse(
         String accessToken,
         @JsonIgnore String refreshToken,
         long expiresIn,
-        String tokenType
+        String tokenType,
+        MeResponse user
 ) {
 }
