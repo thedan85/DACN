@@ -8,6 +8,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -17,6 +18,8 @@ import org.hibernate.annotations.NaturalId;
 import org.hibernate.annotations.SQLRestriction;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
@@ -49,6 +52,11 @@ public class Variant extends BaseEntity {
     @Column(name = "is_deleted", nullable = false)
     @lombok.Builder.Default
     private Boolean deleted = false;
+
+    /** Inverse side of {@link VariantAttributeValue#getVariant()}; read-only. */
+    @OneToMany(mappedBy = "variant", fetch = FetchType.LAZY)
+    @lombok.Builder.Default
+    private List<VariantAttributeValue> attributeValues = new ArrayList<>();
 
     @Override
     protected String getBusinessId() {

@@ -20,12 +20,12 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     Optional<Order> findByOrderIdAndCustomer_Id(String orderId, Long customerId);
 
-    @EntityGraph(attributePaths = "customer")
+    @EntityGraph(attributePaths = {"customer", "payment"})
     Optional<Order> findWithCustomerByOrderIdAndCustomer_Id(String orderId, Long customerId);
 
     boolean existsByOrderIdAndCustomer_Id(String orderId, Long customerId);
 
-    @EntityGraph(attributePaths = "customer")
+    @EntityGraph(attributePaths = {"customer", "payment"})
     @Query("""
             select o from Order o
             where o.customer.id = :customerId
@@ -41,6 +41,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                                   @Param("createdAfter") Instant createdAfter,
                                   Pageable pageable);
 
+    @EntityGraph(attributePaths = {"customer", "payment"})
     @Query("""
             select o from Order o
             where (:status is null or o.status = :status)

@@ -164,6 +164,32 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginReturnsTheAccountProfileWithTheTokens() {
+        authService.register(registerRequest("profile-login@test.com"));
+
+        LoginResponse login = authService.login(
+                new LoginRequest("profile-login@test.com", "password123"), null, null);
+
+        assertThat(login.user().email()).isEqualTo("profile-login@test.com");
+        assertThat(login.user().name()).isEqualTo("Test User");
+        assertThat(login.user().roleCode()).isEqualTo("CUSTOMER");
+        assertThat(login.user().permissions()).isEmpty();
+    }
+
+    @Test
+    void refreshReturnsTheAccountProfileWithTheTokens() {
+        authService.register(registerRequest("profile-refresh@test.com"));
+        LoginResponse login = authService.login(
+                new LoginRequest("profile-refresh@test.com", "password123"), null, null);
+
+        var refreshed = authService.refresh(new RefreshRequest(login.refreshToken()));
+
+        assertThat(refreshed.user().userId()).isEqualTo(login.user().userId());
+        assertThat(refreshed.user().roleCode()).isEqualTo("CUSTOMER");
+        assertThat(refreshed.user().permissions()).isEmpty();
+    }
+
+    @Test
     void refresh_rotation_concurrentTabWithinGraceReusesSuccessor() {
         authService.register(registerRequest("rotate@test.com"));
         LoginResponse login = authService.login(

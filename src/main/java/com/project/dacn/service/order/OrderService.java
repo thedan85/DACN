@@ -10,12 +10,12 @@ import com.project.dacn.dto.response.order.OrderItemResponse;
 import com.project.dacn.dto.response.order.OrderResponse;
 import com.project.dacn.dto.response.payment.PaymentResponse;
 import com.project.dacn.entity.catalog.Media;
+import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.order.OrderItem;
 import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.catalog.MediaRepository;
-import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
@@ -28,8 +28,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -45,7 +47,6 @@ public class OrderService {
     private final OrderMapper orderMapper;
     private final PaymentMapper paymentMapper;
     private final VariantRepository variantRepository;
-    private final VariantAttributeValueRepository variantAttributeValueRepository;
     private final MediaRepository mediaRepository;
     private final PaymentRepository paymentRepository;
 
@@ -147,27 +148,22 @@ public class OrderService {
             return List.of();
         }
         List<String> orderIds = orders.stream().map(Order::getOrderId).toList();
-        Map<String, List<OrderItem>> itemsByOrder = orderItemRepository
-                .findByOrder_OrderIdIn(orderIds).stream()
+        List<OrderItem> orderItems = orderItemRepository.findByOrder_OrderIdIn(orderIds);
+        Map<String, List<OrderItem>> itemsByOrder = orderItems.stream()
                 .collect(Collectors.groupingBy(item -> item.getOrder().getOrderId()));
-        Set<String> variantIds = itemsByOrder.values().stream()
-                .flatMap(List::stream)
-                .map(item -> item.getVariant().getVariantId())
-                .collect(Collectors.toSet());
-
-        Map<String, List<String>> attributesByVariant = variantIds.isEmpty()
-                ? Map.of()
-                : variantAttributeValueRepository.findByVariant_VariantIdIn(variantIds)
-                        .stream()
-                        .collect(Collectors.groupingBy(
-                                value -> value.getVariant().getVariantId(),
-                                Collectors.mapping(
-                                        value -> value.getAttributeValue().getValue(),
-                                        Collectors.toList())));
-        Set<String> productIds = itemsByOrder.values().stream()
-                .flatMap(List::stream)
-                .map(item -> item.getVariant().getProduct().getProductId())
-                .collect(Collectors.toSet());
+        Set<String> variantIds = new HashSet<>();
+        Set<String> productIds = new HashSet<>();
+        Map<String, List<String>> attributesByVariant = new HashMap<>();
+        for (OrderItem item : orderItems) {
+            Variant variant = item.getVariant();
+            variantIds.add(variant.getVariantId());
+            productIds.add(variant.getProduct().getProductId());
+            attributesByVariant.computeIfAbsent(variant.getVariantId(), id ->
+                    variant.getAttributeValues().stream()
+                            .map(value -> value.getAttributeValue().getValue())
+                            .filter(Objects::nonNull)
+                            .toList());
+        }
         Map<String, String> variantThumbnails = new HashMap<>();
         Map<String, String> productThumbnails = new HashMap<>();
         List<Media> media = variantIds.isEmpty()
@@ -197,11 +193,11 @@ public class OrderService {
                         item.getVariant().getProduct().getProductId(), url);
             }
         }
-        Map<String, PaymentResponse> paymentsByOrder = paymentRepository
-                .findByOrder_OrderIdIn(orderIds).stream()
+        Map<String, PaymentResponse> paymentsByOrder = orders.stream()
+                .filter(order -> order.getPayment() != null)
                 .collect(Collectors.toMap(
-                        payment -> payment.getOrder().getOrderId(),
-                        paymentMapper::toPaymentResponse,
+                        Order::getOrderId,
+                        order -> paymentMapper.toPaymentResponse(order.getPayment()),
                         (first, second) -> first));
 
         return orders.stream()

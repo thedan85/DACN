@@ -19,12 +19,10 @@ import com.project.dacn.dto.response.auth.RefreshResponse;
 import com.project.dacn.dto.response.auth.UserResponse;
 import com.project.dacn.entity.auth.RefreshToken;
 import com.project.dacn.entity.auth.Role;
-import com.project.dacn.entity.auth.RolePermission;
 import com.project.dacn.entity.auth.User;
 import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.mapper.auth.UserMapper;
 import com.project.dacn.repository.auth.RefreshTokenRepository;
-import com.project.dacn.repository.auth.RolePermissionRepository;
 import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
@@ -47,6 +45,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -63,7 +62,6 @@ public class AuthService {
     private final RoleRepository roleRepository;
     private final CustomerRepository customerRepository;
     private final RefreshTokenRepository refreshTokenRepository;
-    private final RolePermissionRepository rolePermissionRepository;
     private final UserMapper userMapper;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtService jwtService;
@@ -147,7 +145,7 @@ public class AuthService {
         refreshTokenRepository.save(token);
 
         return new LoginResponse(accessToken, refreshToken,
-                jwtService.getAccessTokenExpirationSeconds(), "Bearer");
+                jwtService.getAccessTokenExpirationSeconds(), "Bearer", toMeResponse(user));
     }
 
     private void ensureLoginAllowed(User user) {
@@ -321,7 +319,8 @@ public class AuthService {
                 jwtService.generateAccessToken(user.getUserId(), user.getEmail()),
                 jwtService.generateRefreshToken(user.getUserId(), token.getTokenId(), token.getExpiresAt()),
                 jwtService.getAccessTokenExpirationSeconds(),
-                "Bearer");
+                "Bearer",
+                toMeResponse(user));
     }
 
     public void logout(RefreshRequest request) {
@@ -349,29 +348,39 @@ public class AuthService {
         User user = userRepository.findByUserId(auth.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("user not found"));
 
-        List<RolePermission> rolePermissions = rolePermissionRepository
-                .findByRole_RoleIdWithPermission(user.getRole().getRoleId());
+        return toMeResponse(user);
+    }
 
-        List<String> permissions = rolePermissions.stream()
-                .map(rp -> rp.getPermission().getCode())
+    /**
+     * Builds the profile from the same single joined row set the JWT filter
+     * uses, so a login/refresh costs one query instead of role, permission and
+     * customer lookups.
+     */
+    private MeResponse toMeResponse(User user) {
+        List<Object[]> rows = userRepository.findPrincipalRowsByUserId(user.getUserId());
+        if (rows.isEmpty()) {
+            throw new ResourceNotFoundException("user not found");
+        }
+
+        Object[] row = rows.get(0);
+        String email = (String) row[1];
+        Long customerId = (Long) row[7];
+        List<String> permissions = rows.stream()
+                .map(permissionRow -> (String) permissionRow[6])
+                .filter(Objects::nonNull)
+                .distinct()
                 .toList();
 
-        Customer customer = customerRepository.findByUser_UserId(user.getUserId()).orElse(null);
-
-        String name = customer != null ? customer.getName() : user.getEmail();
-        String phone = customer != null ? customer.getPhone() : null;
-        String address = customer != null ? customer.getAddress() : null;
-
         return new MeResponse(
-                user.getUserId(),
-                user.getEmail(),
-                name,
-                phone,
-                address,
-                user.getRole().getCode(),
-                user.getRole().getName(),
+                (String) row[0],
+                email,
+                customerId != null ? (String) row[8] : email,
+                (String) row[9],
+                (String) row[10],
+                (String) row[4],
+                (String) row[5],
                 permissions,
-                user.getPasswordHash() != null
+                row[2] != null
         );
     }
 

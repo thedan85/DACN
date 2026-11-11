@@ -20,7 +20,6 @@ import com.project.dacn.entity.payment.Payment;
 import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.catalog.MediaRepository;
-import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
@@ -68,9 +67,6 @@ class StaffOrderServiceTest {
     PaymentRepository paymentRepository;
 
     @Mock
-    VariantAttributeValueRepository variantAttributeValueRepository;
-
-    @Mock
     MediaRepository mediaRepository;
 
     OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
@@ -82,8 +78,7 @@ class StaffOrderServiceTest {
     @BeforeEach
     void setUp() {
         service = new OrderService(orderRepository, orderItemRepository, orderMapper,
-                paymentMapper, variantRepository, variantAttributeValueRepository,
-                mediaRepository, paymentRepository);
+                paymentMapper, variantRepository, mediaRepository, paymentRepository);
     }
 
     @Test
@@ -116,22 +111,20 @@ class StaffOrderServiceTest {
     void staffListEnrichesItemsAndPaymentInOneBatch() {
         Pageable pageable = PageRequest.of(0, 20);
         Order order = order(OrderStatus.CONFIRMED);
+        order.setPayment(payment(order, PaymentStatus.CONFIRMED));
         Variant variant = variant(20L);
+        variant.setAttributeValues(List.of(VariantAttributeValue.builder()
+                .variant(variant)
+                .attributeValue(AttributeValue.builder().value("Blue").build())
+                .build()));
         when(orderRepository.searchForStaff("", null, pageable))
                 .thenReturn(new PageImpl<>(List.of(order), pageable, 1));
         when(orderItemRepository.findByOrder_OrderIdIn(List.of("ORD_1")))
                 .thenReturn(List.of(item(order, variant, 2)));
-        when(variantAttributeValueRepository.findByVariant_VariantIdIn(any()))
-                .thenReturn(List.of(VariantAttributeValue.builder()
-                        .variant(variant)
-                        .attributeValue(AttributeValue.builder().value("Blue").build())
-                        .build()));
         when(mediaRepository.findForOrderItems(any(), any()))
                 .thenReturn(List.of(Media.builder()
                         .product(variant.getProduct())
                         .url("https://img.test/thumb.webp").build()));
-        when(paymentRepository.findByOrder_OrderIdIn(List.of("ORD_1")))
-                .thenReturn(List.of(payment(order, PaymentStatus.CONFIRMED)));
 
         OrderResponse response = service.listForStaff(null, null, pageable)
                 .getContent().get(0);
