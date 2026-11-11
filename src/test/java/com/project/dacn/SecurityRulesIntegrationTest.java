@@ -1,5 +1,6 @@
 package com.project.dacn;
 
+import com.project.dacn.integration.shipping.ghn.GhnClient;
 import com.project.dacn.service.catalog.CatalogCache;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -35,6 +36,9 @@ class SecurityRulesIntegrationTest {
 
     @MockitoBean
     CatalogCache cache;
+
+    @MockitoBean
+    GhnClient ghnClient;
 
     @Autowired
     private MockMvc mockMvc;
@@ -187,7 +191,9 @@ class SecurityRulesIntegrationTest {
                 "/api/v1/media",
                 "/api/v1/media/no-such-id",
                 "/api/v1/webhooks/vnpay/ipn",
-                "/api/v1/webhooks/vnpay/return");
+                "/api/v1/webhooks/vnpay/return",
+                "/api/v1/shipping/ghn/provinces",
+                "/api/v1/shipping/ghn/wards?provinceId=1000001");
     }
 
     @ParameterizedTest(name = "{0} is public")
