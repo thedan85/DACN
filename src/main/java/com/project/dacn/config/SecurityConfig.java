@@ -129,6 +129,20 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/admin/users/*")
                         .hasAuthority(Permissions.USER_DELETE)
 
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/permissions")
+                        .hasAuthority(Permissions.ROLE_READ)
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/v1/admin/roles", "/api/v1/admin/roles/**")
+                        .hasAuthority(Permissions.ROLE_READ)
+                        .requestMatchers(HttpMethod.POST, "/api/v1/admin/roles")
+                        .hasAuthority(Permissions.ROLE_CREATE)
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/admin/roles/*")
+                        .hasAuthority(Permissions.ROLE_UPDATE)
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/admin/roles/*/permissions")
+                        .hasAuthority(Permissions.ROLE_UPDATE)
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/admin/roles/*")
+                        .hasAuthority(Permissions.ROLE_DELETE)
+
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(authenticationEntryPoint)

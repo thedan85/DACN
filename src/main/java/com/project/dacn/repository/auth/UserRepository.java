@@ -63,6 +63,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query(value = "SELECT * FROM users WHERE google_sub = :googleSub", nativeQuery = true)
     Optional<User> findByGoogleSubIncludingDeleted(@Param("googleSub") String googleSub);
 
+    @Query(value = "SELECT COUNT(*) FROM users WHERE role_id = :roleId", nativeQuery = true)
+    long countByRoleIdIncludingDeleted(@Param("roleId") Long roleId);
+
     boolean existsByEmail(String email);
 
     List<User> findByStatusNot(UserStatus status);
