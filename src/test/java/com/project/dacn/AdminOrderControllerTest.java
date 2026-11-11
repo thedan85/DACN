@@ -58,6 +58,7 @@ class AdminOrderControllerTest {
 
     private OrderResponse order(OrderStatus status) {
         return new OrderResponse("ORD_1", "CUS_1", "Jane", status,
-                new BigDecimal("8000.00"), "addr", "Jane", "090", List.of(), null, null, null);
+                new BigDecimal("8000.00"), "addr", "Jane", "090", null, null, null, List.of(),
+                null, null, null);
     }
 }
