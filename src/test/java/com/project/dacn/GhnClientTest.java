@@ -113,6 +113,23 @@ class GhnClientTest {
                 .hasMessageContaining("bad ward");
     }
 
+    @Test
+    void blankBaseUrlFailsBeforeAnyRequest() {
+        GhnProperties properties = new GhnProperties();
+        properties.setBaseUrl(" ");
+        properties.setToken("token");
+        properties.setShopId("237833");
+
+        RestClient.Builder builder = RestClient.builder().baseUrl("https://ghn.test/shiip/public-api");
+        server = MockRestServiceServer.bindTo(builder).build();
+        client = new GhnClient(builder.build(), properties);
+
+        assertThatThrownBy(client::getProvinces)
+                .isInstanceOf(ShippingException.class)
+                .hasMessage("GHN is not configured");
+        server.verify();
+    }
+
     private GhnCreateOrderRequest request() {
         return new GhnCreateOrderRequest(
                 1,

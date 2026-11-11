@@ -16,6 +16,9 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -58,6 +61,8 @@ class ShippingMasterDataControllerTest {
 
     @Test
     void wardsReturnsWardsForProvince() throws Exception {
+        when(ghnClient.getProvinces())
+                .thenReturn(List.of(new GhnProvince(1000001, "Hồ Chí Minh", 1)));
         when(ghnClient.getWards(1000001))
                 .thenReturn(List.of(new GhnWard(210001, "Phường Chợ Quán", 1)));
 
@@ -65,5 +70,18 @@ class ShippingMasterDataControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].name").value("Phường Chợ Quán"))
                 .andExpect(jsonPath("$.data[0].status").doesNotExist());
+    }
+
+    @Test
+    void wardsReturnsEmptyListForUnknownProvinceWithoutCallingGhnWards() throws Exception {
+        when(ghnClient.getProvinces())
+                .thenReturn(List.of(new GhnProvince(1000001, "Hồ Chí Minh", 1)));
+
+        mockMvc.perform(get("/api/v1/shipping/ghn/wards").param("provinceId", "9999999"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data").isEmpty());
+
+        verify(ghnClient, never()).getWards(anyInt());
     }
 }

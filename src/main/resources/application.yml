@@ -119,7 +119,7 @@ shipping:
     base-url: ${GHTK_BASE_URL:}
     token: ${GHTK_TOKEN:}
   ghn:
-    base-url: ${GHN_BASE_URL:https://online-gateway.ghn.vn/shiip/public-api}
+    base-url: ${GHN_BASE_URL:}
     token: ${GHN_TOKEN:}
     shop-id: ${GHN_SHOP_ID:}
     webhook-secret: ${GHN_WEBHOOK_SECRET:}

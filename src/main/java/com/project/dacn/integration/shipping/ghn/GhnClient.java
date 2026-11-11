@@ -140,7 +140,9 @@ public class GhnClient implements ShippingProvider {
     }
 
     private void requireConfigured() {
-        if (!StringUtils.hasText(properties.getToken()) || !StringUtils.hasText(properties.getShopId())) {
+        if (!StringUtils.hasText(properties.getBaseUrl())
+                || !StringUtils.hasText(properties.getToken())
+                || !StringUtils.hasText(properties.getShopId())) {
             throw new ShippingException("GHN is not configured");
         }
     }

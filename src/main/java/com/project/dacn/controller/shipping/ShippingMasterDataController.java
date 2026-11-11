@@ -28,6 +28,11 @@ public class ShippingMasterDataController {
 
     @GetMapping("/wards")
     public ApiResponse<List<GhnWard>> wards(@RequestParam int provinceId) {
+        boolean knownProvince = ghnClient.getProvinces().stream()
+                .anyMatch(province -> province.id() != null && province.id() == provinceId);
+        if (!knownProvince) {
+            return ApiResponse.ok(List.of());
+        }
         return ApiResponse.ok(ghnClient.getWards(provinceId));
     }
 }

@@ -3,6 +3,7 @@ package com.project.dacn.integration.shipping.ghn;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
@@ -26,9 +27,10 @@ public class GhnConfig {
     @Bean
     public RestClient ghnRestClient(RestClient.Builder builder, GhnProperties properties,
             SimpleClientHttpRequestFactory ghnRequestFactory) {
-        return builder
-                .baseUrl(properties.getBaseUrl())
-                .requestFactory(ghnRequestFactory)
-                .build();
+        RestClient.Builder configured = builder.requestFactory(ghnRequestFactory);
+        if (StringUtils.hasText(properties.getBaseUrl())) {
+            configured.baseUrl(properties.getBaseUrl());
+        }
+        return configured.build();
     }
 }
