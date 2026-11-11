@@ -74,11 +74,12 @@ class GhnClientTest {
                 .andExpect(header("ShopId", "237833"))
                 .andRespond(withSuccess("""
                         {"code":200,"message":"Success","data":[
-                          {"id":1,"name":"Active","status":1},
-                          {"id":2,"name":"Disabled","status":2},
-                          {"id":3,"name":"Deleted","status":10}]}
+                          {"_id":1,"name":"Active","status":1},
+                          {"_id":2,"name":"Disabled","status":2},
+                          {"_id":3,"name":"Deleted","status":10}]}
                         """, MediaType.APPLICATION_JSON));
 
+        assertThat(client.getProvinces()).extracting(GhnProvince::id).containsExactly(1);
         assertThat(client.getProvinces()).extracting(GhnProvince::name).containsExactly("Active");
         assertThat(client.getProvinces()).hasSize(1);
         server.verify();
@@ -92,10 +93,11 @@ class GhnClientTest {
                 .andExpect(header("ShopId", "237833"))
                 .andRespond(withSuccess("""
                         {"code":200,"message":"Success","data":[
-                          {"id":10,"name":"Ward A","status":1},
-                          {"id":11,"name":"Ward B","status":10}]}
+                          {"_id":10,"name":"Ward A","status":1},
+                          {"_id":11,"name":"Ward B","status":10}]}
                         """, MediaType.APPLICATION_JSON));
 
+        assertThat(client.getWards(1)).extracting(GhnWard::id).containsExactly(10);
         assertThat(client.getWards(1)).extracting(GhnWard::name).containsExactly("Ward A");
     }
 
