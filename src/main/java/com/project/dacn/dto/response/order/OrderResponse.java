@@ -18,6 +18,9 @@ import java.util.List;
           "address": "123 Demo St, HCMC",
           "recipientName": "Swagger Customer",
           "phone": "0901234567",
+          "shippingProvince": "Hồ Chí Minh",
+          "shippingWard": "Phường Chợ Quán",
+          "ghnOrderCode": null,
           "items": [
             {
               "orderId": "ORD_SWAGGER_DEMO",
@@ -55,6 +58,9 @@ public record OrderResponse(
         String address,
         String recipientName,
         String phone,
+        String shippingProvince,
+        String shippingWard,
+        String ghnOrderCode,
         List<OrderItemResponse> items,
         Instant createdAt,
         Instant updatedAt,
