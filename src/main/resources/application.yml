@@ -122,3 +122,4 @@ shipping:
     base-url: ${GHN_BASE_URL:https://online-gateway.ghn.vn/shiip/public-api}
     token: ${GHN_TOKEN:}
     shop-id: ${GHN_SHOP_ID:}
+    webhook-secret: ${GHN_WEBHOOK_SECRET:}
