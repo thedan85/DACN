@@ -16,6 +16,7 @@ import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.order.OrderItem;
 import com.project.dacn.entity.payment.Payment;
 import com.project.dacn.integration.shipping.ghn.GhnClient;
+import com.project.dacn.integration.shipping.ghn.GhnStatusMapper;
 import com.project.dacn.integration.shipping.ghn.dto.GhnCreateOrderRequest;
 import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.mapper.payment.PaymentMapper;
@@ -107,8 +108,7 @@ public class OrderService {
         }
         order.setStatus(target);
         if (target == OrderStatus.CANCELLED) {
-            restock(order);
-            failPendingPayment(orderId);
+            cancel(order);
             // settle() clears the persistence context, detaching the lazy
             // customer proxy; reload before mapping the response.
             order = orderRepository.findByOrderId(orderId)
@@ -163,6 +163,109 @@ public class OrderService {
         GhnClient.CreatedOrder created = ghnClient.createOrder(ghnRequest);
         order.setGhnOrderCode(created.orderCode());
         return toResponse(order);
+    }
+
+    @Transactional
+    public void applyGhnEvent(String ghnOrderCode, String clientOrderCode,
+            GhnStatusMapper.Event event) {
+        Order order = findLockedOrder(ghnOrderCode, clientOrderCode);
+        if (order == null) {
+            log.info("Ignoring GHN callback for unknown order {} / {}", ghnOrderCode, clientOrderCode);
+            return;
+        }
+        switch (event) {
+            case SHIPPING -> moveToShipping(order);
+            case DELIVERED -> moveToCompleted(order);
+            case CANCELLED -> cancelFromGhn(order, false);
+            case RETURNED -> cancelFromGhn(order, true);
+            case NONE -> log.info("Ignoring GHN status for order {}", order.getOrderId());
+        }
+    }
+
+    /**
+     * Locks by GHN code first. A manual GHN order may only fall back to the
+     * internal order id after staff confirmation, so PENDING is never advanced.
+     */
+    private Order findLockedOrder(String ghnOrderCode, String clientOrderCode) {
+        if (StringUtils.hasText(ghnOrderCode)) {
+            Order order = orderRepository.findWithLockByGhnOrderCode(ghnOrderCode).orElse(null);
+            if (order != null) {
+                return order;
+            }
+        }
+        if (!StringUtils.hasText(clientOrderCode)) {
+            return null;
+        }
+        Order order = orderRepository.findWithLockByOrderId(clientOrderCode).orElse(null);
+        if (order == null) {
+            return null;
+        }
+        if (order.getStatus() == OrderStatus.PENDING) {
+            log.info("Ignoring GHN callback for pending order {}", order.getOrderId());
+            return null;
+        }
+        if (order.getGhnOrderCode() == null) {
+            order.setGhnOrderCode(ghnOrderCode);
+        } else if (!order.getGhnOrderCode().equals(ghnOrderCode)) {
+            log.warn("Ignoring GHN callback for order {} with stored code {}",
+                    order.getOrderId(), order.getGhnOrderCode());
+            return null;
+        }
+        return order;
+    }
+
+    private void moveToShipping(Order order) {
+        if (order.getStatus() == OrderStatus.SHIPPING) {
+            return;
+        }
+        if (order.getStatus() != OrderStatus.CONFIRMED) {
+            log.info("Ignoring SHIPPING for order {} in status {}",
+                    order.getOrderId(), order.getStatus());
+            return;
+        }
+        Payment payment = paymentRepository.findByOrder_OrderId(order.getOrderId()).orElse(null);
+        if (!isShippable(payment)) {
+            log.warn("Ignoring SHIPPING for unpaid order {}", order.getOrderId());
+            return;
+        }
+        order.setStatus(OrderStatus.SHIPPING);
+    }
+
+    private void moveToCompleted(Order order) {
+        if (order.getStatus() == OrderStatus.COMPLETED) {
+            return;
+        }
+        if (order.getStatus() != OrderStatus.CONFIRMED
+                && order.getStatus() != OrderStatus.SHIPPING) {
+            log.info("Ignoring DELIVERED for order {} in status {}",
+                    order.getOrderId(), order.getStatus());
+            return;
+        }
+        Payment payment = paymentRepository.findByOrder_OrderId(order.getOrderId()).orElse(null);
+        if (!isShippable(payment)) {
+            log.warn("Ignoring DELIVERED for unpaid order {}", order.getOrderId());
+            return;
+        }
+        order.setStatus(OrderStatus.COMPLETED);
+    }
+
+    private void cancelFromGhn(Order order, boolean allowFromCompleted) {
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            return;
+        }
+        if (order.getStatus() == OrderStatus.COMPLETED && !allowFromCompleted) {
+            return;
+        }
+        if (allowFromCompleted && order.getStatus() == OrderStatus.PENDING) {
+            return;
+        }
+        cancel(order);
+    }
+
+    private void cancel(Order order) {
+        order.setStatus(OrderStatus.CANCELLED);
+        restock(order);
+        failPendingPayment(order.getOrderId());
     }
 
     private Payment requireShippablePayment(String orderId) {
