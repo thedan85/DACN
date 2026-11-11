@@ -170,8 +170,7 @@ public class CartService {
                         .multiply(BigDecimal.valueOf(item.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         Order order = orderMapper.toOrder(new OrderCreateRequest(
-                customer.getCustomerId(), total, req.address(), req.recipientName(), req.phone(),
-                req.province(), req.ward()));
+                customer.getCustomerId(), total, req.address(), req.recipientName(), req.phone()));
         order.setCustomer(customer);
         Order saved = orderRepository.save(order);
         List<OrderItem> lines = new ArrayList<>(items.size());

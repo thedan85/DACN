@@ -17,7 +17,6 @@ import com.project.dacn.entity.payment.Payment;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
-import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -47,8 +46,6 @@ class OrderPersistenceTest {
     OrderItemRepository orderItemRepository;
     @Autowired
     PaymentRepository paymentRepository;
-    @Autowired
-    EntityManager entityManager;
 
     @Test
     void persistOrderChainThroughBusinessKeys() {
@@ -74,10 +71,5 @@ class OrderPersistenceTest {
                 .amount(new BigDecimal("40.00")).build());
         assertThat(payment.getPaymentId()).isNotNull();
         assertThat(paymentRepository.findByOrder_OrderId(order.getOrderId())).isPresent();
-
-        order.setGhnOrderCode("GHN-TEST-1");
-        orderRepository.saveAndFlush(order);
-        entityManager.clear();
-        assertThat(orderRepository.findWithLockByGhnOrderCode("GHN-TEST-1")).isPresent();
     }
 }

@@ -86,7 +86,7 @@ class CartCheckoutConcurrencyTest {
             start.await();
             try {
                 return service.checkout(customerId,
-                        new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD));
+                        new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD));
             } catch (IllegalArgumentException e) {
                 return e;
             }

@@ -141,15 +141,12 @@ class CartCheckoutTest {
                     .thenAnswer(inv -> inv.getArgument(0));
 
             OrderResponse o = service.checkout(1L,
-                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD));
+                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD));
 
             assertThat(o.status()).isEqualTo(OrderStatus.PENDING);
             assertThat(o.total()).isEqualByComparingTo(new BigDecimal("20.00"));
             assertThat(o.items()).hasSize(1);
             assertThat(o.items().get(0).attributes()).isNotNull().isEmpty();
-            assertThat(o.shippingProvince()).isEqualTo("Hồ Chí Minh");
-            assertThat(o.shippingWard()).isEqualTo("Phường Chợ Quán");
-            assertThat(o.ghnOrderCode()).isNull();
             verify(cartItemRepository).deleteByCart_Id(10L);
             verify(variantRepository, never()).save(any(Variant.class));
             assertThat(service.getDetail(1L).items()).isEmpty();
@@ -162,7 +159,7 @@ class CartCheckoutTest {
                     .thenReturn(List.of());
 
             assertThatThrownBy(() -> service.checkout(1L,
-                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD)))
+                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
                     .isInstanceOf(IllegalArgumentException.class);
             verify(orderRepository, never()).save(any(Order.class));
         }
@@ -175,7 +172,7 @@ class CartCheckoutTest {
                     .thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.checkout(1L,
-                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD)))
+                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
                     .isInstanceOf(IllegalArgumentException.class);
             verify(orderRepository, never()).save(any(Order.class));
             verify(cartRepository, never()).save(any(Cart.class));
@@ -191,7 +188,7 @@ class CartCheckoutTest {
                     .thenReturn(List.of(existing));
 
             assertThatThrownBy(() -> service.checkout(1L,
-                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD)))
+                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
                     .isInstanceOf(OutOfStockException.class);
             verify(orderRepository, never()).save(any(Order.class));
             verify(cartItemRepository, never()).deleteByCart_Id(any());
@@ -207,7 +204,7 @@ class CartCheckoutTest {
             when(variantRepository.decrementStock(20L, 2)).thenReturn(0);
 
             assertThatThrownBy(() -> service.checkout(1L,
-                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD)))
+                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
                     .isInstanceOf(OutOfStockException.class);
             verify(orderRepository, never()).save(any(Order.class));
         }
@@ -297,16 +294,10 @@ class CartCheckoutTest {
                     .cart(cart).variant(variant).quantity(2).build());
 
             OrderResponse o = service.checkout(customer.getId(),
-                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD));
+                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD));
 
             assertThat(o.status()).isEqualTo(OrderStatus.PENDING);
             assertThat(o.total()).isEqualByComparingTo(new BigDecimal("20.00"));
-            assertThat(o.shippingProvince()).isEqualTo("Hồ Chí Minh");
-            assertThat(o.shippingWard()).isEqualTo("Phường Chợ Quán");
-            assertThat(orderRepository.findByOrderId(o.orderId()).orElseThrow().getShippingProvince())
-                    .isEqualTo("Hồ Chí Minh");
-            assertThat(orderRepository.findByOrderId(o.orderId()).orElseThrow().getShippingWard())
-                    .isEqualTo("Phường Chợ Quán");
             assertThat(orderRepository.findAll()).hasSize(1);
             assertThat(orderRepository.findAll().get(0).getStatus()).isEqualTo(OrderStatus.PENDING);
             assertThat(orderItemRepository.findByOrder_OrderId(o.orderId())).hasSize(1);

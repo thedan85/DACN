@@ -54,15 +54,6 @@ public class Order extends BaseEntity {
     @Column(name = "order_phone", nullable = false, length = 20)
     private String phone;
 
-    @Column(name = "shipping_province")
-    private String shippingProvince;
-
-    @Column(name = "shipping_ward")
-    private String shippingWard;
-
-    @Column(name = "ghn_order_code", unique = true, length = 50)
-    private String ghnOrderCode;
-
     @Override
     protected String getBusinessId() {
         return orderId;

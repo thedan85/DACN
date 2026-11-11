@@ -65,10 +65,6 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("select o from Order o where o.orderId = :orderId")
     Optional<Order> findWithLockByOrderId(@Param("orderId") String orderId);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select o from Order o where o.ghnOrderCode = :code")
-    Optional<Order> findWithLockByGhnOrderCode(@Param("code") String code);
-
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Order o set o.status = :next where o.orderId = :orderId and o.status = :current")
     int updateStatus(@Param("orderId") String orderId,

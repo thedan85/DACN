@@ -11,7 +11,5 @@ public record OrderCreateRequest(
         @NotNull @PositiveOrZero BigDecimal total,
         @NotBlank String address,
         @NotBlank String recipientName,
-        @NotBlank String phone,
-        String province,
-        String ward) {
+        @NotBlank String phone) {
 }

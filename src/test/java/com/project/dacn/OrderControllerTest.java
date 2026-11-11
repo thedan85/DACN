@@ -46,16 +46,15 @@ class OrderControllerTest {
 
     private OrderResponse order() {
         return new OrderResponse("ORD_1", "CUS_1", "Jane", OrderStatus.PENDING,
-                new BigDecimal("8000.00"), "addr", "Jane", "090", null, null, null, List.of(),
-                null, null, null);
+                new BigDecimal("8000.00"), "addr", "Jane", "090", List.of(), null, null, null);
     }
 
     private OrderResponse orderWithItem() {
         OrderItemResponse item = new OrderItemResponse("ORD_1", "VAR_1", "SKU-1", 1,
                 new BigDecimal("8000.00"), null, null, null, List.of());
         return new OrderResponse("ORD_1", "CUS_1", "Jane", OrderStatus.PENDING,
-                new BigDecimal("8000.00"), "addr", "Jane", "090", null, null, null,
-                List.of(item), null, null, null);
+                new BigDecimal("8000.00"), "addr", "Jane", "090", List.of(item), null, null,
+                null);
     }
 
     @Test

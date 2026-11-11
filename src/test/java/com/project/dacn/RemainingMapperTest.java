@@ -37,7 +37,7 @@ class RemainingMapperTest {
     @Test
     void orderCreateDefaultsPendingAndIgnoresCustomer() {
         Order order = orderMapper.toOrder(new OrderCreateRequest("cust-1",
-                new BigDecimal("10.00"), "addr", "Name", "090", null, null));
+                new BigDecimal("10.00"), "addr", "Name", "090"));
         assertThat(order.getOrderId()).isNull();
         assertThat(order.getCustomer()).isNull();
         assertThat(order.getStatus()).isEqualTo(com.project.dacn.common.constant.OrderStatus.PENDING);
