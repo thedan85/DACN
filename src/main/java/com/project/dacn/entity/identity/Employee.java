@@ -42,7 +42,7 @@ public class Employee extends BaseEntity {
     @Column(name = "employee_address")
     private String address;
 
-    @Column(name = "employee_phone", nullable = false, length = 20)
+    @Column(name = "employee_phone", length = 20)
     private String phone;
 
     @Enumerated(EnumType.STRING)

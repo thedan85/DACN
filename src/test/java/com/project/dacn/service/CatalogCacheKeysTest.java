@@ -42,9 +42,9 @@ class CatalogCacheKeysTest {
     }
 
     @Test
-    void productDetailAggregateTtlIsFortyFiveSeconds() {
+    void productDetailAggregateTtlIsFiveMinutes() {
         assertThat(CatalogCacheKeys.PRODUCT_DETAIL_AGGREGATE_TTL)
-                .isEqualTo(Duration.ofSeconds(45));
+                .isEqualTo(Duration.ofMinutes(5));
     }
 
     @Test

@@ -26,7 +26,7 @@ Link dasboard vnpay: https://sandbox.vnpayment.vn/vnpaygw-sit-testing/user/login
 Tên đang nhập: 0w0tahp@gmail.com
 Password: Changeme123!
 
-Vào mục **Cấu hình IPN URL** → **Cập nhật** → dán IPN URL mới → **Cập nhật**.
+Vào mục **Cấu hình IPN URL** → **Sửa** → dán IPN URL mới → **Cập nhật**.
 
 
 
@@ -61,7 +61,7 @@ VNPAY_IPN_URL=
 ### 3. Start backend
 
 ```powershell
-.\mvnw spring-boot:run "-Dspring-boot.run.profiles=dev"
+./mvnw spring-boot:run "-Dspring-boot.run.profiles=dev"
 ```
 
 ### 4. Kiểm tra

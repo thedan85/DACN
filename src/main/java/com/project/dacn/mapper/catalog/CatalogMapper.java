@@ -68,7 +68,6 @@ public interface CatalogMapper {
     @Mapping(target = "productId", ignore = true)
     @Mapping(target = "slug", ignore = true)
     @Mapping(target = "category", ignore = true)
-    @Mapping(target = "status", constant = "ACTIVE")
     @Mapping(target = "thumbnail", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)

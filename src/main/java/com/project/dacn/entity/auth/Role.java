@@ -4,6 +4,8 @@ import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -11,6 +13,9 @@ import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.NaturalId;
 import org.hibernate.annotations.SQLRestriction;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
@@ -41,6 +46,10 @@ public class Role extends BaseEntity {
     @Column(name = "is_deleted", nullable = false)
     @lombok.Builder.Default
     private Boolean deleted = false;
+
+    /** Inverse side of {@link RolePermission#getRole()}; read-only. */
+    @OneToMany(mappedBy = "role", fetch = FetchType.LAZY)
+    private List<RolePermission> permissions = new ArrayList<>();
 
     @Override
     protected String getBusinessId() {

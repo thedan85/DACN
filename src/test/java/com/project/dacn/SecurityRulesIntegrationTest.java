@@ -371,6 +371,21 @@ class SecurityRulesIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void dashboardRequiresToken() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/dashboard/summary"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
+    }
+
+    @Test
+    @WithMockUser
+    void dashboardRequiresOrderReadAuthority() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/dashboard/summary"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
+    }
+
     static Stream<Arguments> anonymousWrites() {
         return Stream.of(
                 Arguments.of(HttpMethod.POST, "/api/v1/products"),

@@ -39,13 +39,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 UserDetails userDetails = userDetailsService
                         .loadUserByUserId(jwtService.extractUserId(token));
 
-                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        userDetails,
-                        null,
-                        userDetails.getAuthorities()
-                );
+                // A token can still be unexpired after the account is locked or
+                // disabled. Do not authenticate a principal the provider would
+                // have rejected; leave the context empty so the entry point
+                // returns 401 on this request.
+                if (!userDetails.isEnabled() || !userDetails.isAccountNonLocked()) {
+                    SecurityContextHolder.clearContext();
+                } else {
+                    UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                            userDetails,
+                            null,
+                            userDetails.getAuthorities()
+                    );
 
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                }
             }
         } catch (Exception e) {
             // Log and continue - let AuthenticationEntryPoint handle

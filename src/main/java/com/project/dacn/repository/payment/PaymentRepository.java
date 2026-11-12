@@ -21,6 +21,14 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     @EntityGraph(attributePaths = "order")
     List<Payment> findByOrder_OrderIdIn(Collection<String> orderIds);
 
+    /** Payment and its order in one query, scoped to the owning customer. */
+    @EntityGraph(attributePaths = "order")
+    @Query("select p from Payment p where p.order.orderId = :orderId "
+            + "and p.order.customer.id = :customerId")
+    Optional<Payment> findWithOrderByOrderIdAndCustomerId(
+            @Param("orderId") String orderId,
+            @Param("customerId") Long customerId);
+
     Optional<Payment> findByTransactionId(String transactionId);
 
     /**

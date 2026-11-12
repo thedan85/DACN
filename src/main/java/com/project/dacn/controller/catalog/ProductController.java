@@ -11,10 +11,12 @@ import com.project.dacn.dto.response.catalog.ProductDetailResponse;
 import com.project.dacn.dto.response.catalog.ProductResponse;
 import com.project.dacn.security.Permissions;
 import com.project.dacn.service.catalog.ProductService;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -37,6 +39,9 @@ import java.math.BigDecimal;
 @RequiredArgsConstructor
 public class ProductController {
 
+    /** Anonymous catalog reads: safe to cache briefly at browser/CDN level. */
+    private static final String PUBLIC_CACHE = "public, max-age=30, stale-while-revalidate=60";
+
     private final ProductService service;
 
     @GetMapping
@@ -48,10 +53,13 @@ public class ProductController {
             @RequestParam(required = false) ProductStatus status,
             @RequestParam(required = false, defaultValue = "newest") ProductSort sort,
             @ParameterObject Pageable pageable,
-            Authentication auth) {
+            Authentication auth,
+            HttpServletResponse response) {
         ProductFilter filter = new ProductFilter(
                 keyword, visibleStatus(status, auth), categoryId, minPrice, maxPrice, sort);
-        return ApiResponse.ok(service.search(filter, pageable));
+        PageResponse<ProductResponse> result = service.search(filter, pageable);
+        setPublicCache(response, auth);
+        return ApiResponse.ok(result);
     }
 
     @GetMapping("/search")
@@ -60,15 +68,28 @@ public class ProductController {
             @RequestParam(required = false) ProductStatus status,
             @RequestParam(required = false) String categoryId,
             @ParameterObject Pageable pageable,
-            Authentication auth) {
-        return ApiResponse.ok(service.search(
-                new ProductFilter(name, visibleStatus(status, auth), categoryId), pageable));
+            Authentication auth,
+            HttpServletResponse response) {
+        PageResponse<ProductResponse> result = service.search(
+                new ProductFilter(name, visibleStatus(status, auth), categoryId), pageable);
+        setPublicCache(response, auth);
+        return ApiResponse.ok(result);
     }
 
     @GetMapping("/{slug}")
     public ApiResponse<ProductDetailResponse> get(@PathVariable String slug,
-            @ParameterObject Pageable reviewPage, Authentication auth) {
-        return ApiResponse.ok(service.getDetail(slug, canViewHidden(auth), reviewPage));
+            @ParameterObject Pageable reviewPage, Authentication auth,
+            HttpServletResponse response) {
+        ProductDetailResponse detail = service.getDetail(slug, canViewHidden(auth), reviewPage);
+        setPublicCache(response, auth);
+        return ApiResponse.ok(detail);
+    }
+
+    /** Staff responses can contain hidden products, so they stay uncacheable. */
+    private static void setPublicCache(HttpServletResponse response, Authentication auth) {
+        if (!canViewHidden(auth)) {
+            response.setHeader(HttpHeaders.CACHE_CONTROL, PUBLIC_CACHE);
+        }
     }
 
     /**

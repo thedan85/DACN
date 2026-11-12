@@ -1,13 +1,8 @@
 package com.project.dacn.security;
 
 import com.project.dacn.common.constant.UserStatus;
-import com.project.dacn.entity.auth.RolePermission;
-import com.project.dacn.entity.auth.User;
-import com.project.dacn.repository.auth.RolePermissionRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -15,20 +10,22 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
 public class CustomUserDetailsService implements UserDetailsService {
 
     private final UserRepository userRepository;
-    private final RolePermissionRepository rolePermissionRepository;
 
     @Override
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        return toUserDetails(userRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email)));
+        List<Object[]> rows = userRepository.findPrincipalRowsByEmail(email);
+        if (rows.isEmpty()) {
+            throw new UsernameNotFoundException("User not found: " + email);
+        }
+        return toUserDetails(rows);
     }
 
     /**
@@ -37,31 +34,42 @@ public class CustomUserDetailsService implements UserDetailsService {
      */
     @Transactional(readOnly = true)
     public UserDetails loadUserByUserId(String userId) throws UsernameNotFoundException {
-        return toUserDetails(userRepository.findByUserId(userId)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + userId)));
+        List<Object[]> rows = userRepository.findPrincipalRowsByUserId(userId);
+        if (rows.isEmpty()) {
+            throw new UsernameNotFoundException("User not found: " + userId);
+        }
+        return toUserDetails(rows);
     }
 
-    private UserDetails toUserDetails(User user) {
-        List<RolePermission> rolePermissions = rolePermissionRepository
-                .findByRole_RoleIdWithPermission(user.getRole().getRoleId());
+    private UserDetails toUserDetails(List<Object[]> rows) {
+        Object[] row = rows.get(0);
+        String email = (String) row[1];
+        String passwordHash = (String) row[2];
+        UserStatus status = (UserStatus) row[3];
+        Long customerId = (Long) row[7];
 
-        List<GrantedAuthority> authorities = rolePermissions.stream()
-                .map(rp -> (GrantedAuthority) new SimpleGrantedAuthority(rp.getPermission().getCode()))
-                .collect(Collectors.toList());
-
-        boolean enabled = user.getStatus() == UserStatus.ACTIVE;
-        boolean accountNonLocked = user.getStatus() != UserStatus.LOCKED;
+        List<String> permissions = rows.stream()
+                .map(permissionRow -> (String) permissionRow[6])
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
 
         // Spring's User rejects a null password; Google-only accounts authenticate by JWT.
-        String password = user.getPasswordHash() == null ? "" : user.getPasswordHash();
-        return new org.springframework.security.core.userdetails.User(
-                user.getUserId(),
+        String password = passwordHash == null ? "" : passwordHash;
+        return new AuthenticatedUser(
+                (String) row[0],
+                email,
+                customerId != null ? (String) row[8] : email,
+                (String) row[9],
+                (String) row[10],
+                (String) row[4],
+                (String) row[5],
+                permissions,
+                passwordHash != null,
+                customerId,
                 password,
-                enabled,
-                true, // accountNonExpired
-                true, // credentialsNonExpired
-                accountNonLocked,
-                authorities
+                status == UserStatus.ACTIVE,
+                status != UserStatus.LOCKED
         );
     }
 }

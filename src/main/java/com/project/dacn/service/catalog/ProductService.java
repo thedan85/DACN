@@ -19,11 +19,10 @@ import com.project.dacn.service.engagement.ReviewService;
 import com.project.dacn.entity.catalog.Category;
 import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.catalog.Product;
-import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.mapper.catalog.CatalogMapper;
 import com.project.dacn.repository.catalog.CategoryRepository;
 import com.project.dacn.repository.catalog.MediaRepository;
-import com.project.dacn.repository.catalog.ProductAttributeValueRepository;
+import com.project.dacn.repository.catalog.ProductDetailBaseRow;
 import com.project.dacn.repository.catalog.ProductPriceRange;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
@@ -37,11 +36,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.type.TypeReference;
 
+import java.math.BigDecimal;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -81,7 +82,6 @@ public class ProductService {
     private final CategoryRepository categoryRepo;
     private final VariantRepository variantRepo;
     private final MediaRepository mediaRepo;
-    private final ProductAttributeValueRepository productAttributeValueRepo;
     private final VariantAttributeValueRepository variantAttributeValueRepo;
     private final ReviewService reviewService;
     private final CatalogMapper mapper;
@@ -195,7 +195,7 @@ public class ProductService {
 
     /**
      * Storefront detail payload: the cached flat product plus its relation
-     * lists. Public, standard, unsorted review pages are cached for 45 seconds;
+     * lists. Public, standard, unsorted review pages are cached for five minutes;
      * stock is refreshed on every hit, and staff reads are never cached.
      * customerId in reviews is only populated for admins/employees.
      */
@@ -221,38 +221,88 @@ public class ProductService {
 
     private ProductDetailResponse getDetailFromDb(String slug, boolean includeHidden,
             Pageable reviewPage) {
-        ProductResponse product = getBySlug(slug, includeHidden);
+        // Phase 1: product + category + thumbnail + product attributes + variants.
+        List<ProductDetailBaseRow> rows = repo.findDetailBaseBySlug(slug);
+        if (rows.isEmpty()
+                || (!includeHidden && rows.get(0).status() != ProductStatus.ACTIVE)) {
+            throw new ResourceNotFoundException("product not found: " + slug);
+        }
+        ProductDetailBaseRow base = rows.get(0);
 
-        List<ProductAttributeValueResponse> attributes = productAttributeValueRepo
-                .findByProduct_ProductId(product.productId()).stream()
-                .map(mapper::toProductAttributeValueResponse)
-                .toList();
-        List<Variant> variants = variantRepo.findByProduct_ProductId(product.productId());
+        // Attribute rows repeat per variant in the flat result; business ids
+        // dedupe them, and insertion order keeps the attribute query order.
+        Map<String, ProductAttributeValueResponse> attributesById = new LinkedHashMap<>();
+        record VariantBase(String variantId, String sku, BigDecimal price, Integer stock) {
+        }
+        Map<String, VariantBase> variantsById = new LinkedHashMap<>();
+        for (ProductDetailBaseRow row : rows) {
+            if (row.productValueId() != null && row.attributeId() != null) {
+                attributesById.putIfAbsent(row.productValueId(),
+                        new ProductAttributeValueResponse(
+                                row.productValueId(), row.productId(), row.attributeId(),
+                                row.attributeName(), row.attributeValueId(),
+                                row.attributeValue(), row.attributeCreatedAt()));
+            }
+            if (row.variantId() != null) {
+                variantsById.putIfAbsent(row.variantId(), new VariantBase(
+                        row.variantId(), row.sku(), row.price(), row.stock()));
+            }
+        }
+
+        // Same aggregate as VariantRepository.findPriceRangesByProductIds:
+        // MIN/MAX ignore nulls, and no variants means null/null/0.
+        BigDecimal minPrice = null;
+        BigDecimal maxPrice = null;
+        int stock = 0;
+        for (VariantBase variant : variantsById.values()) {
+            if (variant.price() != null) {
+                if (minPrice == null || variant.price().compareTo(minPrice) < 0) {
+                    minPrice = variant.price();
+                }
+                if (maxPrice == null || variant.price().compareTo(maxPrice) > 0) {
+                    maxPrice = variant.price();
+                }
+            }
+            if (variant.stock() != null) {
+                stock += variant.stock();
+            }
+        }
+        ProductResponse product = new ProductResponse(
+                base.productId(), base.slug(), base.name(), base.description(),
+                base.detailDescription(), base.thumbnail(), base.thumbnailMediaId(),
+                base.status(), base.categoryId(), base.categoryName(),
+                minPrice, maxPrice, stock, base.createdAt(), base.updatedAt());
+
+        // Phase 2: relation rows that need their own flattened query.
         Map<String, List<VariantAttributeValueResponse>> attributesByVariant =
                 variantAttributeValueRepo.findByVariant_Product_ProductId(product.productId()).stream()
                         .map(mapper::toVariantAttributeValueResponse)
                         .collect(Collectors.groupingBy(VariantAttributeValueResponse::variantId));
-        Map<String, List<MediaResponse>> mediaByVariant = mediaRepo
-                .findByVariant_Product_ProductId(product.productId()).stream()
+        List<MediaResponse> mediaResponses = mediaRepo
+                .findByProductOrVariantProductId(product.productId()).stream()
                 .map(mapper::toMediaResponse)
+                .toList();
+        Map<String, List<MediaResponse>> mediaByVariant = mediaResponses.stream()
+                .filter(media -> media.variantId() != null)
                 .collect(Collectors.groupingBy(MediaResponse::variantId));
-        List<VariantDetailResponse> variantDetails = variants.stream()
+        MediaResponse thumbnailMedia = mediaResponses.stream()
+                .filter(media -> media.variantId() == null)
+                .filter(media -> Objects.equals(media.mediaId(), product.thumbnailMediaId()))
+                .findFirst()
+                .orElse(null);
+        List<VariantDetailResponse> variantDetails = variantsById.values().stream()
                 .map(variant -> {
                     List<MediaResponse> media =
-                            mediaByVariant.getOrDefault(variant.getVariantId(), List.of());
+                            mediaByVariant.getOrDefault(variant.variantId(), List.of());
                     // A product with no real variant choice has no variant-level
                     // media; its thumbnail is the default variant's image.
-                    if (media.isEmpty() && variants.size() == 1
-                            && product.thumbnailMediaId() != null) {
-                        media = mediaRepo.findByMediaId(product.thumbnailMediaId())
-                                .map(mapper::toMediaResponse)
-                                .map(List::of)
-                                .orElse(List.of());
+                    if (media.isEmpty() && variantsById.size() == 1 && thumbnailMedia != null) {
+                        media = List.of(thumbnailMedia);
                     }
                     return new VariantDetailResponse(
-                            variant.getVariantId(), variant.getSku(), variant.getPrice(),
-                            variant.getStock(),
-                            attributesByVariant.getOrDefault(variant.getVariantId(), List.of()),
+                            variant.variantId(), variant.sku(), variant.price(),
+                            variant.stock(),
+                            attributesByVariant.getOrDefault(variant.variantId(), List.of()),
                             media);
                 })
                 // The storefront selects variants[0], so keep the default form first.
@@ -261,7 +311,8 @@ public class ProductService {
                 .toList();
         PageResponse<ReviewResponse> reviews = reviewService.listForProduct(
                 product.productId(), includeHidden, reviewPage);
-        return new ProductDetailResponse(product, attributes, variantDetails, reviews);
+        return new ProductDetailResponse(
+                product, List.copyOf(attributesById.values()), variantDetails, reviews);
     }
 
     public ProductResponse create(ProductCreateRequest request) {

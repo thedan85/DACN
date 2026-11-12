@@ -3,6 +3,7 @@ package com.project.dacn.entity.auth;
 import com.project.dacn.common.util.BusinessId;
 import com.project.dacn.entity.BaseEntity;
 import com.project.dacn.common.constant.UserStatus;
+import com.project.dacn.entity.identity.Customer;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -11,6 +12,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -55,6 +57,10 @@ public class User extends BaseEntity {
 
     @Column(name = "user_last_login")
     private Instant lastLogin;
+
+    /** Inverse side of {@link Customer#getUser()}; fetched with the principal. */
+    @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
+    private Customer customer;
 
     @Override
     protected String getBusinessId() {

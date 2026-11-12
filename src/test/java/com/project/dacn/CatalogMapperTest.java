@@ -1,5 +1,6 @@
 package com.project.dacn;
 
+import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.dto.request.catalog.AttributeValueCreateRequest;
 import com.project.dacn.dto.request.catalog.MediaCreateRequest;
 import com.project.dacn.dto.request.catalog.ProductCreateRequest;
@@ -24,6 +25,22 @@ class CatalogMapperTest {
         assertThat(mapper.toProduct(
                 new ProductCreateRequest("P", "d", "detail", "cat-1", null, null)).getProductId())
                 .isNull();
+    }
+
+    @Test
+    void productCreateKeepsDraftStatus() {
+        Product product = mapper.toProduct(
+                new ProductCreateRequest("P", "d", null, null, null, ProductStatus.DRAFT));
+
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.DRAFT);
+    }
+
+    @Test
+    void productCreateKeepsInactiveStatus() {
+        Product product = mapper.toProduct(
+                new ProductCreateRequest("P", "d", null, null, null, ProductStatus.INACTIVE));
+
+        assertThat(product.getStatus()).isEqualTo(ProductStatus.INACTIVE);
     }
 
     @Test

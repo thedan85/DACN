@@ -33,6 +33,7 @@ import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
 import com.project.dacn.service.cart.CartService;
+import com.project.dacn.service.cart.CompatibilityService;
 import com.project.dacn.service.order.OrderLifecycleService;
 import com.project.dacn.service.order.ReservationPolicy;
 import jakarta.persistence.EntityManager;
@@ -132,6 +133,9 @@ class CartCheckoutTest {
         @Mock
         DatabaseClock databaseClock;
 
+        @Mock
+        CompatibilityService compatibilityService;
+
         ReservationPolicy reservationPolicy = new ReservationPolicy(false, false, false);
 
         CartMapper cartMapper = Mappers.getMapper(CartMapper.class);
@@ -147,7 +151,8 @@ class CartCheckoutTest {
             service = new CartService(customerRepository, variantRepository,
                     cartRepository, cartItemRepository, cartMapper,
                     orderRepository, orderItemRepository, paymentRepository, orderMapper,
-                    paymentMapper, reservationPolicy, orderLifecycleService, databaseClock);
+                    paymentMapper, reservationPolicy, orderLifecycleService, databaseClock,
+                    compatibilityService);
             ReflectionTestUtils.setField(service, "transactionLockBounds", Boolean.FALSE);
         }
 
@@ -173,6 +178,8 @@ class CartCheckoutTest {
 
             assertThat(o.status()).isEqualTo(OrderStatus.PENDING);
             assertThat(o.total()).isEqualByComparingTo(new BigDecimal("20.00"));
+            assertThat(o.items()).hasSize(1);
+            assertThat(o.items().get(0).attributes()).isNotNull().isEmpty();
             var order = inOrder(orderLifecycleService, cartItemRepository);
             order.verify(orderLifecycleService).recordPlaced(
                     any(Order.class), any(Payment.class),
@@ -305,7 +312,7 @@ class CartCheckoutTest {
     @Nested
     @DataJpaTest
     @ActiveProfiles("test")
-    @Import({CartService.class, CheckoutMapperTestConfig.class})
+    @Import({CartService.class, CompatibilityService.class, CheckoutMapperTestConfig.class})
     class CartCheckoutPersistenceTest {
 
         @Autowired

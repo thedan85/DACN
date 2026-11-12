@@ -14,6 +14,7 @@ import com.project.dacn.dto.request.order.OrderCreateRequest;
 import com.project.dacn.dto.request.payment.PaymentCreateRequest;
 import com.project.dacn.dto.response.cart.CartDetailResponse;
 import com.project.dacn.dto.response.cart.CartItemResponse;
+import com.project.dacn.dto.response.cart.CompatibilityResponse;
 import com.project.dacn.dto.response.order.OrderItemResponse;
 import com.project.dacn.dto.response.order.OrderResponse;
 import com.project.dacn.entity.cart.Cart;
@@ -72,6 +73,7 @@ public class CartService {
     private final ReservationPolicy reservationPolicy;
     private final OrderLifecycleService orderLifecycleService;
     private final DatabaseClock databaseClock;
+    private final CompatibilityService compatibilityService;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -82,7 +84,8 @@ public class CartService {
         Cart cart = lockedCart(customerId, true);
         List<CartItem> items = cartItemRepository.findWithDetailsByCart_Id(cart.getId());
         List<CartItemResponse> responses = items.stream().map(mapper::toCartItemResponse).toList();
-        return mapper.toDetail(cart, responses);
+        CompatibilityResponse compatibility = compatibilityService.evaluate(items);
+        return mapper.toDetail(cart, responses, compatibility);
     }
 
     public CartItemResponse addItem(Long customerId, CartItemAddRequest req) {

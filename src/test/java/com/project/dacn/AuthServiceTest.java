@@ -12,6 +12,7 @@ import com.project.dacn.dto.request.auth.LoginRequest;
 import com.project.dacn.dto.request.auth.RefreshRequest;
 import com.project.dacn.dto.request.auth.RegisterRequest;
 import com.project.dacn.dto.response.auth.LoginResponse;
+import com.project.dacn.dto.response.auth.MeResponse;
 import com.project.dacn.entity.auth.Permission;
 import com.project.dacn.entity.auth.Role;
 import com.project.dacn.entity.auth.RolePermission;
@@ -23,18 +24,24 @@ import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
 import com.project.dacn.security.GoogleTokenVerifier;
+import com.project.dacn.security.AuthenticatedUser;
 import com.project.dacn.security.JwtService;
 import com.project.dacn.security.RateLimiter;
 import com.project.dacn.security.RefreshTokenCookie;
 import com.project.dacn.service.auth.AuthService;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -98,6 +105,11 @@ class AuthServiceTest {
 
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
     @BeforeEach
     void seedRbac() {
         // Profile test has no V8 seed: create roles/permissions here (idempotent per test).
@@ -149,6 +161,32 @@ class AuthServiceTest {
         // Same email with different casing must be treated as duplicate (-> 409 via handler).
         assertThatThrownBy(() -> authService.register(registerRequest("USER@test.com")))
                 .isInstanceOf(EmailAlreadyExistsException.class);
+    }
+
+    @Test
+    void loginReturnsTheAccountProfileWithTheTokens() {
+        authService.register(registerRequest("profile-login@test.com"));
+
+        LoginResponse login = authService.login(
+                new LoginRequest("profile-login@test.com", "password123"), null, null);
+
+        assertThat(login.user().email()).isEqualTo("profile-login@test.com");
+        assertThat(login.user().name()).isEqualTo("Test User");
+        assertThat(login.user().roleCode()).isEqualTo("CUSTOMER");
+        assertThat(login.user().permissions()).isEmpty();
+    }
+
+    @Test
+    void refreshReturnsTheAccountProfileWithTheTokens() {
+        authService.register(registerRequest("profile-refresh@test.com"));
+        LoginResponse login = authService.login(
+                new LoginRequest("profile-refresh@test.com", "password123"), null, null);
+
+        var refreshed = authService.refresh(new RefreshRequest(login.refreshToken()));
+
+        assertThat(refreshed.user().userId()).isEqualTo(login.user().userId());
+        assertThat(refreshed.user().roleCode()).isEqualTo("CUSTOMER");
+        assertThat(refreshed.user().permissions()).isEmpty();
     }
 
     @Test
@@ -276,6 +314,25 @@ class AuthServiceTest {
     }
 
     @Test
+    void lockedUser_oldAccessToken_rejectedByMe() throws Exception {
+        authService.register(registerRequest("locked-access@test.com"));
+        LoginResponse login = authService.login(
+                new LoginRequest("locked-access@test.com", "password123"), null, null);
+
+        // Lock the user AFTER the access token was issued. The next request must
+        // not accept the still-unexpired token.
+        User user = userRepository.findByEmail("locked-access@test.com").orElseThrow();
+        user.setStatus(UserStatus.LOCKED);
+        userRepository.save(user);
+        entityManager.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + login.accessToken()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
     void me_withToken_200_seesPermissions() throws Exception {
         // EMPLOYEE user has product:create (seeded above).
         Role employeeRole = roleRepository.findByCodeIgnoreCase("EMPLOYEE").orElseThrow();
@@ -304,6 +361,27 @@ class AuthServiceTest {
                 .andExpect(jsonPath("$.data.email").value("me-employee@test.com"))
                 .andExpect(jsonPath("$.data.roleCode").value("EMPLOYEE"))
                 .andExpect(jsonPath("$.data.permissions", hasItem("product:create")));
+    }
+
+    @Test
+    void meReadsProfileFromAuthenticatedPrincipalWithoutQuery() {
+        AuthenticatedUser principal = new AuthenticatedUser(
+                "USR_ME", "me@example.com", "Me Customer", "0901234567", "addr",
+                "customer", "Customer", List.of("product:read"), true,
+                42L, "hash", true, true);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        principal, null, principal.getAuthorities()));
+        Statistics stats = entityManager.getEntityManagerFactory()
+                .unwrap(SessionFactory.class).getStatistics();
+        stats.clear();
+
+        MeResponse me = authService.me();
+
+        assertThat(me.userId()).isEqualTo("USR_ME");
+        assertThat(me.name()).isEqualTo("Me Customer");
+        assertThat(me.permissions()).containsExactly("product:read");
+        assertThat(stats.getPrepareStatementCount()).isZero();
     }
 
     @Test

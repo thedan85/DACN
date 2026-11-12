@@ -74,7 +74,7 @@ public interface OrderMapper {
     @Mapping(source = "variant.sku", target = "sku")
     @Mapping(source = "variant.product.name", target = "productName")
     @Mapping(target = "thumbnail", ignore = true)
-    @Mapping(target = "attributes", ignore = true)
+    @Mapping(target = "attributes", expression = "java(java.util.List.of())")
     OrderItemResponse toOrderItemResponse(OrderItem item);
 
     default OrderItemResponse toOrderItemResponse(OrderItem item, String thumbnail,

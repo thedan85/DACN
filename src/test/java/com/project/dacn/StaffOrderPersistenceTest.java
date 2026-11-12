@@ -197,8 +197,26 @@ class StaffOrderPersistenceTest {
 
         assertThat(page.getContent()).hasSize(5)
                 .allSatisfy(o -> assertThat(o.items()).hasSize(1));
-        // Page, items, attributes, variant media, product media, fallback media, payments.
-        assertThat(stats.getPrepareStatementCount()).isEqualTo(singleOrderStatements);
+        // Page, items with attributes, order-item media.
+        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(4);
+        assertThat(singleOrderStatements).isLessThanOrEqualTo(4);
+    }
+
+    @Test
+    void staffListLoadsEnrichmentInBatches() {
+        entityManager.flush();
+        entityManager.clear();
+        Statistics stats = entityManager.getEntityManagerFactory()
+                .unwrap(SessionFactory.class).getStatistics();
+        stats.clear();
+
+        PageResponse<OrderResponse> page = service.listForStaff(
+                null, "alpha", PageRequest.of(0, 1));
+
+        assertThat(page.getContent()).singleElement()
+                .satisfies(o -> assertThat(o.items()).hasSize(1));
+        // Page, count, items with attributes, order-item media.
+        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(4);
     }
 
     @Test
@@ -213,8 +231,9 @@ class StaffOrderPersistenceTest {
         OrderResponse response = service.get(customerId, order.getOrderId());
 
         assertThat(response.items()).hasSize(1);
-        // Order and customer share one query; six queries batch the enrichment.
-        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(7);
+        // Order, customer and payment share one query; three queries batch
+        // the enrichment.
+        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(3);
     }
 
     @Test

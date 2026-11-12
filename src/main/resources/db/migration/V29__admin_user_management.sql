@@ -1,38 +1,65 @@
 -- =========================================================
 -- V29: Admin user management
 --
--- Reconstructed from the applied live migration on 2026-11-06.
--- The original V29 file was missing from the repository.
--- Effects: admin contact columns, user-management permissions,
--- and grants to the admin role.
+-- Adds the profile columns needed to store an admin's phone/address and
+-- seeds the user-management permissions for the admin role only.
+--
+-- employee_phone becomes nullable for legacy admins that were created
+-- before admin phone storage existed. The create API still requires a
+-- phone when creating either staff profile.
+--
+-- Idempotent: ADD COLUMN IF NOT EXISTS / DROP NOT NULL / ON CONFLICT
+-- DO NOTHING. Permission IDs follow the V16/V17/V21 convention and are
+-- deterministic; role grants join roles by lower(role_code), as V16 did.
 -- =========================================================
 
-alter table admins add column if not exists admin_phone varchar(20);
-alter table admins add column if not exists admin_address varchar(255);
+-- ---------------------------------------------------------
+-- 1. Profile columns
+-- ---------------------------------------------------------
 
-insert into permissions (
-    permission_id,
-    permission_code,
-    permission_name,
-    permission_resource,
-    permission_action,
-    permission_description
-)
-values
-    ('550e8400-e29b-41d4-a716-446655440801', 'user:read',   'Read User',   'user', 'read',   'View admin user accounts'),
-    ('550e8400-e29b-41d4-a716-446655440802', 'user:create', 'Create User', 'user', 'create', 'Create staff accounts'),
-    ('550e8400-e29b-41d4-a716-446655440803', 'user:update', 'Update User', 'user', 'update', 'Lock, unlock, or change the role of a user'),
-    ('550e8400-e29b-41d4-a716-446655440804', 'user:delete', 'Delete User', 'user', 'delete', 'Soft-delete user accounts')
-on conflict (permission_id) do nothing;
+ALTER TABLE admins
+    ADD COLUMN IF NOT EXISTS admin_phone VARCHAR(20) NULL;
 
-insert into role_permissions (role_permission_id, role_id, permission_id)
-select v.role_permission_id, r.id, p.id
-from (values
-    ('rp-admin-user:read',   '550e8400-e29b-41d4-a716-446655440801'),
-    ('rp-admin-user:create', '550e8400-e29b-41d4-a716-446655440802'),
-    ('rp-admin-user:update', '550e8400-e29b-41d4-a716-446655440803'),
-    ('rp-admin-user:delete', '550e8400-e29b-41d4-a716-446655440804')
-) as v(role_permission_id, permission_id)
-join roles r on r.role_code = 'admin'
-join permissions p on p.permission_id = v.permission_id
-on conflict (role_id, permission_id) do nothing;
+ALTER TABLE admins
+    ADD COLUMN IF NOT EXISTS admin_address VARCHAR(255) NULL;
+
+ALTER TABLE employees
+    ALTER COLUMN employee_phone DROP NOT NULL;
+
+-- ---------------------------------------------------------
+-- 2. USER permissions (resource block 08)
+-- ---------------------------------------------------------
+
+INSERT INTO permissions (permission_id, permission_code, permission_name,
+                         permission_resource, permission_action,
+                         permission_description, created_at, updated_at)
+VALUES
+  ('550e8400-e29b-41d4-a716-446655440801', 'user:read', 'Read User',
+   'user', 'read', 'View admin user accounts', now(), now()),
+  ('550e8400-e29b-41d4-a716-446655440802', 'user:create', 'Create User',
+   'user', 'create', 'Create staff accounts', now(), now()),
+  ('550e8400-e29b-41d4-a716-446655440803', 'user:update', 'Update User',
+   'user', 'update', 'Lock, unlock, or change the role of a user', now(), now()),
+  ('550e8400-e29b-41d4-a716-446655440804', 'user:delete', 'Delete User',
+   'user', 'delete', 'Soft-delete user accounts', now(), now())
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------
+-- 3. Grants: ADMIN only
+-- ---------------------------------------------------------
+
+INSERT INTO role_permissions (role_permission_id, role_id, permission_id, granted_at)
+SELECT
+  'rp-' || lower(r.role_code) || '-' || p.permission_code,
+  r.id,
+  p.id,
+  now()
+FROM roles r
+JOIN permissions p
+  ON p.permission_code IN ('user:read', 'user:create', 'user:update', 'user:delete')
+WHERE lower(r.role_code) = 'admin'
+ON CONFLICT DO NOTHING;
+
+-- =========================================================
+-- End of V29
+-- =========================================================

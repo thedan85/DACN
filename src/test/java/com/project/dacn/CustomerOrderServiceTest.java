@@ -6,7 +6,6 @@ import com.project.dacn.dto.response.order.OrderResponse;
 import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.catalog.MediaRepository;
-import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
@@ -39,7 +38,6 @@ class CustomerOrderServiceTest {
     @Mock OrderMapper orderMapper;
     @Mock PaymentMapper paymentMapper;
     @Mock VariantRepository variantRepository;
-    @Mock VariantAttributeValueRepository variantAttributeValueRepository;
     @Mock MediaRepository mediaRepository;
     @Mock PaymentRepository paymentRepository;
     @InjectMocks OrderService service;

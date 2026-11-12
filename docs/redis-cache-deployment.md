@@ -2,8 +2,8 @@
 
 ## Lettuce timeouts (set in `RedisConfig`)
 
-- command timeout: `catalog.cache.redis.command-timeout`, default 200 ms
-- connect timeout: `catalog.cache.redis.connect-timeout`, default 500 ms
+- command timeout: `catalog.cache.redis.command-timeout`, 1 s in `application.yml` (code default 200 ms; override with `REDIS_COMMAND_TIMEOUT`)
+- connect timeout: `catalog.cache.redis.connect-timeout`, 2 s in `application.yml` (code default 500 ms; override with `REDIS_CONNECT_TIMEOUT`)
 - `disconnectedBehavior = REJECT_COMMANDS` (commands fail immediately while disconnected instead of queueing)
 
 Raise the timeouts only if Redis is remote or TLS adds latency; keep them well below the endpoint's own latency budget. Catalog reads fall back to Postgres on any Redis failure; these settings bound the cost of that fallback.
@@ -26,18 +26,18 @@ A cache hit costs two Redis round trips (generation + payload) plus the live sto
 
 ## Known limit: cache write inside the DB transaction
 
-On a miss, the cache write happens while the request's DB transaction is still open, so a slow-but-alive Redis can hold a DB connection for up to the command timeout (200 ms default) per miss. Bounded and accepted for a local Redis; revisit (write after commit, or a bounded executor) if Redis becomes remote or the DB pool runs hot during Redis slowness.
+On a miss, the cache write happens while the request's DB transaction is still open, so a slow-but-alive Redis can hold a DB connection for up to the command timeout (1 s) per miss. Bounded and accepted for the current remote Redis; revisit (write after commit, or a bounded executor) if the DB pool runs hot during Redis slowness.
 
 ## Product detail aggregate
 
-- Key: `pim:product:detail:<product generation>:<lowercase slug>:<page>:<size>:<sort>`, TTL 45 s.
+- Key: `pim:product:detail:<product generation>:<lowercase slug>:<page>:<size>:<sort>`, TTL 5 min.
   Only standard, unsorted review pages are cached; a `sort` parameter bypasses the aggregate cache.
 - Public storefront reads only. Staff reads (`includeHidden`) never touch Redis.
 - Product and variant stock are scrubbed before storing. A hit refreshes variant stock with one
   `findStockByVariantIdIn` query and derives product stock from the sum.
 - Product, variant, category, media create/update/delete, product-thumbnail uploads, attribute writes,
   and variant image uploads bump the product generation and invalidate immediately.
-- Reviews and customer names may lag up to 45 s; there is no write path that bumps the generation for them.
+- Reviews and customer names may lag up to 5 min; there is no write path that bumps the generation for them.
 
 ## Auth rate limiting
 
