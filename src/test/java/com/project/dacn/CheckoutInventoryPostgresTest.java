@@ -22,6 +22,7 @@ import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
 import com.project.dacn.service.cart.CartService;
+import com.project.dacn.service.cart.CompatibilityService;
 import com.project.dacn.service.order.OrderLifecycleService;
 import com.project.dacn.service.order.ReservationPolicy;
 import com.project.dacn.support.ExternalPostgresDatabase;
@@ -129,12 +130,9 @@ class CheckoutInventoryPostgresTest {
             mapper = context.getBean(ObjectMapper.class);
             assertThat(jdbc.queryForObject("""
                     select count(*) from flyway_schema_history
-                     where version = '31' and success
+                     where version = '34' and success
                     """, Long.class)).isEqualTo(1);
-            assertThat(jdbc.queryForObject(
-                    "select count(*) from flyway_schema_history where version = '33'",
-                    Long.class)).isZero();
-            System.out.println("Flyway history: V31 successful, V33 absent");
+            System.out.println("Flyway history: V34 successful");
             entityManager = SharedEntityManagerCreator.createSharedEntityManager(
                     context.getBean(EntityManagerFactory.class));
             transaction = new TransactionTemplate(context.getBean(PlatformTransactionManager.class));
@@ -653,7 +651,8 @@ class CheckoutInventoryPostgresTest {
                 context.getBean(PaymentMapper.class),
                 policy,
                 context.getBean(OrderLifecycleService.class),
-                context.getBean(DatabaseClock.class));
+                context.getBean(DatabaseClock.class),
+                context.getBean(CompatibilityService.class));
         ReflectionTestUtils.setField(manual, "transactionLockBounds", Boolean.FALSE);
         return manual;
     }
@@ -843,7 +842,7 @@ class CheckoutInventoryPostgresTest {
     @Configuration
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackages = "com.project.dacn.repository")
-    @Import({CartService.class, OrderLifecycleService.class})
+    @Import({CartService.class, OrderLifecycleService.class, CompatibilityService.class})
     static class Config {
         @Bean
         CartMapper cartMapper() {

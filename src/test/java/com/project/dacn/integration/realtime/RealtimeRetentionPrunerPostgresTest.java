@@ -86,7 +86,7 @@ class RealtimeRetentionPrunerPostgresTest {
     }
 
     @Test
-    void actualV30SqlPrunesOnlyBoundedExpiredRowsWhilePausedAndPreservesDurableWork() {
+    void actualV33SqlPrunesOnlyBoundedExpiredRowsWhilePausedAndPreservesDurableWork() {
         seedEligibleRows(3);
         UUID activeLease = UUID.randomUUID();
         UUID expiryGraceLease = UUID.randomUUID();

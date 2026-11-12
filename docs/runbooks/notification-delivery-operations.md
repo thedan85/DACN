@@ -638,6 +638,6 @@ Never collect a full payload, a DLQ body, a token, or a password as evidence.
 - `src/main/java/com/project/dacn/security/TrustedClientIpResolver.java`
 - `src/main/java/com/project/dacn/integration/realtime/RealtimeAdmissionService.java`
 - `src/main/resources/application.yml`
-- `src/main/resources/db/migration/V30__event_foundation.sql`
+- `src/main/resources/db/migration/V33__event_foundation.sql`
 - `docs/runbooks/rabbitmq-notification-topology.md`
 - `docs/runbooks/supabase-realtime-setup.md`

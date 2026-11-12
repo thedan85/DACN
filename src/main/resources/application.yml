@@ -7,10 +7,8 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
     hikari:
-      # The database is remote (~220 ms RTT per statement); a 5-connection
-      # pool queues ordinary storefront traffic, especially after a cold start.
-      maximum-pool-size: 10
-      minimum-idle: 2
+      maximum-pool-size: 5
+      minimum-idle: 1
       connection-timeout: 10000
       idle-timeout: 300000
       max-lifetime: 600000

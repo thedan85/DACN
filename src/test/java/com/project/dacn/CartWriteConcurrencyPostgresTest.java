@@ -11,6 +11,7 @@ import com.project.dacn.dto.response.cart.CartItemResponse;
 import com.project.dacn.dto.response.order.OrderResponse;
 import com.project.dacn.repository.cart.CartRepository;
 import com.project.dacn.service.cart.CartService;
+import com.project.dacn.service.cart.CompatibilityService;
 import com.project.dacn.support.ExternalPostgresDatabase;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -517,7 +518,7 @@ class CartWriteConcurrencyPostgresTest {
     @Configuration
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackages = "com.project.dacn.repository")
-    @Import({CartService.class, CartCheckoutTest.CheckoutMapperTestConfig.class})
+    @Import({CartService.class, CompatibilityService.class, CartCheckoutTest.CheckoutMapperTestConfig.class})
     static class Config {
         @Bean
         LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource source) {

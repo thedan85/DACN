@@ -79,14 +79,14 @@ psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 --single-transaction -f src/main/reso
 ```
 
 The second run proves idempotence. The script fails closed when
-`realtime.messages` or the V30 tables are missing. It creates receive policies
+`realtime.messages` or the V33 tables are missing. It creates receive policies
 only; there is no client insert/update/delete policy, and `PUBLIC` cannot
 execute the helpers. `authenticated` can execute only the active-inbox helper;
 the applying backend role can execute the send wrapper and dispatcher. Use one
 transaction and stop on errors so a failed privilege check cannot leave a
 partially installed security boundary.
 
-Prerequisites include the V30 Realtime transport/control tables and the control singleton,
+Prerequisites include the V33 Realtime transport/control tables and the control singleton,
 `users.id`/`users.user_status`, existing `anon`/`authenticated` roles,
 `realtime.messages.extension`, `realtime.topic()`, and
 `realtime.send(jsonb,text,text,boolean)`. No `users.inbox_revision` or inbox

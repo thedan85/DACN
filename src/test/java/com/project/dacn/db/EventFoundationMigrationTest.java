@@ -95,7 +95,7 @@ class EventFoundationMigrationTest {
     @Test
     void browserRoleRevokesIterateOnlyExistingAllowlistedRolesWithQuotedIdentifiers()
             throws IOException {
-        String migration = new ClassPathResource("db/migration/V30__event_foundation.sql")
+        String migration = new ClassPathResource("db/migration/V33__event_foundation.sql")
                 .getContentAsString(StandardCharsets.UTF_8);
 
         assertThat(migration).containsPattern("(?is)for\\s+v_role\\s+in\\s+"

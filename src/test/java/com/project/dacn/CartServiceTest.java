@@ -217,7 +217,7 @@ class CartServiceTest {
 
         @Test
         void detailDoesNotReloadCustomerWhenCartExists() {
-            givenCart();
+            givenLockedCart();
             when(cartItemRepository.findWithDetailsByCart_Id(10L)).thenReturn(List.of());
 
             service.getDetail(1L);
@@ -227,7 +227,7 @@ class CartServiceTest {
 
         @Test
         void detailIncludesCompatibility() {
-            givenCart();
+            givenLockedCart();
             Variant v = variant(10);
             CartItem existing = item(cart(customer()), v, 2);
             when(cartItemRepository.findWithDetailsByCart_Id(10L)).thenReturn(List.of(existing));
@@ -306,6 +306,12 @@ class CartServiceTest {
         private void givenCart() {
             Customer c = customer();
             when(customerRepository.findById(1L)).thenReturn(Optional.of(c));
+            when(cartRepository.findByCustomer_IdForUpdate(1L))
+                    .thenReturn(Optional.of(cart(c)));
+        }
+
+        private void givenLockedCart() {
+            Customer c = customer();
             when(cartRepository.findByCustomer_IdForUpdate(1L))
                     .thenReturn(Optional.of(cart(c)));
         }

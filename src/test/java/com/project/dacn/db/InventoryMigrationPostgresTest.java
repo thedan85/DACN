@@ -33,7 +33,7 @@ class InventoryMigrationPostgresTest {
         verifyIdentity();
         System.out.println("Verified inventory scratch identity: " + scratchDatabaseName);
         Flyway.configure().dataSource(database.jdbcUrl(), database.username(), database.password())
-                .locations("classpath:db/migration").target("30").cleanDisabled(true).loggers()
+                .locations("classpath:db/migration").target("33").cleanDisabled(true).loggers()
                 .load().migrate();
         verifyIdentity();
         execute("insert into roles (role_id, role_code, role_name) "
@@ -127,8 +127,8 @@ class InventoryMigrationPostgresTest {
         assertThat(strings("select order_id from orders where payment_expires_at is not null "
                 + "or cancellation_reason is not null or stock_released_at is not null")).isEmpty();
         assertThat(strings("select id::text from variants where stock_revision <> 0")).isEmpty();
-        assertThat(strings("select version from flyway_schema_history where version = '31' and success"))
-                .containsExactly("31");
+        assertThat(strings("select version from flyway_schema_history where version = '34' and success"))
+                .containsExactly("34");
     }
 
     @Test

@@ -34,4 +34,6 @@
   checksum.
 - `V31__ghn_shipping.sql` — shipping address columns and unique GHN order-code index. Keep this applied migration unchanged.
 - `V32__order_created_at_index.sql` — dashboard range index on `orders (created_at)`. Run `CREATE INDEX CONCURRENTLY` by hand on a live database.
+- `V33__event_foundation.sql` — event outbox, inbox, and Realtime control tables.
+- `V34__inventory_reservation_schema.sql` — reservation columns, indexes, and stock-revision constraint.
 - `R__refreshable_reference_data.sql` — repeatable reference data
