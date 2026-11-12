@@ -241,6 +241,35 @@ class VnpayWebhookControllerTest {
         assertInvalidReturn(params);
     }
 
+    @ParameterizedTest(name = "invalid signed return amount {index}")
+    @MethodSource("invalidAmounts")
+    void returnRejectsInvalidSignedAmountsWithoutServiceCalls(String response, String status, String amount) {
+        Map<String, String> params = signedOutcome(response, status);
+        replaceAndSign(params, "vnp_Amount", amount);
+
+        assertThat(SIGNATURE.verifyParams(params)).isTrue();
+        assertInvalidReturn(params);
+    }
+
+    @ParameterizedTest(name = "return amount rejection before persistence {index}")
+    @MethodSource("invalidAmounts")
+    void returnRejectsInvalidSignedAmountsBeforePersistenceOrLifecycle(String response, String status, String amount) {
+        PaymentRepository payments = mock(PaymentRepository.class);
+        OrderLifecycleService lifecycle = mock(OrderLifecycleService.class);
+        PaymentService adapter = new PaymentService(payments, null, null, null,
+                new PaymentSettlementService(lifecycle));
+        var actual = new VnpayWebhookController(SIGNATURE, adapter, props());
+        Map<String, String> params = signedOutcome(response, status);
+        replaceAndSign(params, "vnp_Amount", amount);
+
+        assertThat(SIGNATURE.verifyParams(params)).isTrue();
+        var redirect = actual.returnPage(params);
+
+        assertThat(redirect.getStatusCode()).isEqualTo(HttpStatus.SEE_OTHER);
+        assertThat(redirect.getHeaders().getLocation()).hasToString(FRONTEND_ORDERS + "?payment=invalid");
+        verifyNoInteractions(payments, lifecycle);
+    }
+
     @ParameterizedTest(name = "invalid return merchant {index}")
     @MethodSource("invalidMerchants")
     void returnRejectsAuthenticButUnconfiguredMerchant(String merchant) {
@@ -282,8 +311,11 @@ class VnpayWebhookControllerTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"00,00,success", "24,02,failed"})
-    void returnWithRealPaymentAdapterOnlyReadsIdentity(String response, String status, String outcome) {
+    @CsvSource({"00,00,success,15000000", "24,02,failed,15000000",
+            "00,00,success,15000000.00", "24,02,failed,15000000.00",
+            "00,00,success,1.5E+7", "24,02,failed,1.5E+7",
+            "00,00,success,+15000000", "24,02,failed,+15000000"})
+    void returnWithRealPaymentAdapterOnlyReadsIdentity(String response, String status, String outcome, String amount) {
         PaymentRepository payments = mock(PaymentRepository.class);
         OrderLifecycleService lifecycle = mock(OrderLifecycleService.class);
         PaymentService adapter = new PaymentService(payments, null, null, null,
@@ -292,7 +324,10 @@ class VnpayWebhookControllerTest {
         when(payments.findByPaymentId("PAY_abc")).thenReturn(Optional.of(Payment.builder()
                 .order(Order.builder().orderId("ORD_abc").build()).build()));
 
-        var redirect = actual.returnPage(signedOutcome(response, status));
+        Map<String, String> params = signedOutcome(response, status);
+        replaceAndSign(params, "vnp_Amount", amount);
+        assertThat(SIGNATURE.verifyParams(params)).isTrue();
+        var redirect = actual.returnPage(params);
 
         assertThat(redirect.getStatusCode()).isEqualTo(HttpStatus.SEE_OTHER);
         assertThat(redirect.getHeaders().getLocation()).hasToString(FRONTEND_ORDERS + "/ORD_abc?payment=" + outcome);
@@ -340,6 +375,12 @@ class VnpayWebhookControllerTest {
                 Stream.of("vnp_TxnRef", "vnp_TransactionNo").flatMap(field ->
                         blankValues().map(value -> Arguments.of(
                                 field, value, response, "00".equals(response) ? "00" : "02"))));
+    }
+
+    static Stream<Arguments> invalidAmounts() {
+        return Stream.of("00", "24").flatMap(response ->
+                Stream.concat(blankValues(), Stream.of("not-money", "15000000.5", " 15000000", "1e-1"))
+                        .map(amount -> Arguments.of(response, "00".equals(response) ? "00" : "02", amount)));
     }
 
     static Stream<String> invalidMerchants() {

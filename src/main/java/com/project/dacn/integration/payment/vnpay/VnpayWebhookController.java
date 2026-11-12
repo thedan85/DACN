@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriUtils;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -69,7 +70,7 @@ public class VnpayWebhookController {
     @GetMapping("/return")
     public ResponseEntity<Void> returnPage(@RequestParam Map<String, String> params) {
         boolean valid = signatureService.verifyParams(params) && validMerchant(params)
-                && validReferences(params) && validOutcome(params);
+                && validReferences(params) && validOutcome(params) && validAmountSyntax(params);
         String orderId = valid ? paymentService.orderIdForPayment(params.get("vnp_TxnRef")) : null;
 
         String outcome = !valid ? "invalid" : successfulOutcome(params) ? "success" : "failed";
@@ -86,6 +87,16 @@ public class VnpayWebhookController {
         return ResponseEntity.status(HttpStatus.SEE_OTHER)
                 .location(URI.create(target.toString()))
                 .build();
+    }
+
+    /** Matches IPN amount syntax only; it does not prove equality with the persisted payment amount. */
+    private static boolean validAmountSyntax(Map<String, String> params) {
+        try {
+            new BigDecimal(params.get("vnp_Amount")).toBigIntegerExact();
+            return true;
+        } catch (ArithmeticException | NumberFormatException | NullPointerException invalid) {
+            return false;
+        }
     }
 
     private boolean validMerchant(Map<String, String> params) {
