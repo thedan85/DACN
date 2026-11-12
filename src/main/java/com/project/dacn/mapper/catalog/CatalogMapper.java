@@ -148,6 +148,7 @@ public interface CatalogMapper {
     @Mapping(target = "deleted", constant = "false")
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "stockRevision", ignore = true)
     Variant toVariant(VariantCreateRequest request);
 
     @Mapping(source = "product.productId", target = "productId")
@@ -161,6 +162,7 @@ public interface CatalogMapper {
     @Mapping(target = "deleted", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "stockRevision", ignore = true)
     void updateVariant(VariantUpdateRequest request, @MappingTarget Variant variant);
 
     // ---- Media ----

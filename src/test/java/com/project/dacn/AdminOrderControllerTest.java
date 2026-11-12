@@ -18,6 +18,8 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.mockito.Mockito.verify;
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -51,13 +53,18 @@ class AdminOrderControllerTest {
         mockMvc.perform(post("/api/v1/admin/orders/ORD_1/complete"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.orderId").value("ORD_1"))
-                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.data").value(hasKey("paymentExpiresAt")))
+                .andExpect(jsonPath("$.data").value(hasKey("cancellationReason")))
+                .andExpect(jsonPath("$.data.paymentExpiresAt").value(nullValue()))
+                .andExpect(jsonPath("$.data.cancellationReason").value(nullValue()));
 
         verify(service).completeByAdmin("ORD_1");
     }
 
     private OrderResponse order(OrderStatus status) {
         return new OrderResponse("ORD_1", "CUS_1", "Jane", status,
-                new BigDecimal("8000.00"), "addr", "Jane", "090", List.of(), null, null, null);
+                new BigDecimal("8000.00"), "addr", "Jane", "090", List.of(), null, null, null,
+                null, null);
     }
 }

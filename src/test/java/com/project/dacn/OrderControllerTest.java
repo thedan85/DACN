@@ -23,6 +23,8 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -46,7 +48,8 @@ class OrderControllerTest {
 
     private OrderResponse order() {
         return new OrderResponse("ORD_1", "CUS_1", "Jane", OrderStatus.PENDING,
-                new BigDecimal("8000.00"), "addr", "Jane", "090", List.of(), null, null, null);
+                new BigDecimal("8000.00"), "addr", "Jane", "090", List.of(), null, null, null,
+                null, null);
     }
 
     private OrderResponse orderWithItem() {
@@ -54,7 +57,7 @@ class OrderControllerTest {
                 new BigDecimal("8000.00"), null, null, null, List.of());
         return new OrderResponse("ORD_1", "CUS_1", "Jane", OrderStatus.PENDING,
                 new BigDecimal("8000.00"), "addr", "Jane", "090", List.of(item), null, null,
-                null);
+                null, null, null);
     }
 
     @Test
@@ -103,7 +106,11 @@ class OrderControllerTest {
 
         mockMvc.perform(get("/api/v1/orders/ORD_1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.total").value(8000.00));
+                .andExpect(jsonPath("$.data.total").value(8000.00))
+                .andExpect(jsonPath("$.data").value(hasKey("paymentExpiresAt")))
+                .andExpect(jsonPath("$.data").value(hasKey("cancellationReason")))
+                .andExpect(jsonPath("$.data.paymentExpiresAt").value(nullValue()))
+                .andExpect(jsonPath("$.data.cancellationReason").value(nullValue()));
     }
 
     @Test

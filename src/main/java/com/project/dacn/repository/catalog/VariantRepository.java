@@ -2,14 +2,17 @@ package com.project.dacn.repository.catalog;
 
 import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.entity.catalog.Variant;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -35,9 +38,45 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
     @EntityGraph(attributePaths = {"product"})
     Optional<Variant> findWithProductById(Long id);
 
+    /** Checkout lock, called one surrogate id at a time in ascending order. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select v from Variant v where v.id = :id")
+    Optional<Variant> findByIdForUpdate(@Param("id") Long id);
+
+    interface CheckoutVariantView {
+        Long getId();
+
+        BigDecimal getPrice();
+
+        Integer getStock();
+
+        ProductStatus getProductStatus();
+    }
+
+    /** Fresh protected values read after the variant row locks are held. */
+    @Query("""
+            SELECT v.id AS id, v.price AS price, v.stock AS stock, p.status AS productStatus
+            FROM Variant v
+            JOIN v.product p
+            WHERE v.id IN :ids
+            """)
+    List<CheckoutVariantView> findCheckoutViewsByIdIn(@Param("ids") Collection<Long> ids);
+
     @Modifying
     @Query("update Variant v set v.stock = v.stock - :quantity where v.id = :id and v.stock >= :quantity")
     int decrementStock(@Param("id") Long id, @Param("quantity") int quantity);
+
+    /**
+     * Native historical stock update: checkout deducts stock without touching
+     * the portable revision semantics added later.
+     */
+    @Modifying
+    @Query(value = """
+            update variants
+               set variant_stock = variant_stock - :quantity
+             where id = :id and variant_stock >= :quantity
+            """, nativeQuery = true)
+    int decrementStockNative(@Param("id") Long id, @Param("quantity") int quantity);
 
     @Modifying
     @Query("update Variant v set v.stock = v.stock + :quantity where v.id = :id")

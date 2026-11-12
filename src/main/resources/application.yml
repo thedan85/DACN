@@ -112,6 +112,10 @@ payment:
     ipn-url: ${MOMO_IPN_URL:}
 
 app:
+  inventory:
+    reservation-policy-enabled: ${INVENTORY_RESERVATION_POLICY_ENABLED:false}
+    online-work-paused: ${INVENTORY_ONLINE_WORK_PAUSED:false}
+    expiry-sweeping-paused: ${INVENTORY_EXPIRY_SWEEPING_PAUSED:false}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   auth:

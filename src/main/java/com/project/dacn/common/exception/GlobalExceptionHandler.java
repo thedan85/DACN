@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -48,6 +49,21 @@ public class GlobalExceptionHandler {
         log.warn("Data integrity violation", ex);
         return ResponseEntity.status(409)
                 .body(ApiResponse.of(409, "resource already exists or is still referenced", null));
+    }
+
+    @ExceptionHandler(ConcurrencyFailureException.class)
+    public ResponseEntity<ApiResponse<?>> handleConcurrency(ConcurrencyFailureException ex) {
+        log.warn("Concurrent write conflicted: {}", ex.getClass().getSimpleName());
+        return ResponseEntity.status(409)
+                .body(ApiResponse.of(409, "resource is busy; refresh state before trying again", null));
+    }
+
+    @ExceptionHandler(jakarta.persistence.PessimisticLockException.class)
+    public ResponseEntity<ApiResponse<?>> handleJpaLockConflict(
+            jakarta.persistence.PessimisticLockException ex) {
+        log.warn("JPA lock conflict: {}", ex.getClass().getSimpleName());
+        return ResponseEntity.status(409)
+                .body(ApiResponse.of(409, "resource is busy; refresh state before trying again", null));
     }
 
     @ExceptionHandler(DuplicateResourceException.class)

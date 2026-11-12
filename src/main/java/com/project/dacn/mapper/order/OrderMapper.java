@@ -25,6 +25,9 @@ public interface OrderMapper {
     @Mapping(target = "status", constant = "PENDING")
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "paymentExpiresAt", ignore = true)
+    @Mapping(target = "cancellationReason", ignore = true)
+    @Mapping(target = "stockReleasedAt", ignore = true)
     Order toOrder(OrderCreateRequest request);
 
     @Mapping(target = "items", ignore = true)
@@ -43,7 +46,8 @@ public interface OrderMapper {
         return new OrderResponse(base.orderId(), base.customerId(), base.customerName(),
                 base.status(), base.total(), base.address(), base.recipientName(),
                 base.phone(), items == null ? List.of() : items,
-                base.createdAt(), base.updatedAt(), payment);
+                base.createdAt(), base.updatedAt(), payment,
+                base.paymentExpiresAt(), base.cancellationReason());
     }
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
@@ -53,6 +57,9 @@ public interface OrderMapper {
     @Mapping(target = "total", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "paymentExpiresAt", ignore = true)
+    @Mapping(target = "cancellationReason", ignore = true)
+    @Mapping(target = "stockReleasedAt", ignore = true)
     void updateOrder(OrderUpdateRequest request, @MappingTarget Order order);
 
     @Mapping(target = "id", ignore = true)

@@ -3,6 +3,7 @@ package com.project.dacn.entity.order;
 import com.project.dacn.entity.BaseEntity;
 import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.entity.identity.Customer;
+import com.project.dacn.event.OrderEventReason;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -19,6 +20,7 @@ import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.NaturalId;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 
 @Getter
 @Setter
@@ -56,6 +58,16 @@ public class Order extends BaseEntity {
 
     @Column(name = "event_sequence", nullable = false)
     private long eventSequence;
+
+    @Column(name = "payment_expires_at")
+    private Instant paymentExpiresAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cancellation_reason", length = 32)
+    private OrderEventReason cancellationReason;
+
+    @Column(name = "stock_released_at")
+    private Instant stockReleasedAt;
 
     @Override
     protected String getBusinessId() {

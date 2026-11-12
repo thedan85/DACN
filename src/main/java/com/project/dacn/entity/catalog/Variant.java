@@ -13,6 +13,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.NaturalId;
 import org.hibernate.annotations.SQLRestriction;
 
@@ -40,6 +41,10 @@ public class Variant extends BaseEntity {
     @Column(name = "variant_stock", nullable = false)
     @lombok.Builder.Default
     private Integer stock = 0;
+
+    @Column(name = "stock_revision", nullable = false, insertable = false, updatable = false)
+    @ColumnDefault("0")
+    private long stockRevision;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "product_id", referencedColumnName = "id",

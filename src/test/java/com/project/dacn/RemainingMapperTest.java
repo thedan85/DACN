@@ -1,6 +1,10 @@
 package com.project.dacn;
 
 import com.project.dacn.dto.request.cart.CartItemCreateRequest;
+import com.project.dacn.common.constant.PaymentMethod;
+import com.project.dacn.common.constant.PaymentStatus;
+import com.project.dacn.dto.response.payment.PaymentResponse;
+import com.project.dacn.event.OrderEventReason;
 import com.project.dacn.dto.response.engagement.ReviewResponse;
 import com.project.dacn.entity.cart.CartItem;
 import com.project.dacn.entity.identity.Customer;
@@ -16,6 +20,8 @@ import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -41,6 +47,44 @@ class RemainingMapperTest {
         assertThat(order.getOrderId()).isNull();
         assertThat(order.getCustomer()).isNull();
         assertThat(order.getStatus()).isEqualTo(com.project.dacn.common.constant.OrderStatus.PENDING);
+    }
+
+    @Test
+    void orderReadOverloadsPreserveReservationFactsAndExistingFields() {
+        Instant deadline = Instant.parse("2026-11-12T12:15:00Z");
+        Instant created = Instant.parse("2026-11-12T12:00:00Z");
+        Order order = Order.builder().orderId("ORD_1")
+                .customer(Customer.builder().customerId("CUS_1").name("An").build())
+                .total(new BigDecimal("10.00")).address("addr").recipientName("An").phone("090")
+                .createdAt(created).updatedAt(created).paymentExpiresAt(deadline)
+                .cancellationReason(OrderEventReason.PAYMENT_EXPIRED).stockReleasedAt(deadline).build();
+        PaymentResponse payment = new PaymentResponse("PAY_1", "ORD_1", PaymentMethod.BANK_TRANSFER,
+                PaymentStatus.PENDING, new BigDecimal("10.00"), null, null, created, created);
+
+        var base = orderMapper.toOrderResponse(order);
+        var withItems = orderMapper.toOrderResponse(order, List.of());
+        var enriched = orderMapper.toOrderResponse(order, null, payment);
+        assertThat(List.of(base, withItems, enriched)).allSatisfy(response -> {
+            assertThat(response.orderId()).isEqualTo("ORD_1");
+            assertThat(response.customerId()).isEqualTo("CUS_1");
+            assertThat(response.customerName()).isEqualTo("An");
+            assertThat(response.status()).isEqualTo(com.project.dacn.common.constant.OrderStatus.PENDING);
+            assertThat(response.total()).isEqualByComparingTo("10.00");
+            assertThat(response.address()).isEqualTo("addr");
+            assertThat(response.recipientName()).isEqualTo("An");
+            assertThat(response.phone()).isEqualTo("090");
+            assertThat(response.createdAt()).isEqualTo(created);
+            assertThat(response.updatedAt()).isEqualTo(created);
+            assertThat(response.paymentExpiresAt()).isEqualTo(deadline);
+            assertThat(response.cancellationReason()).isEqualTo(OrderEventReason.PAYMENT_EXPIRED);
+        });
+        assertThat(withItems.items()).isEmpty();
+        assertThat(enriched.items()).isEmpty();
+        assertThat(enriched.payment()).isSameAs(payment);
+        var json = new tools.jackson.databind.ObjectMapper().valueToTree(enriched);
+        assertThat(json.get("paymentExpiresAt").asText()).isEqualTo("2026-11-12T12:15:00Z");
+        assertThat(json.get("cancellationReason").asText()).isEqualTo("PAYMENT_EXPIRED");
+        assertThat(json.has("stockReleasedAt")).isFalse();
     }
 
     @Test

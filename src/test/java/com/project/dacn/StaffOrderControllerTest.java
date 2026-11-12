@@ -22,6 +22,8 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.mockito.Mockito.verify;
+import static org.hamcrest.Matchers.hasKey;
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -60,7 +62,11 @@ class StaffOrderControllerTest {
                         .param("size", "20"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content[0].orderId").value("ORD_1"))
-                .andExpect(jsonPath("$.data.content[0].status").value("PENDING"));
+                .andExpect(jsonPath("$.data.content[0].status").value("PENDING"))
+                .andExpect(jsonPath("$.data.content[0]").value(hasKey("paymentExpiresAt")))
+                .andExpect(jsonPath("$.data.content[0]").value(hasKey("cancellationReason")))
+                .andExpect(jsonPath("$.data.content[0].paymentExpiresAt").value(nullValue()))
+                .andExpect(jsonPath("$.data.content[0].cancellationReason").value(nullValue()));
     }
 
     @Test
@@ -95,6 +101,7 @@ class StaffOrderControllerTest {
 
     private OrderResponse order(OrderStatus status) {
         return new OrderResponse("ORD_1", "CUS_1", "Jane", status,
-                new BigDecimal("8000.00"), "addr", "Jane", "090", List.of(), null, null, null);
+                new BigDecimal("8000.00"), "addr", "Jane", "090", List.of(), null, null, null,
+                null, null);
     }
 }

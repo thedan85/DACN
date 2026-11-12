@@ -1,6 +1,8 @@
 package com.project.dacn;
 
 import com.project.dacn.controller.cart.CartController;
+import com.project.dacn.common.exception.InvalidOrderStateException;
+import com.project.dacn.dto.request.cart.CartCheckoutRequest;
 import com.project.dacn.dto.response.cart.CartDetailResponse;
 import com.project.dacn.security.CustomerIdentity;
 import com.project.dacn.security.JwtAuthenticationFilter;
@@ -19,11 +21,13 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -90,5 +94,25 @@ class CartControllerTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"variantId\":\"VAR_1\",\"quantity\":1}"))
                                 .andExpect(status().isOk());
+        }
+
+        @Test
+        void pausedCheckoutReturnsSafe409WithoutSql() throws Exception {
+                when(identity.requireCustomerId(any())).thenReturn(42L);
+                when(service.checkout(eq(42L), any(CartCheckoutRequest.class)))
+                                .thenThrow(new InvalidOrderStateException(
+                                                "online checkout is temporarily unavailable"));
+
+                mockMvc.perform(post("/api/v1/cart/checkout")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"address\":\"fixture\",\"recipientName\":\"Fixture\","
+                                                + "\"phone\":\"000\",\"method\":\"E_WALLET\"}"))
+                                .andExpect(status().isConflict())
+                                .andExpect(jsonPath("code").value(409))
+                                .andExpect(jsonPath("message").value(
+                                                "online checkout is temporarily unavailable"))
+                                .andExpect(jsonPath("data").doesNotExist())
+                                .andExpect(content().string(org.hamcrest.Matchers.not(
+                                                org.hamcrest.Matchers.containsString("SQL"))));
         }
 }

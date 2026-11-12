@@ -4,7 +4,9 @@ import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.common.constant.PaymentMethod;
 import com.project.dacn.common.constant.PaymentStatus;
 import com.project.dacn.common.constant.ProductStatus;
+import com.project.dacn.common.constant.UserStatus;
 import com.project.dacn.common.exception.OutOfStockException;
+import com.project.dacn.common.time.DatabaseClock;
 import com.project.dacn.dto.request.cart.CartCheckoutRequest;
 import com.project.dacn.dto.response.order.OrderResponse;
 import com.project.dacn.entity.auth.Role;
@@ -31,6 +33,8 @@ import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
 import com.project.dacn.service.cart.CartService;
+import com.project.dacn.service.order.OrderLifecycleService;
+import com.project.dacn.service.order.ReservationPolicy;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -44,8 +48,11 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import javax.sql.DataSource;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -53,6 +60,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -74,6 +83,21 @@ class CartCheckoutTest {
         @Bean
         PaymentMapper paymentMapper() {
             return Mappers.getMapper(PaymentMapper.class);
+        }
+
+        @Bean
+        ReservationPolicy reservationPolicy() {
+            return new ReservationPolicy(false, false, false);
+        }
+
+        @Bean
+        DatabaseClock databaseClock(DataSource source) {
+            return new DatabaseClock(new JdbcTemplate(source));
+        }
+
+        @Bean
+        OrderLifecycleService orderLifecycleService() {
+            return mock(OrderLifecycleService.class);
         }
     }
 
@@ -102,6 +126,14 @@ class CartCheckoutTest {
         @Mock
         PaymentRepository paymentRepository;
 
+        @Mock
+        OrderLifecycleService orderLifecycleService;
+
+        @Mock
+        DatabaseClock databaseClock;
+
+        ReservationPolicy reservationPolicy = new ReservationPolicy(false, false, false);
+
         CartMapper cartMapper = Mappers.getMapper(CartMapper.class);
 
         OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
@@ -115,22 +147,22 @@ class CartCheckoutTest {
             service = new CartService(customerRepository, variantRepository,
                     cartRepository, cartItemRepository, cartMapper,
                     orderRepository, orderItemRepository, paymentRepository, orderMapper,
-                    paymentMapper);
+                    paymentMapper, reservationPolicy, orderLifecycleService, databaseClock);
+            ReflectionTestUtils.setField(service, "transactionLockBounds", Boolean.FALSE);
         }
 
         @Test
         void checkoutSnapshotsPriceAndClearsCart() {
             givenCart();
-            when(cartRepository.findByCustomer_Id(1L))
-                    .thenReturn(Optional.of(cart(customer())));
             Variant v = variant(10);
+            givenVariant(v);
             CartItem existing = item(cart(customer()), v, 2);
             when(cartItemRepository.findWithDetailsByCart_Id(10L))
                     .thenReturn(List.of(existing))
                     .thenReturn(List.of());
             when(orderRepository.save(any(Order.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
-            when(variantRepository.decrementStock(20L, 2)).thenReturn(1);
+            when(variantRepository.decrementStockNative(20L, 2)).thenReturn(1);
             when(orderItemRepository.saveAll(any()))
                     .thenAnswer(inv -> inv.getArgument(0));
             when(paymentRepository.save(any(Payment.class)))
@@ -141,7 +173,11 @@ class CartCheckoutTest {
 
             assertThat(o.status()).isEqualTo(OrderStatus.PENDING);
             assertThat(o.total()).isEqualByComparingTo(new BigDecimal("20.00"));
-            verify(cartItemRepository).deleteByCart_Id(10L);
+            var order = inOrder(orderLifecycleService, cartItemRepository);
+            order.verify(orderLifecycleService).recordPlaced(
+                    any(Order.class), any(Payment.class),
+                    org.mockito.ArgumentMatchers.eq("CHECKOUT_WEB"));
+            order.verify(cartItemRepository).deleteByCart_Id(10L);
             verify(variantRepository, never()).save(any(Variant.class));
             assertThat(service.getDetail(1L).items()).isEmpty();
         }
@@ -177,6 +213,7 @@ class CartCheckoutTest {
         void checkoutOverStockThrows409() {
             givenCart();
             Variant v = variant(10);
+            givenVariant(v);
             CartItem existing = item(cart(customer()), v, 99);
             when(cartItemRepository.findWithDetailsByCart_Id(10L))
                     .thenReturn(List.of(existing));
@@ -192,10 +229,11 @@ class CartCheckoutTest {
         void checkoutStockRaceThrows409() {
             givenCart();
             Variant v = variant(10);
+            givenVariant(v);
             CartItem existing = item(cart(customer()), v, 2);
             when(cartItemRepository.findWithDetailsByCart_Id(10L))
                     .thenReturn(List.of(existing));
-            when(variantRepository.decrementStock(20L, 2)).thenReturn(0);
+            when(variantRepository.decrementStockNative(20L, 2)).thenReturn(0);
 
             assertThatThrownBy(() -> service.checkout(1L,
                     new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
@@ -210,8 +248,41 @@ class CartCheckoutTest {
                     .thenReturn(Optional.of(cart(c)));
         }
 
+        private void givenVariant(Variant v) {
+            when(variantRepository.findByIdForUpdate(v.getId())).thenReturn(Optional.of(v));
+            when(variantRepository.findCheckoutViewsByIdIn(List.of(v.getId())))
+                    .thenReturn(List.of(view(v)));
+        }
+
+        private VariantRepository.CheckoutVariantView view(Variant v) {
+            return new VariantRepository.CheckoutVariantView() {
+                @Override
+                public Long getId() {
+                    return v.getId();
+                }
+
+                @Override
+                public BigDecimal getPrice() {
+                    return v.getPrice();
+                }
+
+                @Override
+                public Integer getStock() {
+                    return v.getStock();
+                }
+
+                @Override
+                public ProductStatus getProductStatus() {
+                    return v.getProduct().getStatus();
+                }
+            };
+        }
+
         private Customer customer() {
-            return Customer.builder().id(1L).customerId("cust").name("C").phone("090").build();
+            User user = User.builder().id(2L).email("cust@x.com")
+                    .status(UserStatus.ACTIVE).build();
+            return Customer.builder().id(1L).customerId("cust").user(user)
+                    .name("C").phone("090").build();
         }
 
         private Cart cart(Customer c) {
@@ -293,6 +364,13 @@ class CartCheckoutTest {
             assertThat(o.status()).isEqualTo(OrderStatus.PENDING);
             assertThat(o.total()).isEqualByComparingTo(new BigDecimal("20.00"));
             assertThat(orderRepository.findAll()).hasSize(1);
+            var json = new tools.jackson.databind.ObjectMapper().valueToTree(o);
+            assertThat(json.has("paymentExpiresAt")).as("nullable deadline read contract").isTrue();
+            assertThat(json.get("paymentExpiresAt").isNull()).isTrue();
+            assertThat(json.has("cancellationReason")).as("nullable cancellation read contract").isTrue();
+            assertThat(json.get("cancellationReason").isNull()).isTrue();
+            assertThat(json.has("stockReleasedAt")).isFalse();
+            assertThat(json.has("stockRevision")).isFalse();
             assertThat(orderRepository.findAll().get(0).getStatus()).isEqualTo(OrderStatus.PENDING);
             assertThat(orderItemRepository.findByOrder_OrderId(o.orderId())).hasSize(1);
             assertThat(orderItemRepository.findByOrder_OrderId(o.orderId()).get(0).getUnitPrice())
