@@ -1,5 +1,6 @@
 package com.project.dacn.repository.catalog;
 
+import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.entity.catalog.Product;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -34,6 +35,64 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
     @EntityGraph(attributePaths = {"category", "thumbnail"})
     @Query("SELECT p FROM Product p WHERE lower(p.slug) = lower(:slug)")
     Optional<Product> findBySlugIgnoreCase(@Param("slug") String slug);
+
+    long countByStatus(ProductStatus status);
+
+    /**
+     * Active products whose total variant stock is at or below the threshold,
+     * lowest stock first. The pageable keeps the response limited to the rows
+     * the dashboard shows; {@link #countLowStockProducts} returns the full total.
+     * The correlated subquery keeps products with no variants in the result
+     * (their stock is zero) instead of dropping them with an inner join.
+     * Soft-deleted products stay hidden by the entity's SQL restriction.
+     */
+    @Query("""
+            select p.productId as productId,
+                   p.slug as slug,
+                   p.name as name,
+                   t.url as thumbnail,
+                   coalesce((select sum(v.stock)
+                             from Variant v
+                             where v.product = p and v.deleted = false), 0) as stock
+            from Product p
+            left join p.thumbnail t
+            where p.status = :status
+              and coalesce((select sum(v.stock)
+                            from Variant v
+                            where v.product = p and v.deleted = false), 0) <= :threshold
+            order by coalesce((select sum(v.stock)
+                               from Variant v
+                               where v.product = p and v.deleted = false), 0) asc,
+                     p.name asc
+            """)
+    List<LowStockProductView> findLowStockProducts(
+            @Param("status") ProductStatus status,
+            @Param("threshold") int threshold,
+            Pageable pageable);
+
+    @Query("""
+            select count(p)
+            from Product p
+            where p.status = :status
+              and coalesce((select sum(v.stock)
+                            from Variant v
+                            where v.product = p and v.deleted = false), 0) <= :threshold
+            """)
+    long countLowStockProducts(
+            @Param("status") ProductStatus status,
+            @Param("threshold") int threshold);
+
+    interface LowStockProductView {
+        String getProductId();
+
+        String getSlug();
+
+        String getName();
+
+        String getThumbnail();
+
+        Long getStock();
+    }
 
     /**
      * Detail-page base graph in one round trip: product, category, thumbnail,

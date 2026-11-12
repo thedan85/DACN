@@ -111,6 +111,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/media/**").hasAuthority(Permissions.MEDIA_DELETE)
 
                         .requestMatchers(HttpMethod.GET, "/api/v1/staff/orders/**").hasAuthority(Permissions.ORDER_READ)
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/dashboard/**")
+                        .hasAuthority(Permissions.ORDER_READ)
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/staff/orders/**").hasAuthority(Permissions.ORDER_UPDATE)
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/orders/*/complete")
                         .hasAuthority(Permissions.ORDER_COMPLETE)

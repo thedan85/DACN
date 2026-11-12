@@ -12,11 +12,34 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 public interface OrderRepository extends JpaRepository<Order, Long> {
     Optional<Order> findByOrderId(String orderId);
+
+    /**
+     * Lightweight rows for the dashboard. The service buckets the timestamps
+     * in the store's timezone, so the query stays portable between PostgreSQL
+     * and the H2 test profile.
+     */
+    @Query("""
+            select o.status as status, o.total as total, o.createdAt as createdAt
+            from Order o
+            where o.createdAt >= :from and o.createdAt < :to
+            """)
+    List<DashboardOrderRow> findDashboardRows(@Param("from") Instant from,
+                                              @Param("to") Instant to);
+
+    interface DashboardOrderRow {
+        OrderStatus getStatus();
+
+        BigDecimal getTotal();
+
+        Instant getCreatedAt();
+    }
 
     Optional<Order> findByOrderIdAndCustomer_Id(String orderId, Long customerId);
 
