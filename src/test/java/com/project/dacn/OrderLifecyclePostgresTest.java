@@ -3,6 +3,7 @@ package com.project.dacn;
 import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.common.constant.PaymentMethod;
 import com.project.dacn.common.constant.PaymentStatus;
+import com.project.dacn.common.exception.GlobalExceptionHandler;
 import com.project.dacn.common.exception.InvalidOrderStateException;
 import com.project.dacn.common.time.DatabaseClock;
 import com.project.dacn.dto.request.order.StaffOrderStatusUpdateRequest;
@@ -19,6 +20,7 @@ import com.project.dacn.service.order.OrderService;
 import com.project.dacn.support.ExternalPostgresDatabase;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -28,16 +30,22 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.annotation.PersistenceExceptionTranslationPostProcessor;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -59,19 +67,26 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** Real staff/admin lifecycle transitions against PostgreSQL locks, stock and the outbox. */
 class OrderLifecyclePostgresTest {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(OrderLifecyclePostgresTest.class);
     private static ExternalPostgresDatabase database;
     private static String ownedName;
     private static HikariDataSource pool;
     private static AnnotationConfigApplicationContext context;
     private static JdbcTemplate jdbc;
+    private static EntityManager entityManager;
     private static TransactionTemplate transaction;
     private static OrderService orderService;
     private static VariantRepository variantRepository;
@@ -101,6 +116,8 @@ class OrderLifecyclePostgresTest {
             context.refresh();
             jdbc = context.getBean(JdbcTemplate.class);
             mapper = context.getBean(ObjectMapper.class);
+            entityManager = SharedEntityManagerCreator.createSharedEntityManager(
+                    context.getBean(EntityManagerFactory.class));
             transaction = new TransactionTemplate(context.getBean(PlatformTransactionManager.class));
             orderService = context.getBean(OrderService.class);
             variantRepository = context.getBean(VariantRepository.class);
@@ -108,7 +125,6 @@ class OrderLifecyclePostgresTest {
                     select count(*) from flyway_schema_history
                      where version = '34' and success
                     """, Long.class)).isEqualTo(1);
-            System.out.println("Flyway history: V34 successful");
             assertThat(jdbc.queryForObject("select current_database()", String.class))
                     .isEqualTo(ownedName);
         } catch (Exception | AssertionError failure) {
@@ -160,7 +176,8 @@ class OrderLifecyclePostgresTest {
                 .filteredOn(Outcome::isSuccess).hasSize(1);
         assertThat(List.of(race.first, race.second))
                 .as("loser: %s / %s", race.first.error, race.second.error)
-                .filteredOn(outcome -> outcome.error instanceof InvalidOrderStateException)
+                .filteredOn(outcome -> outcome.error instanceof InvalidOrderStateException
+                        || outcome.error instanceof ConcurrencyFailureException)
                 .hasSize(1);
         assertRejected(fixture, 7);
         List<EventRow> events = events(fixture.orderPk());
@@ -175,12 +192,10 @@ class OrderLifecyclePostgresTest {
                 .isInstanceOf(InvalidOrderStateException.class);
         assertRejected(fixture, 7);
         assertThat(events(fixture.orderPk())).hasSize(2);
-        System.out.printf("Concurrent rejection: one release/fact, stock=7 (%s)%n",
-                fixture.variantId());
     }
 
     @Test
-    void acceptAndRejectAreMutuallyExclusiveInBothOrders() {
+    void sequentialAcceptThenRejectAndRejectThenAcceptEachEndInOneTerminalTransition() {
         Fixture accepted = seedOrder(OrderStatus.PENDING, PaymentMethod.COD,
                 PaymentStatus.PENDING, 5, 2, false);
         assertThat(accept(accepted).status()).isEqualTo(OrderStatus.CONFIRMED);
@@ -204,7 +219,6 @@ class OrderLifecyclePostgresTest {
         assertRejected(rejected, 7);
         assertThat(events(rejected.orderPk())).extracting(EventRow::eventType)
                 .containsExactly("ORDER_PLACED", "ORDER_REJECTED");
-        System.out.println("Accept vs reject: both lock orders end in one terminal transition");
     }
 
     @Test
@@ -225,7 +239,6 @@ class OrderLifecyclePostgresTest {
         assertThat(eventSequence(fixture.orderPk())).isEqualTo(1L);
         assertThat(events(fixture.orderPk())).extracting(EventRow::eventType)
                 .containsExactly("ORDER_PLACED");
-        System.out.println("Unpaid online: confirmation and completion denied, paidAt stays null");
     }
 
     @Test
@@ -253,7 +266,153 @@ class OrderLifecyclePostgresTest {
                 .isInstanceOf(InvalidOrderStateException.class);
         assertThat(events(fixture.orderPk())).hasSize(2);
         assertThat(eventSequence(fixture.orderPk())).isEqualTo(2L);
-        System.out.println("COD completion: payment stays due, one ORDER_COMPLETED fact");
+    }
+
+    @Test
+    void paidOnlineCompletionPreservesConfirmedPaymentAndWritesOneFact() {
+        Fixture fixture = seedOrder(OrderStatus.PENDING, PaymentMethod.E_WALLET,
+                PaymentStatus.CONFIRMED, 5, 2, false);
+        Instant paidAt = Instant.parse("2026-11-12T03:04:05.123456Z");
+        String transactionId = "TXN-" + fixture.orderId();
+        jdbc.update("""
+                update payments set paid_at=?, payment_transaction_id=?
+                 where order_id=?
+                """, Timestamp.from(paidAt), transactionId, fixture.orderPk());
+        Map<String, Object> paymentBefore = jdbc.queryForMap(
+                "select * from payments where order_id=?", fixture.orderPk());
+
+        OrderResponse response = complete(fixture);
+
+        assertThat(response.status()).isEqualTo(OrderStatus.COMPLETED);
+        assertThat(orderStatus(fixture.orderPk())).isEqualTo(OrderStatus.COMPLETED);
+        assertThat(variantStock(fixture.variantPk())).isEqualTo(5);
+        assertThat(paymentStatus(fixture.orderPk())).isEqualTo(PaymentStatus.CONFIRMED);
+        assertThat(paymentPaidAt(fixture.orderPk())).isEqualTo(paidAt);
+        assertThat(paymentTransactionId(fixture.orderPk())).isEqualTo(transactionId);
+        assertThat(jdbc.queryForMap("select * from payments where order_id=?", fixture.orderPk()))
+                .isEqualTo(paymentBefore);
+        assertThat(releaseMarker(fixture.orderPk())).isNull();
+        assertThat(eventSequence(fixture.orderPk())).isEqualTo(2L);
+        List<EventRow> events = events(fixture.orderPk());
+        assertThat(events).extracting(EventRow::eventType)
+                .containsExactly("ORDER_PLACED", "ORDER_COMPLETED");
+        assertPayload(events.get(1), "ORDER_COMPLETED", 2L,
+                OrderStatus.COMPLETED, PaymentStatus.CONFIRMED, PaymentMethod.E_WALLET,
+                null, "ADMIN_COMPLETE");
+    }
+
+    @Test
+    void rejectionPreservesAlreadySettledPayment() {
+        Fixture fixture = seedOrder(OrderStatus.PENDING, PaymentMethod.E_WALLET,
+                PaymentStatus.CONFIRMED, 5, 2, false);
+        jdbc.update("""
+                update payments set paid_at=?, payment_transaction_id=? where order_id=?
+                """, Timestamp.from(Instant.parse("2026-11-12T03:04:05.123456Z")),
+                "TXN-" + fixture.orderId(), fixture.orderPk());
+        Map<String, Object> paymentBefore = jdbc.queryForMap(
+                "select * from payments where order_id=?", fixture.orderPk());
+
+        assertThat(reject(fixture).status()).isEqualTo(OrderStatus.CANCELLED);
+
+        assertThat(jdbc.queryForMap("select * from payments where order_id=?", fixture.orderPk()))
+                .isEqualTo(paymentBefore);
+        assertThat(variantStock(fixture.variantPk())).isEqualTo(7);
+        assertThat(eventSequence(fixture.orderPk())).isEqualTo(2L);
+        List<EventRow> events = events(fixture.orderPk());
+        assertThat(events).extracting(EventRow::eventType)
+                .containsExactly("ORDER_PLACED", "ORDER_REJECTED");
+        assertThat(releaseMarker(fixture.orderPk())).isEqualTo(assertPayload(events.get(1),
+                "ORDER_REJECTED", 2L, OrderStatus.CANCELLED, PaymentStatus.CONFIRMED,
+                PaymentMethod.E_WALLET, OrderEventReason.STAFF_REJECTED, "STAFF_REJECT"));
+    }
+
+    @Test
+    void missingPaymentFailsClosedBeforeAnyWrite() {
+        Fixture fixture = seedOrder(OrderStatus.PENDING, PaymentMethod.COD,
+                PaymentStatus.PENDING, 5, 2, false);
+        assertThat(jdbc.update("delete from payments where order_id=?",
+                fixture.orderPk())).isEqualTo(1);
+        Map<String, Object> orderBefore = jdbc.queryForMap(
+                "select * from orders where id=?", fixture.orderPk());
+        List<EventRow> eventsBefore = events(fixture.orderPk());
+
+        assertThatThrownBy(() -> accept(fixture))
+                .isExactlyInstanceOf(InvalidOrderStateException.class)
+                .hasMessageContaining("payment not found");
+        assertThatThrownBy(() -> reject(fixture))
+                .isExactlyInstanceOf(InvalidOrderStateException.class)
+                .hasMessageContaining("payment not found");
+        assertThatThrownBy(() -> complete(fixture))
+                .isExactlyInstanceOf(InvalidOrderStateException.class)
+                .hasMessageContaining("payment not found");
+
+        assertThat(jdbc.queryForMap("select * from orders where id=?", fixture.orderPk()))
+                .isEqualTo(orderBefore);
+        assertThat(orderStatus(fixture.orderPk())).isEqualTo(OrderStatus.PENDING);
+        assertThat(variantStock(fixture.variantPk())).isEqualTo(5);
+        assertThat(releaseMarker(fixture.orderPk())).isNull();
+        assertThat(eventSequence(fixture.orderPk())).isEqualTo(1L);
+        assertThat(events(fixture.orderPk())).isEqualTo(eventsBefore);
+        assertThat(jdbc.queryForObject("select count(*) from payments where order_id=?",
+                Long.class, fixture.orderPk())).isZero();
+    }
+
+    @Test
+    void transactionLocalLockTimeoutResetsAfterServiceCommitOnReusedConnection() throws Exception {
+        Fixture fixture = seedOrder(OrderStatus.PENDING, PaymentMethod.COD,
+                PaymentStatus.PENDING, 5, 2, false);
+
+        // Reserve four of the five connections so both transactions must reuse one backend.
+        try (Connection first = pool.getConnection(); Connection second = pool.getConnection();
+             Connection third = pool.getConnection(); Connection fourth = pool.getConnection()) {
+            int committedPid = transaction.execute(status -> {
+                assertThat(lockTimeout()).isEqualTo("0");
+                assertThat(accept(fixture).status()).isEqualTo(OrderStatus.CONFIRMED);
+                assertThat(lockTimeout()).as("service transaction carries the 2s bound")
+                        .isEqualTo("2s");
+                return ((Number) entityManager.createNativeQuery("select pg_backend_pid()")
+                        .getSingleResult()).intValue();
+            });
+
+            transaction.executeWithoutResult(status -> {
+                assertThat(((Number) entityManager.createNativeQuery("select pg_backend_pid()")
+                        .getSingleResult()).intValue()).isEqualTo(committedPid);
+                assertThat(lockTimeout()).as("SET LOCAL must not leak past commit on the same backend")
+                        .isEqualTo("0");
+            });
+        }
+    }
+
+    @Test
+    void orderRowContentionBoundsEveryLifecycleTransition() throws Exception {
+        Fixture fixture = seedOrder(OrderStatus.PENDING, PaymentMethod.COD,
+                PaymentStatus.PENDING, 5, 2, false);
+        try (Connection holder = connect()) {
+            holder.setAutoCommit(false);
+            lockRow(holder, "orders", fixture.orderPk());
+
+            assertBoundedConflict(holder, () -> accept(fixture), fixture);
+            assertBoundedConflict(holder, () -> reject(fixture), fixture);
+            assertBoundedConflict(holder, () -> complete(fixture), fixture);
+
+            holder.rollback();
+        }
+    }
+
+    @Test
+    void paymentRowContentionBoundsEveryLifecycleTransition() throws Exception {
+        Fixture fixture = seedOrder(OrderStatus.PENDING, PaymentMethod.COD,
+                PaymentStatus.PENDING, 5, 2, false);
+        try (Connection holder = connect()) {
+            holder.setAutoCommit(false);
+            lockRow(holder, "payments", paymentPk(fixture.orderPk()));
+
+            assertBoundedConflict(holder, () -> accept(fixture), fixture);
+            assertBoundedConflict(holder, () -> reject(fixture), fixture);
+            assertBoundedConflict(holder, () -> complete(fixture), fixture);
+
+            holder.rollback();
+        }
     }
 
     @Test
@@ -268,8 +427,6 @@ class OrderLifecyclePostgresTest {
         assertThat(jdbc.queryForObject("select is_deleted from variants where id=?",
                 Boolean.class, fixture.variantPk())).isTrue();
         assertThat(variantRepository.findByVariantId(fixture.variantId())).isEmpty();
-        System.out.printf("Hidden variant: stock restored to 7, row stays hidden (%s)%n",
-                fixture.variantId());
     }
 
     @Test
@@ -292,7 +449,6 @@ class OrderLifecyclePostgresTest {
         assertThat(paymentPaidAt(fixture.orderPk())).isNull();
         assertThat(eventSequence(fixture.orderPk())).isEqualTo(1L);
         assertThat(events(fixture.orderPk())).hasSize(1);
-        System.out.println("Missing stock target: release rolled back before the marker");
     }
 
     @Test
@@ -310,7 +466,6 @@ class OrderLifecyclePostgresTest {
         assertThat(variantStock(fixture.variantPk())).isEqualTo(Integer.MAX_VALUE);
         assertThat(eventSequence(fixture.orderPk())).isEqualTo(1L);
         assertThat(events(fixture.orderPk())).hasSize(1);
-        System.out.println("Stock overflow: release rolled back before the marker");
     }
 
     @Test
@@ -335,7 +490,6 @@ class OrderLifecyclePostgresTest {
         assertPayload(events.get(2), "ORDER_COMPLETED", 3L,
                 OrderStatus.COMPLETED, PaymentStatus.PENDING, PaymentMethod.COD,
                 null, "ADMIN_COMPLETE");
-        System.out.println("Sequences: PLACED=1, CONFIRMED=2, COMPLETED=3");
     }
 
     private static OrderResponse accept(Fixture fixture) {
@@ -362,6 +516,84 @@ class OrderLifecyclePostgresTest {
         assertThat(paymentTransactionId(fixture.orderPk())).isNull();
         assertThat(releaseMarker(fixture.orderPk())).isNotNull();
         assertThat(eventSequence(fixture.orderPk())).isEqualTo(2L);
+    }
+
+    private static void assertBoundedConflict(Connection holder, Supplier<Object> transition,
+                                              Fixture fixture) throws Exception {
+        try (ExecutorService pool = Executors.newSingleThreadExecutor()) {
+            Future<Outcome> future = pool.submit(() -> attempt(transition));
+            long start = System.nanoTime();
+            Outcome outcome;
+            try {
+                outcome = future.get(8, TimeUnit.SECONDS);
+            } catch (TimeoutException timeout) {
+                holder.rollback();
+                future.get(15, TimeUnit.SECONDS);
+                throw new AssertionError(
+                        "transition exceeded the transaction-local 2s lock bound", timeout);
+            }
+            long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+
+            assertThat(outcome.error)
+                    .as("contention is a bounded recoverable conflict")
+                    .isInstanceOf(ConcurrencyFailureException.class);
+            assertThat(elapsed)
+                    .as("lock timeout fired near the transaction-local 2s bound")
+                    .isBetween(1500L, 5000L);
+            assertConflictEnvelope(outcome.error);
+            assertNoTransitionWrites(fixture);
+        }
+    }
+
+    private static void assertNoTransitionWrites(Fixture fixture) {
+        assertThat(orderStatus(fixture.orderPk())).isEqualTo(OrderStatus.PENDING);
+        assertThat(variantStock(fixture.variantPk())).isEqualTo(5);
+        assertThat(paymentStatus(fixture.orderPk())).isEqualTo(PaymentStatus.PENDING);
+        assertThat(paymentPaidAt(fixture.orderPk())).isNull();
+        assertThat(paymentTransactionId(fixture.orderPk())).isNull();
+        assertThat(releaseMarker(fixture.orderPk())).isNull();
+        assertThat(eventSequence(fixture.orderPk())).isEqualTo(1L);
+        assertThat(events(fixture.orderPk())).extracting(EventRow::eventType)
+                .containsExactly("ORDER_PLACED");
+    }
+
+    private static void assertConflictEnvelope(RuntimeException failure) throws Exception {
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new ConflictController(failure))
+                .setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+        mvc.perform(get("/task5-conflict"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("code").value(409))
+                .andExpect(jsonPath("message")
+                        .value("resource is busy; refresh state before trying again"))
+                .andExpect(jsonPath("data").doesNotExist())
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("SQL"))));
+    }
+
+    private static String lockTimeout() {
+        return entityManager.createNativeQuery("show lock_timeout")
+                .getSingleResult().toString();
+    }
+
+    private static Connection connect() throws Exception {
+        return DriverManager.getConnection(
+                database.jdbcUrl(), database.username(), database.password());
+    }
+
+    private static void lockRow(Connection connection, String table, long id) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "select id from " + table + " where id = ? for update")) {
+            statement.setLong(1, id);
+            try (ResultSet rows = statement.executeQuery()) {
+                assertThat(rows.next()).isTrue();
+            }
+        }
+    }
+
+    private static long paymentPk(long orderPk) {
+        return jdbc.queryForObject(
+                "select id from payments where order_id=?", Long.class, orderPk);
     }
 
     private static Instant assertPayload(EventRow row, String type, long sequence,
@@ -535,7 +767,7 @@ class OrderLifecyclePostgresTest {
             assertThat(rows.next()).isTrue();
             assertThat(rows.getString(1)).isEqualTo(nameOf(owned));
         }
-        System.out.println("Verified Task5 scratch identity: " + nameOf(owned));
+        log.info("Verified Task5 scratch identity: {}", nameOf(owned));
     }
 
     private static void dropAndVerify(ExternalPostgresDatabase owned) throws Exception {
@@ -549,7 +781,7 @@ class OrderLifecyclePostgresTest {
                 assertThat(rows.next()).isFalse();
             }
         }
-        System.out.println("Confirmed Task5 scratch cleanup: " + nameOf(owned));
+        log.info("Confirmed Task5 scratch cleanup: {}", nameOf(owned));
     }
 
     private record Fixture(long orderPk, String orderId, long variantPk, String variantId) { }
@@ -563,6 +795,18 @@ class OrderLifecyclePostgresTest {
     }
 
     private record Race(Outcome first, Outcome second) { }
+
+    @RestController
+    static class ConflictController {
+        private final RuntimeException failure;
+        ConflictController(RuntimeException failure) {
+            this.failure = failure;
+        }
+        @GetMapping("/task5-conflict")
+        Object fail() {
+            throw failure;
+        }
+    }
 
     @Configuration
     @EnableTransactionManagement

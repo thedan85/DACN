@@ -17,7 +17,10 @@ import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.Session;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +40,11 @@ public class OrderLifecycleService {
     private final OrderResponseAssembler responseAssembler;
     private final OrderEventOutbox outbox;
     private final DatabaseClock clock;
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    private volatile Boolean transactionLockBounds;
 
     /**
      * Appends the immutable placement fact in the caller's transaction.
@@ -88,6 +96,7 @@ public class OrderLifecycleService {
     /** Staff acceptance is limited to a pending COD order whose cash payment is still due. */
     @Transactional
     public OrderResponse confirmCod(String orderId) {
+        boundLockWait();
         Order order = lockOrder(orderId);
         requirePending(order);
         requireUnreleased(order);
@@ -113,6 +122,7 @@ public class OrderLifecycleService {
      */
     @Transactional
     public OrderResponse reject(String orderId) {
+        boundLockWait();
         Order order = lockOrder(orderId);
         requirePending(order);
         requireUnreleased(order);
@@ -151,6 +161,7 @@ public class OrderLifecycleService {
      */
     @Transactional
     public OrderResponse complete(String orderId) {
+        boundLockWait();
         Order order = lockOrder(orderId);
         OrderStatus status = order.getStatus();
         if (status != OrderStatus.PENDING
@@ -181,6 +192,17 @@ public class OrderLifecycleService {
         return orderRepository.findWithLockByOrderId(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "order not found: " + orderId));
+    }
+
+    private void boundLockWait() {
+        if (transactionLockBounds == null) {
+            transactionLockBounds = "PostgreSQL".equals(entityManager.unwrap(Session.class)
+                    .doReturningWork(connection -> connection.getMetaData().getDatabaseProductName()));
+        }
+        if (transactionLockBounds) {
+            // PostgreSQL ignores positive JPA lock hints; set the bound transaction-locally.
+            entityManager.createNativeQuery("set local lock_timeout = '2s'").executeUpdate();
+        }
     }
 
     private Payment lockPayment(String orderId) {

@@ -41,6 +41,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -94,6 +95,7 @@ class StaffOrderServiceTest {
         OrderLifecycleService lifecycleService = new OrderLifecycleService(
                 orderRepository, paymentRepository, orderItemRepository,
                 variantRepository, responseAssembler, outbox, clock);
+        ReflectionTestUtils.setField(lifecycleService, "transactionLockBounds", false);
         service = new OrderService(orderRepository, responseAssembler, lifecycleService);
     }
 
