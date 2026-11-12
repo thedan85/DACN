@@ -14,6 +14,7 @@ import org.springframework.web.util.UriUtils;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1/webhooks/vnpay")
@@ -22,6 +23,7 @@ import java.util.Map;
 public class VnpayWebhookController {
 
     private static final String SUCCESS_CODE = "00";
+    private static final Set<String> FAILURE_CODES = Set.of("09", "10", "11", "12", "13", "24", "51", "65", "75", "79");
 
     private final VnpaySignatureService signatureService;
     private final PaymentService paymentService;
@@ -42,6 +44,15 @@ public class VnpayWebhookController {
             log.warn("VNPay IPN signature mismatch for txn {}", params.get("vnp_TxnRef"));
             return Map.of("RspCode", "97", "Message", "Invalid signature");
         }
+        if (!validMerchant(params)) {
+            return Map.of("RspCode", "99", "Message", "Invalid merchant");
+        }
+        if (!validReferences(params)) {
+            return Map.of("RspCode", "99", "Message", "Invalid payment reference");
+        }
+        if (!validOutcome(params)) {
+            return Map.of("RspCode", "99", "Message", "Invalid payment outcome");
+        }
         return switch (paymentService.handleIpn(params)) {
             case CONFIRMED, ALREADY_CONFIRMED, FAILED, ALREADY_FAILED, ALREADY_SETTLED ->
                     Map.of("RspCode", "00", "Message", "Confirm Success");
@@ -52,28 +63,16 @@ public class VnpayWebhookController {
     }
 
     /**
-     * Browser redirect after payment. Settles here as well as from the IPN so a
-     * missing IPN (for example an unreachable tunnel) cannot leave a paid order
-     * pending. Settlement is idempotent, so both callbacks are safe. The browser
-     * is then sent back to the storefront order page.
+     * Browser redirect after payment. Signed outcomes are display hints only;
+     * only the IPN may settle. Resolve order identity read-only for the storefront.
      */
     @GetMapping("/return")
     public ResponseEntity<Void> returnPage(@RequestParam Map<String, String> params) {
-        boolean valid = signatureService.verifyParams(params);
-        boolean success = SUCCESS_CODE.equals(params.get("vnp_ResponseCode"));
-        String txnRef = params.get("vnp_TxnRef");
-        String orderId = null;
+        boolean valid = signatureService.verifyParams(params) && validMerchant(params)
+                && validReferences(params) && validOutcome(params);
+        String orderId = valid ? paymentService.orderIdForPayment(params.get("vnp_TxnRef")) : null;
 
-        if (valid) {
-            var result = paymentService.handleIpn(params);
-            orderId = paymentService.orderIdForPayment(txnRef);
-            log.info("VNPay return txn {} response {} settlement {}",
-                    txnRef, params.get("vnp_ResponseCode"), result);
-        } else {
-            log.warn("VNPay return signature mismatch for txn {}", txnRef);
-        }
-
-        String outcome = !valid ? "invalid" : success ? "success" : "failed";
+        String outcome = !valid ? "invalid" : successfulOutcome(params) ? "success" : "failed";
         String base = properties.getFrontendReturnUrl();
         if (base == null || base.isBlank()) {
             base = "/";
@@ -87,5 +86,27 @@ public class VnpayWebhookController {
         return ResponseEntity.status(HttpStatus.SEE_OTHER)
                 .location(URI.create(target.toString()))
                 .build();
+    }
+
+    private boolean validMerchant(Map<String, String> params) {
+        String merchant = properties.getTmnCode();
+        return merchant != null && !merchant.isBlank() && merchant.equals(params.get("vnp_TmnCode"));
+    }
+
+    private static boolean validReferences(Map<String, String> params) {
+        String paymentId = params.get("vnp_TxnRef");
+        String transactionId = params.get("vnp_TransactionNo");
+        return paymentId != null && !paymentId.isBlank() && transactionId != null && !transactionId.isBlank();
+    }
+
+    private static boolean validOutcome(Map<String, String> params) {
+        String response = params.get("vnp_ResponseCode");
+        return successfulOutcome(params) || ("02".equals(params.get("vnp_TransactionStatus"))
+                && response != null && FAILURE_CODES.contains(response));
+    }
+
+    private static boolean successfulOutcome(Map<String, String> params) {
+        return SUCCESS_CODE.equals(params.get("vnp_ResponseCode"))
+                && SUCCESS_CODE.equals(params.get("vnp_TransactionStatus"));
     }
 }
