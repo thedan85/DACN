@@ -2,8 +2,10 @@ package com.project.dacn.repository.payment;
 
 import com.project.dacn.common.constant.PaymentStatus;
 import com.project.dacn.entity.payment.Payment;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -30,6 +32,11 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             @Param("customerId") Long customerId);
 
     Optional<Payment> findByTransactionId(String transactionId);
+
+    /** Serializes lifecycle transitions with payment settlement on the payment row. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Payment p where p.order.orderId = :orderId")
+    Optional<Payment> findWithLockByOrder_OrderId(@Param("orderId") String orderId);
 
     /**
      * Settles a payment only while it is still in {@code current}. Two IPNs

@@ -24,6 +24,7 @@ import com.project.dacn.repository.payment.PaymentRepository;
 import com.project.dacn.service.cart.CartService;
 import com.project.dacn.service.cart.CompatibilityService;
 import com.project.dacn.service.order.OrderLifecycleService;
+import com.project.dacn.service.order.OrderResponseAssembler;
 import com.project.dacn.service.order.ReservationPolicy;
 import com.project.dacn.support.ExternalPostgresDatabase;
 import com.zaxxer.hikari.HikariConfig;
@@ -842,7 +843,8 @@ class CheckoutInventoryPostgresTest {
     @Configuration
     @EnableTransactionManagement
     @EnableJpaRepositories(basePackages = "com.project.dacn.repository")
-    @Import({CartService.class, OrderLifecycleService.class, CompatibilityService.class})
+    @Import({CartService.class, OrderLifecycleService.class,
+            OrderResponseAssembler.class, CompatibilityService.class})
     static class Config {
         @Bean
         CartMapper cartMapper() {

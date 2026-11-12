@@ -81,6 +81,16 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
     @Modifying
     @Query("update Variant v set v.stock = v.stock + :quantity where v.id = :id")
     int incrementStock(@Param("id") Long id, @Param("quantity") int quantity);
+
+    /** Release increment that still reaches soft-deleted historical rows. */
+    @Modifying
+    @Query(value = """
+            update variants
+               set variant_stock = variant_stock + :quantity
+             where id = :id
+            """, nativeQuery = true)
+    int incrementStockNative(@Param("id") Long id, @Param("quantity") int quantity);
+
     /**
      * One query for a whole product page: min/max price and total stock per
      * product across active variants. Soft-deleted variants are excluded

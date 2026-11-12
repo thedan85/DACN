@@ -7,6 +7,10 @@ import com.project.dacn.common.time.DatabaseClock;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.payment.Payment;
 import com.project.dacn.messaging.outbox.OrderEventOutbox;
+import com.project.dacn.repository.catalog.VariantRepository;
+import com.project.dacn.repository.order.OrderItemRepository;
+import com.project.dacn.repository.order.OrderRepository;
+import com.project.dacn.repository.payment.PaymentRepository;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -19,7 +23,14 @@ class OrderLifecycleServiceTest {
 
     private final OrderEventOutbox outbox = mock(OrderEventOutbox.class);
     private final DatabaseClock clock = mock(DatabaseClock.class);
-    private final OrderLifecycleService service = new OrderLifecycleService(outbox, clock);
+    private final OrderLifecycleService service = new OrderLifecycleService(
+            mock(OrderRepository.class),
+            mock(PaymentRepository.class),
+            mock(OrderItemRepository.class),
+            mock(VariantRepository.class),
+            mock(OrderResponseAssembler.class),
+            outbox,
+            clock);
 
     @Test
     void paymentFromAnotherOrderFailsBeforeAppend() {

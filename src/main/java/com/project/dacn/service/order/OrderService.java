@@ -1,25 +1,12 @@
 package com.project.dacn.service.order;
 
 import com.project.dacn.common.constant.OrderStatus;
-import com.project.dacn.common.constant.PaymentStatus;
-import com.project.dacn.common.exception.InvalidOrderStateException;
 import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.order.StaffOrderStatusUpdateRequest;
-import com.project.dacn.dto.response.order.OrderItemResponse;
 import com.project.dacn.dto.response.order.OrderResponse;
-import com.project.dacn.dto.response.payment.PaymentResponse;
-import com.project.dacn.entity.catalog.Media;
-import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.order.Order;
-import com.project.dacn.entity.order.OrderItem;
-import com.project.dacn.mapper.order.OrderMapper;
-import com.project.dacn.mapper.payment.PaymentMapper;
-import com.project.dacn.repository.catalog.MediaRepository;
-import com.project.dacn.repository.catalog.VariantRepository;
-import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
-import com.project.dacn.repository.payment.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -27,13 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
@@ -43,12 +23,8 @@ public class OrderService {
     private static final int MAX_ORDER_SEARCH_LENGTH = 100;
 
     private final OrderRepository orderRepository;
-    private final OrderItemRepository orderItemRepository;
-    private final OrderMapper orderMapper;
-    private final PaymentMapper paymentMapper;
-    private final VariantRepository variantRepository;
-    private final MediaRepository mediaRepository;
-    private final PaymentRepository paymentRepository;
+    private final OrderResponseAssembler responseAssembler;
+    private final OrderLifecycleService orderLifecycleService;
 
     public PageResponse<OrderResponse> list(Long customerId, OrderStatus status, String q,
                                             Instant createdAfter, Pageable pageable) {
@@ -59,13 +35,14 @@ public class OrderService {
         }
         Page<Order> page = orderRepository.searchForCustomer(
                 customerId, query, status, createdAfter, pageable);
-        return PageResponse.from(page, toResponses(page.getContent()));
+        return PageResponse.from(page, responseAssembler.toResponses(page.getContent()));
     }
 
     public OrderResponse get(Long customerId, String orderId) {
         Order order = orderRepository.findWithCustomerByOrderIdAndCustomer_Id(orderId, customerId)
-                .orElseThrow(() -> new ResourceNotFoundException("order not found: " + orderId));
-        return toResponse(order);
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "order not found: " + orderId));
+        return responseAssembler.toResponse(order);
     }
 
     /**
@@ -75,14 +52,13 @@ public class OrderService {
     public PageResponse<OrderResponse> listForStaff(OrderStatus status, String q, Pageable pageable) {
         String query = q == null ? "" : q.trim();
         Page<Order> page = orderRepository.searchForStaff(query, status, pageable);
-        return PageResponse.from(page, toResponses(page.getContent()));
+        return PageResponse.from(page, responseAssembler.toResponses(page.getContent()));
     }
 
     /**
-     * Accept (CONFIRMED) or reject (CANCELLED) a pending order.
-     *
-     * <p>Locks the order row so the decision is serialized with VNPay IPN
-     * settlement. Rejecting restores stock and fails an unpaid payment.</p>
+     * Accept (CONFIRMED) or reject (CANCELLED) a pending order. The shared
+     * lifecycle service serializes the decision with payment settlement,
+     * restores stock once on rejection, and records the lifecycle fact.
      */
     @Transactional
     public OrderResponse updateStatusByStaff(String orderId, StaffOrderStatusUpdateRequest request) {
@@ -90,139 +66,18 @@ public class OrderService {
         if (target != OrderStatus.CONFIRMED && target != OrderStatus.CANCELLED) {
             throw new IllegalArgumentException("staff can only set CONFIRMED or CANCELLED");
         }
-        Order order = orderRepository.findWithLockByOrderId(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("order not found: " + orderId));
-        if (order.getStatus() != OrderStatus.PENDING) {
-            throw new InvalidOrderStateException("order is not pending: " + order.getStatus());
-        }
-        order.setStatus(target);
-        if (target == OrderStatus.CANCELLED) {
-            restock(order);
-            failPendingPayment(orderId);
-            // settle() clears the persistence context, detaching the lazy
-            // customer proxy; reload before mapping the response.
-            order = orderRepository.findByOrderId(orderId)
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "order not found: " + orderId));
-        }
-        return toResponse(order);
+        return target == OrderStatus.CONFIRMED
+                ? orderLifecycleService.confirmCod(orderId)
+                : orderLifecycleService.reject(orderId);
     }
 
     /**
-     * Admin override: mark a non-terminal order completed manually. The normal
-     * shipping flow is not implemented, so this is the only path to COMPLETED.
-     * Stock and payment state are left unchanged.
+     * Admin override: mark an eligible non-terminal order completed manually.
+     * The shared lifecycle keeps unpaid online orders ineligible; COD orders
+     * remain allowed and keep their payment and stock unchanged.
      */
     @Transactional
     public OrderResponse completeByAdmin(String orderId) {
-        Order order = orderRepository.findWithLockByOrderId(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("order not found: " + orderId));
-        if (order.getStatus() == OrderStatus.CANCELLED
-                || order.getStatus() == OrderStatus.COMPLETED) {
-            throw new InvalidOrderStateException(
-                    "order cannot be completed from: " + order.getStatus());
-        }
-        order.setStatus(OrderStatus.COMPLETED);
-        return toResponse(order);
-    }
-
-    private void restock(Order order) {
-        for (OrderItem item : orderItemRepository.findByOrder_OrderId(order.getOrderId())) {
-            variantRepository.incrementStock(item.getVariant().getId(), item.getQuantity());
-        }
-    }
-
-    private void failPendingPayment(String orderId) {
-        paymentRepository.findByOrder_OrderId(orderId)
-                .filter(payment -> payment.getStatus() == PaymentStatus.PENDING)
-                .ifPresent(payment -> paymentRepository.settle(payment.getPaymentId(),
-                        PaymentStatus.PENDING, PaymentStatus.FAILED, null, Instant.now()));
-    }
-
-    /**
-     * Maps orders with one batched query per related table, so a page of
-     * orders costs a constant number of queries instead of one per row.
-     */
-    private List<OrderResponse> toResponses(List<Order> orders) {
-        if (orders.isEmpty()) {
-            return List.of();
-        }
-        List<String> orderIds = orders.stream().map(Order::getOrderId).toList();
-        List<OrderItem> orderItems = orderItemRepository.findByOrder_OrderIdIn(orderIds);
-        Map<String, List<OrderItem>> itemsByOrder = orderItems.stream()
-                .collect(Collectors.groupingBy(item -> item.getOrder().getOrderId()));
-        Set<String> variantIds = new HashSet<>();
-        Set<String> productIds = new HashSet<>();
-        Map<String, List<String>> attributesByVariant = new HashMap<>();
-        for (OrderItem item : orderItems) {
-            Variant variant = item.getVariant();
-            variantIds.add(variant.getVariantId());
-            productIds.add(variant.getProduct().getProductId());
-            attributesByVariant.computeIfAbsent(variant.getVariantId(), id ->
-                    variant.getAttributeValues().stream()
-                            .map(value -> value.getAttributeValue().getValue())
-                            .filter(Objects::nonNull)
-                            .toList());
-        }
-        Map<String, String> variantThumbnails = new HashMap<>();
-        Map<String, String> productThumbnails = new HashMap<>();
-        List<Media> media = variantIds.isEmpty()
-                ? List.of()
-                : mediaRepository.findForOrderItems(variantIds, productIds);
-        // Variant media wins for the variant; direct product media wins over a
-        // sibling variant's image as the product-level fallback.
-        for (Media item : media) {
-            String url = item.getUrl();
-            if (url == null || url.isBlank()) {
-                continue;
-            }
-            if (item.getVariant() != null) {
-                variantThumbnails.putIfAbsent(item.getVariant().getVariantId(), url);
-            }
-            if (item.getProduct() != null) {
-                productThumbnails.putIfAbsent(item.getProduct().getProductId(), url);
-            }
-        }
-        for (Media item : media) {
-            if (item.getVariant() == null || item.getVariant().getProduct() == null) {
-                continue;
-            }
-            String url = item.getUrl();
-            if (url != null && !url.isBlank()) {
-                productThumbnails.putIfAbsent(
-                        item.getVariant().getProduct().getProductId(), url);
-            }
-        }
-        Map<String, PaymentResponse> paymentsByOrder = orders.stream()
-                .filter(order -> order.getPayment() != null)
-                .collect(Collectors.toMap(
-                        Order::getOrderId,
-                        order -> paymentMapper.toPaymentResponse(order.getPayment()),
-                        (first, second) -> first));
-
-        return orders.stream()
-                .map(order -> {
-                    List<OrderItemResponse> items = itemsByOrder
-                            .getOrDefault(order.getOrderId(), List.of()).stream()
-                            .map(item -> {
-                                String variantId = item.getVariant().getVariantId();
-                                String thumbnail = variantThumbnails.get(variantId);
-                                if (thumbnail == null) {
-                                    thumbnail = productThumbnails.get(
-                                            item.getVariant().getProduct().getProductId());
-                                }
-                                return orderMapper.toOrderItemResponse(item,
-                                        thumbnail,
-                                        attributesByVariant.getOrDefault(variantId, List.of()));
-                            })
-                            .toList();
-                    return orderMapper.toOrderResponse(order, items,
-                            paymentsByOrder.get(order.getOrderId()));
-                })
-                .toList();
-    }
-
-    private OrderResponse toResponse(Order order) {
-        return toResponses(List.of(order)).get(0);
+        return orderLifecycleService.complete(orderId);
     }
 }

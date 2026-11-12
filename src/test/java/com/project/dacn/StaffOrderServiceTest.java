@@ -6,8 +6,10 @@ import com.project.dacn.common.constant.PaymentStatus;
 import com.project.dacn.common.exception.InvalidOrderStateException;
 import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.common.response.PageResponse;
+import com.project.dacn.common.time.DatabaseClock;
 import com.project.dacn.dto.request.order.StaffOrderStatusUpdateRequest;
 import com.project.dacn.dto.response.order.OrderResponse;
+import com.project.dacn.entity.auth.User;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.catalog.VariantAttributeValue;
@@ -19,11 +21,14 @@ import com.project.dacn.entity.order.OrderItem;
 import com.project.dacn.entity.payment.Payment;
 import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.mapper.payment.PaymentMapper;
+import com.project.dacn.messaging.outbox.OrderEventOutbox;
 import com.project.dacn.repository.catalog.MediaRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
+import com.project.dacn.service.order.OrderLifecycleService;
+import com.project.dacn.service.order.OrderResponseAssembler;
 import com.project.dacn.service.order.OrderService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,8 +50,9 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -69,6 +75,12 @@ class StaffOrderServiceTest {
     @Mock
     MediaRepository mediaRepository;
 
+    @Mock
+    OrderEventOutbox outbox;
+
+    @Mock
+    DatabaseClock clock;
+
     OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
 
     PaymentMapper paymentMapper = Mappers.getMapper(PaymentMapper.class);
@@ -77,8 +89,12 @@ class StaffOrderServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new OrderService(orderRepository, orderItemRepository, orderMapper,
-                paymentMapper, variantRepository, mediaRepository, paymentRepository);
+        OrderResponseAssembler responseAssembler = new OrderResponseAssembler(
+                orderItemRepository, orderMapper, paymentMapper, mediaRepository);
+        OrderLifecycleService lifecycleService = new OrderLifecycleService(
+                orderRepository, paymentRepository, orderItemRepository,
+                variantRepository, responseAssembler, outbox, clock);
+        service = new OrderService(orderRepository, responseAssembler, lifecycleService);
     }
 
     @Test
@@ -166,15 +182,21 @@ class StaffOrderServiceTest {
 
     @Test
     void acceptConfirmsPendingOrder() {
-        when(orderRepository.findWithLockByOrderId("ORD_1"))
-                .thenReturn(Optional.of(order(OrderStatus.PENDING)));
+        Order order = order(OrderStatus.PENDING);
+        Payment payment = payment(order, PaymentStatus.PENDING);
+        order.setPayment(payment);
+        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(order));
+        when(paymentRepository.findWithLockByOrder_OrderId("ORD_1"))
+                .thenReturn(Optional.of(payment));
+        when(clock.now()).thenReturn(Instant.parse("2026-11-12T10:00:00Z"));
         when(orderItemRepository.findByOrder_OrderIdIn(List.of("ORD_1"))).thenReturn(List.of());
 
         OrderResponse response = service.updateStatusByStaff("ORD_1",
                 new StaffOrderStatusUpdateRequest(OrderStatus.CONFIRMED));
 
         assertThat(response.status()).isEqualTo(OrderStatus.CONFIRMED);
-        verify(variantRepository, never()).incrementStock(any(), org.mockito.ArgumentMatchers.anyInt());
+        assertThat(order.getEventSequence()).isEqualTo(2L);
+        verify(variantRepository, never()).incrementStockNative(any(), anyInt());
         verify(paymentRepository, never()).settle(anyString(), any(), any(), any(), any());
     }
 
@@ -184,38 +206,52 @@ class StaffOrderServiceTest {
         Variant first = variant(20L);
         Variant second = variant(21L);
         Payment payment = payment(order, PaymentStatus.PENDING);
+        order.setPayment(payment);
         when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(order));
-        when(orderRepository.findByOrderId("ORD_1")).thenReturn(Optional.of(order));
-        when(orderItemRepository.findByOrder_OrderId("ORD_1")).thenReturn(List.of(
-                item(order, first, 2), item(order, second, 3)));
+        when(paymentRepository.findWithLockByOrder_OrderId("ORD_1"))
+                .thenReturn(Optional.of(payment));
+        OrderItemRepository.StockReleaseTarget firstTarget = target(20L, 2L);
+        OrderItemRepository.StockReleaseTarget secondTarget = target(21L, 3L);
+        when(orderItemRepository.findStockReleaseTargetsByOrderId("ORD_1"))
+                .thenReturn(List.of(firstTarget, secondTarget));
+        when(variantRepository.incrementStockNative(20L, 2)).thenReturn(1);
+        when(variantRepository.incrementStockNative(21L, 3)).thenReturn(1);
+        when(clock.now()).thenReturn(Instant.parse("2026-11-12T10:00:00Z"));
         when(orderItemRepository.findByOrder_OrderIdIn(List.of("ORD_1"))).thenReturn(List.of(
                 item(order, first, 2), item(order, second, 3)));
-        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
 
         OrderResponse response = service.updateStatusByStaff("ORD_1",
                 new StaffOrderStatusUpdateRequest(OrderStatus.CANCELLED));
 
         assertThat(response.status()).isEqualTo(OrderStatus.CANCELLED);
         assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
-        verify(variantRepository).incrementStock(20L, 2);
-        verify(variantRepository).incrementStock(21L, 3);
-        verify(paymentRepository).settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
-                eq(PaymentStatus.FAILED), eq(null), any(Instant.class));
+        assertThat(order.getCancellationReason()).isEqualTo(
+                com.project.dacn.event.OrderEventReason.STAFF_REJECTED);
+        assertThat(order.getStockReleasedAt()).isNotNull();
+        assertThat(order.getEventSequence()).isEqualTo(2L);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(payment.getPaidAt()).isNull();
+        assertThat(payment.getTransactionId()).isNull();
+        verify(variantRepository).incrementStockNative(20L, 2);
+        verify(variantRepository).incrementStockNative(21L, 3);
+        verify(paymentRepository, never()).settle(anyString(), any(), any(), any(), any());
     }
 
     @Test
     void rejectLeavesSettledPaymentAlone() {
         Order order = order(OrderStatus.PENDING);
         Payment payment = payment(order, PaymentStatus.CONFIRMED);
+        order.setPayment(payment);
         when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(order));
-        when(orderRepository.findByOrderId("ORD_1")).thenReturn(Optional.of(order));
-        when(orderItemRepository.findByOrder_OrderId("ORD_1")).thenReturn(List.of());
+        when(paymentRepository.findWithLockByOrder_OrderId("ORD_1"))
+                .thenReturn(Optional.of(payment));
+        when(clock.now()).thenReturn(Instant.parse("2026-11-12T10:00:00Z"));
         when(orderItemRepository.findByOrder_OrderIdIn(List.of("ORD_1"))).thenReturn(List.of());
-        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
 
         service.updateStatusByStaff("ORD_1",
                 new StaffOrderStatusUpdateRequest(OrderStatus.CANCELLED));
 
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
         verify(paymentRepository, never()).settle(anyString(), any(), any(), any(), any());
     }
 
@@ -228,7 +264,7 @@ class StaffOrderServiceTest {
                 new StaffOrderStatusUpdateRequest(OrderStatus.CANCELLED)))
                 .isInstanceOf(InvalidOrderStateException.class)
                 .hasMessageContaining("CONFIRMED");
-        verify(variantRepository, never()).incrementStock(any(), org.mockito.ArgumentMatchers.anyInt());
+        verify(variantRepository, never()).incrementStockNative(any(), anyInt());
     }
 
     @Test
@@ -238,6 +274,54 @@ class StaffOrderServiceTest {
         assertThatThrownBy(() -> service.updateStatusByStaff("ORD_X",
                 new StaffOrderStatusUpdateRequest(OrderStatus.CANCELLED)))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void onlineOrderCannotBeConfirmedByStaff() {
+        Order order = order(OrderStatus.PENDING);
+        Payment payment = payment(order, PaymentStatus.PENDING, PaymentMethod.E_WALLET);
+        order.setPayment(payment);
+        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(order));
+        when(paymentRepository.findWithLockByOrder_OrderId("ORD_1"))
+                .thenReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> service.updateStatusByStaff("ORD_1",
+                new StaffOrderStatusUpdateRequest(OrderStatus.CONFIRMED)))
+                .isInstanceOf(InvalidOrderStateException.class);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PENDING);
+        verify(variantRepository, never()).incrementStockNative(any(), anyInt());
+        verify(paymentRepository, never()).settle(anyString(), any(), any(), any(), any());
+    }
+
+    @Test
+    void rejectWithReleaseMarkerFailsClosed() {
+        Order order = order(OrderStatus.PENDING);
+        order.setStockReleasedAt(Instant.parse("2026-11-12T10:00:00Z"));
+        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(order));
+
+        assertThatThrownBy(() -> service.updateStatusByStaff("ORD_1",
+                new StaffOrderStatusUpdateRequest(OrderStatus.CANCELLED)))
+                .isInstanceOf(InvalidOrderStateException.class);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PENDING);
+        verify(variantRepository, never()).incrementStockNative(any(), anyInt());
+    }
+
+    @Test
+    void unpaidOnlineOrderCannotBeCompleted() {
+        Order order = order(OrderStatus.PENDING);
+        Payment payment = payment(order, PaymentStatus.PENDING, PaymentMethod.E_WALLET);
+        order.setPayment(payment);
+        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(order));
+        when(paymentRepository.findWithLockByOrder_OrderId("ORD_1"))
+                .thenReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> service.completeByAdmin("ORD_1"))
+                .isInstanceOf(InvalidOrderStateException.class);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PENDING);
+        verify(variantRepository, never()).incrementStockNative(any(), anyInt());
     }
 
     @Test
@@ -253,15 +337,21 @@ class StaffOrderServiceTest {
     @EnumSource(value = OrderStatus.class, names = {"PENDING", "CONFIRMED", "SHIPPING"})
     void adminCanCompleteNonTerminalOrder(OrderStatus status) {
         Order order = order(status);
+        Payment payment = payment(order, PaymentStatus.PENDING);
+        order.setPayment(payment);
         when(orderRepository.findWithLockByOrderId("ORD_1"))
                 .thenReturn(Optional.of(order));
+        when(paymentRepository.findWithLockByOrder_OrderId("ORD_1"))
+                .thenReturn(Optional.of(payment));
+        when(clock.now()).thenReturn(Instant.parse("2026-11-12T10:00:00Z"));
         when(orderItemRepository.findByOrder_OrderIdIn(List.of("ORD_1"))).thenReturn(List.of());
 
         OrderResponse response = service.completeByAdmin("ORD_1");
 
         assertThat(response.status()).isEqualTo(OrderStatus.COMPLETED);
         assertThat(order.getStatus()).isEqualTo(OrderStatus.COMPLETED);
-        verify(variantRepository, never()).incrementStock(any(), org.mockito.ArgumentMatchers.anyInt());
+        assertThat(order.getEventSequence()).isEqualTo(2L);
+        verify(variantRepository, never()).incrementStockNative(any(), anyInt());
         verify(paymentRepository, never()).settle(anyString(), any(), any(), any(), any());
     }
 
@@ -288,11 +378,22 @@ class StaffOrderServiceTest {
         return Order.builder()
                 .id(1L)
                 .orderId("ORD_1")
-                .customer(Customer.builder().id(7L).customerId("cust").name("C").phone("090").build())
+                .customer(Customer.builder().id(7L).customerId("cust").name("C").phone("090")
+                        .user(User.builder().id(7L).email("c@x.test").passwordHash("h").build())
+                        .build())
                 .status(status)
                 .total(new BigDecimal("150000.00"))
                 .address("addr").recipientName("C").phone("090")
+                .eventSequence(1L)
                 .build();
+    }
+
+    private OrderItemRepository.StockReleaseTarget target(long variantId, long quantity) {
+        OrderItemRepository.StockReleaseTarget target =
+                mock(OrderItemRepository.StockReleaseTarget.class);
+        when(target.getVariantId()).thenReturn(variantId);
+        when(target.getQuantity()).thenReturn(quantity);
+        return target;
     }
 
     private Variant variant(Long id) {
@@ -308,8 +409,12 @@ class StaffOrderServiceTest {
     }
 
     private Payment payment(Order order, PaymentStatus status) {
+        return payment(order, status, PaymentMethod.COD);
+    }
+
+    private Payment payment(Order order, PaymentStatus status, PaymentMethod method) {
         return Payment.builder().paymentId("PAY_1").order(order)
-                .method(PaymentMethod.COD).status(status)
+                .method(method).status(status)
                 .amount(new BigDecimal("150000.00")).build();
     }
 }
