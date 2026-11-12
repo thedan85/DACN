@@ -32,5 +32,6 @@
 
   V26 then skips both steps. Never edit an applied V26: Flyway validates its
   checksum.
-- `V31__order_created_at_index.sql` — dashboard range index on `orders (created_at)`. Run `CREATE INDEX CONCURRENTLY` by hand on a live database.
+- `V31__ghn_shipping.sql` — shipping address columns and unique GHN order-code index. Keep this applied migration unchanged.
+- `V32__order_created_at_index.sql` — dashboard range index on `orders (created_at)`. Run `CREATE INDEX CONCURRENTLY` by hand on a live database.
 - `R__refreshable_reference_data.sql` — repeatable reference data
