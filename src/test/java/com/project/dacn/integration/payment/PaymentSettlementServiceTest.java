@@ -1,149 +1,173 @@
 package com.project.dacn.integration.payment;
 
-import com.project.dacn.common.constant.OrderStatus;
-import com.project.dacn.common.constant.PaymentMethod;
-import com.project.dacn.common.constant.PaymentStatus;
+import com.project.dacn.common.constant.*;
+import com.project.dacn.common.time.DatabaseClock;
+import com.project.dacn.entity.auth.User;
+import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.payment.Payment;
+import com.project.dacn.event.OrderEvent;
+import com.project.dacn.messaging.outbox.OrderEventOutbox;
+import com.project.dacn.repository.catalog.VariantRepository;
+import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
+import com.project.dacn.service.order.*;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static com.project.dacn.integration.payment.PaymentSettlementService.Result.*;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentSettlementServiceTest {
+    @Mock OrderRepository orders;
+    @Mock PaymentRepository payments;
+    @Mock OrderItemRepository items;
+    @Mock VariantRepository variants;
+    @Mock OrderEventOutbox outbox;
+    @Mock DatabaseClock clock;
+    private PaymentSettlementService service;
+    private Order order;
+    private Payment payment;
+    private static final Instant NOW = Instant.parse("2026-11-13T01:02:03Z");
 
-    @Mock
-    PaymentRepository paymentRepository;
-
-    @Mock
-    OrderRepository orderRepository;
-
-    @InjectMocks
-    PaymentSettlementService service;
-
-    private Payment payment(PaymentStatus status, OrderStatus orderStatus) {
-        Order order = Order.builder().orderId("ORD_1").status(orderStatus).build();
-        return Payment.builder()
-                .paymentId("PAY_1")
-                .order(order)
-                .method(PaymentMethod.COD)
-                .status(status)
-                .amount(new BigDecimal("5000"))
-                .build();
+    @BeforeEach
+    void setup() {
+        var lifecycle = new OrderLifecycleService(orders, payments, items, variants,
+                mock(OrderResponseAssembler.class), outbox, clock, new ReservationPolicy(true, false, false));
+        ReflectionTestUtils.setField(lifecycle, "transactionLockBounds", false);
+        service = new PaymentSettlementService(lifecycle);
+        order = Order.builder().id(1L).orderId("ORD_1").status(OrderStatus.PENDING)
+                .customer(Customer.builder().user(User.builder().id(5L).build()).build())
+                .total(new BigDecimal("5000")).paymentExpiresAt(NOW.plusSeconds(1)).eventSequence(1).build();
+        payment = Payment.builder().id(2L).paymentId("PAY_1").order(order).method(PaymentMethod.E_WALLET)
+                .status(PaymentStatus.PENDING).amount(new BigDecimal("5000")).build();
     }
 
-    @Test
-    void confirmedCallbackSettlesPaymentAndOrder() {
-        Payment payment = payment(PaymentStatus.PENDING, OrderStatus.PENDING);
-        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
-        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(payment.getOrder()));
-        when(paymentRepository.settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
-                eq(PaymentStatus.CONFIRMED), eq("TXN_1"), any(Instant.class))).thenReturn(1);
-        when(orderRepository.updateStatus("ORD_1", OrderStatus.PENDING, OrderStatus.CONFIRMED))
-                .thenReturn(1);
-
-        assertThat(service.settle("ORD_1", new BigDecimal("5000"), true, "TXN_1"))
-                .isEqualTo(PaymentSettlementService.Result.SETTLED);
-        verify(paymentRepository).settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
-                eq(PaymentStatus.CONFIRMED), eq("TXN_1"), any(Instant.class));
-        verify(orderRepository).updateStatus("ORD_1", OrderStatus.PENDING, OrderStatus.CONFIRMED);
+    private void locked() {
+        when(orders.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(order));
+        when(payments.findWithLockByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
+    }
+    private void reserved() {
+        locked();
+        when(items.findStockReleaseTargetsByOrderId("ORD_1")).thenReturn(List.of(new OrderItemRepository.StockReleaseTarget() {
+            public Long getVariantId() { return 3L; }
+            public Long getQuantity() { return 2L; }
+        }));
+        when(clock.now()).thenReturn(NOW);
+    }
+    private PaymentSettlementService.Result settle(boolean success, String reference) {
+        return service.settle("ORD_1", new BigDecimal("5000"), success, reference);
     }
 
-    @Test
-    void amountMismatchDoesNotSettle() {
-        Payment payment = payment(PaymentStatus.PENDING, OrderStatus.PENDING);
-        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
-
-        assertThat(service.settle("ORD_1", new BigDecimal("1"), true, "TXN_1"))
-                .isEqualTo(PaymentSettlementService.Result.AMOUNT_MISMATCH);
-        verify(paymentRepository, never()).settle(any(), any(), any(), any(), any());
+    @Test void confirmedCallbackSettlesPaymentAndOrder() {
+        reserved();
+        assertThat(settle(true, "TX1")).isEqualTo(SETTLED);
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
+        assertThat(payment.getPaidAt()).isEqualTo(NOW);
+        assertThat(payment.getTransactionId()).isEqualTo("TX1");
+        assertThat(order.getEventSequence()).isEqualTo(2);
+        verifyNoInteractions(variants);
+        var locks = inOrder(orders, payments, clock);
+        locks.verify(orders).findWithLockByOrderId("ORD_1");
+        locks.verify(payments).findWithLockByOrder_OrderId("ORD_1");
+        locks.verify(clock).now();
     }
-
-    @Test
-    void lateSuccessOnCancelledOrderRecordsRefund() {
-        Payment payment = payment(PaymentStatus.PENDING, OrderStatus.CANCELLED);
-        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
-        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(payment.getOrder()));
-        when(paymentRepository.settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
-                eq(PaymentStatus.REFUND_REQUIRED), eq("TXN_1"), any(Instant.class))).thenReturn(1);
-
-        assertThat(service.settle("ORD_1", new BigDecimal("5000"), true, "TXN_1"))
-                .isEqualTo(PaymentSettlementService.Result.REFUND_REQUIRED);
-        verify(paymentRepository).settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
-                eq(PaymentStatus.REFUND_REQUIRED), eq("TXN_1"), any(Instant.class));
-        verify(orderRepository, never()).updateStatus(any(), any(), any());
+    @Test void amountMismatchDoesNotSettleEvenForFailure() {
+        locked();
+        assertThat(service.settle("ORD_1", BigDecimal.ONE, false, null)).isEqualTo(AMOUNT_MISMATCH);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
+        verifyNoInteractions(items, variants, clock, outbox);
     }
-
-    @Test
-    void lateSuccessAfterCancellationSetPaymentFailedRecordsRefund() {
-        // Staff cancellation sets the payment FAILED before the IPN arrives.
-        Payment payment = payment(PaymentStatus.FAILED, OrderStatus.CANCELLED);
-        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
-        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(payment.getOrder()));
-        when(paymentRepository.settle(eq("PAY_1"), eq(PaymentStatus.FAILED),
-                eq(PaymentStatus.REFUND_REQUIRED), eq("TXN_1"), any(Instant.class))).thenReturn(1);
-
-        assertThat(service.settle("ORD_1", new BigDecimal("5000"), true, "TXN_1"))
-                .isEqualTo(PaymentSettlementService.Result.REFUND_REQUIRED);
-        verify(orderRepository, never()).updateStatus(any(), any(), any());
+    @Test void invalidReceivedReferenceDoesNotMutate() {
+        locked();
+        assertThat(settle(true, " ")).isEqualTo(NOT_FOUND);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
+        verifyNoInteractions(items, variants, clock, outbox);
     }
-
-    @Test
-    void replayIsIdempotent() {
-        Payment payment = payment(PaymentStatus.CONFIRMED, OrderStatus.CONFIRMED);
-        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
-
-        assertThat(service.settle("ORD_1", new BigDecimal("5000"), true, "TXN_2"))
-                .isEqualTo(PaymentSettlementService.Result.ALREADY_SETTLED);
-        verify(paymentRepository, never()).settle(any(), any(), any(), any(), any());
+    @Test void lateSuccessOnProvenReleasedOrderRecordsRefund() {
+        reserved();
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setStockReleasedAt(NOW.minusSeconds(5));
+        order.setCancellationReason(com.project.dacn.event.OrderEventReason.STAFF_REJECTED);
+        payment.setStatus(PaymentStatus.FAILED);
+        assertThat(settle(true, "TX1")).isEqualTo(REFUND_REQUIRED);
+        assertThat(payment.getPaidAt()).isEqualTo(NOW);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.REFUND_REQUIRED);
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
+        verifyNoInteractions(variants);
     }
-
-    @Test
-    void losingConcurrentIpnDoesNotConfirmOrderAgain() {
-        Payment payment = payment(PaymentStatus.PENDING, OrderStatus.PENDING);
-        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
-        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(payment.getOrder()));
-        when(paymentRepository.settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
-                eq(PaymentStatus.CONFIRMED), eq("TXN_1"), any(Instant.class))).thenReturn(0);
-
-        assertThat(service.settle("ORD_1", new BigDecimal("5000"), true, "TXN_1"))
-                .isEqualTo(PaymentSettlementService.Result.ALREADY_SETTLED);
-        verify(orderRepository, never()).updateStatus(any(), any(), any());
+    @Test void equalityExpiresThenRecordsMoneyWithDistinctImmutableFacts() {
+        reserved();
+        order.setPaymentExpiresAt(NOW);
+        when(variants.incrementStockNative(3L, 2)).thenReturn(1);
+        assertThat(settle(true, "TX1")).isEqualTo(REFUND_REQUIRED);
+        var facts = org.mockito.ArgumentCaptor.forClass(OrderEvent.class);
+        verify(outbox, times(2)).append(eq(1L), facts.capture());
+        assertThat(facts.getAllValues()).extracting(OrderEvent::orderSequence).containsExactly(2L, 3L);
+        assertThat(facts.getAllValues()).extracting(OrderEvent::paymentStatus).containsExactly(PaymentStatus.FAILED, PaymentStatus.REFUND_REQUIRED);
+        assertThat(order.getStockReleasedAt()).isEqualTo(NOW);
+        verify(clock).now();
     }
-
-    @Test
-    void failedCallbackMarksPaymentFailed() {
-        Payment payment = payment(PaymentStatus.PENDING, OrderStatus.PENDING);
-        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
-        when(paymentRepository.settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
-                eq(PaymentStatus.FAILED), eq((String) null), any())).thenReturn(1);
-
-        assertThat(service.settle("ORD_1", new BigDecimal("5000"), false, null))
-                .isEqualTo(PaymentSettlementService.Result.SETTLED);
-        verify(orderRepository, never()).findWithLockByOrderId(any());
-        verify(orderRepository, never()).updateStatus(any(), any(), any());
+    @Test void receivedMoneyReplaysNeverRegressOrOverwriteEvidence() {
+        locked();
+        payment.setStatus(PaymentStatus.CONFIRMED);
+        payment.setPaidAt(NOW);
+        payment.setTransactionId("TX1");
+        assertThat(settle(true, "TX2")).isEqualTo(ALREADY_SETTLED);
+        assertThat(settle(false, null)).isEqualTo(ALREADY_SETTLED);
+        assertThat(payment.getTransactionId()).isEqualTo("TX1");
+        assertThat(payment.getPaidAt()).isEqualTo(NOW);
+        verifyNoInteractions(items, variants, outbox, clock);
     }
-
-    @Test
-    void unknownOrderIsNotFound() {
-        when(paymentRepository.findByOrder_OrderId("ORD_X")).thenReturn(Optional.empty());
-
-        assertThat(service.settle("ORD_X", new BigDecimal("5000"), true, "TXN_1"))
-                .isEqualTo(PaymentSettlementService.Result.NOT_FOUND);
+    @Test void failedCallbackReleasesWithoutReceivedMoney() {
+        reserved();
+        when(variants.incrementStockNative(3L, 2)).thenReturn(1);
+        assertThat(settle(false, null)).isEqualTo(SETTLED);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.FAILED);
+        assertThat(payment.getPaidAt()).isNull();
+        assertThat(payment.getTransactionId()).isNull();
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELLED);
+    }
+    @Test void unknownOrderIsNotFoundBeforeReadingPayment() {
+        when(orders.findWithLockByOrderId("ORD_1")).thenReturn(Optional.empty());
+        assertThat(settle(true, "TX1")).isEqualTo(NOT_FOUND);
+        verifyNoInteractions(payments, items, variants, outbox, clock);
+    }
+    @Test void codCallbackIsNotFound() {
+        locked();
+        payment.setMethod(PaymentMethod.COD);
+        assertThat(settle(true, "TX1")).isEqualTo(NOT_FOUND);
+        verifyNoInteractions(items, variants, outbox, clock);
+    }
+    @Test void activatedNullDeadlineFailsClosed() {
+        locked();
+        order.setPaymentExpiresAt(null);
+        assertThatThrownBy(() -> settle(true, "TX1")).isExactlyInstanceOf(ReservationReviewRequiredException.class);
+        verifyNoInteractions(items, variants, outbox, clock);
+    }
+    @Test void conflictingStoredOrderAndPaymentTotalsRequireReview() {
+        locked();
+        lenient().when(items.findStockReleaseTargetsByOrderId("ORD_1"))
+                .thenReturn(List.of(mock(OrderItemRepository.StockReleaseTarget.class)));
+        lenient().when(clock.now()).thenReturn(NOW);
+        payment.setAmount(new BigDecimal("4999"));
+        assertThatThrownBy(() -> service.settle("ORD_1", new BigDecimal("4999"), true, "TX1"))
+                .isExactlyInstanceOf(ReservationReviewRequiredException.class);
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
+        verifyNoInteractions(items, variants, outbox, clock);
     }
 }

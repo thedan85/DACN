@@ -9,6 +9,7 @@ import com.project.dacn.dto.response.payment.PaymentUrlResponse;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.payment.Payment;
 import com.project.dacn.integration.payment.vnpay.VnpayUrlBuilder;
+import com.project.dacn.integration.payment.PaymentSettlementService;
 import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
@@ -18,7 +19,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.Map;
 
 @Service
@@ -32,6 +32,7 @@ public class PaymentService {
     private final OrderRepository orderRepository;
     private final VnpayUrlBuilder vnpayUrlBuilder;
     private final PaymentMapper paymentMapper;
+    private final PaymentSettlementService settlementService;
 
     @Transactional(readOnly = true)
     public PaymentUrlResponse createVnpayUrl(Long customerId, String orderId, String ipAddress) {
@@ -81,63 +82,31 @@ public class PaymentService {
     }
 
     /**
-     * Applies a signature-verified VNPay IPN. Settlement is a conditional
-     * UPDATE, so duplicate/concurrent IPNs settle at most once.
+     * Applies a signature-verified VNPay IPN through the order-locked lifecycle.
+     * The payment business reference resolves identity only, never settlement state.
      */
     @Transactional
     public IpnResult handleIpn(Map<String, String> params) {
         String txnRef = params.get("vnp_TxnRef");
-        Payment payment = paymentRepository.findByPaymentId(txnRef).orElse(null);
-        if (payment == null) {
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(new BigDecimal(params.get("vnp_Amount")).toBigIntegerExact()).movePointLeft(2);
+        } catch (ArithmeticException | NumberFormatException | NullPointerException invalid) {
+            return IpnResult.AMOUNT_MISMATCH;
+        }
+        String orderId = paymentRepository.findOrderIdByPaymentId(txnRef).orElse(null);
+        if (orderId == null) {
             log.warn("VNPay IPN for unknown payment {}", txnRef);
             return IpnResult.ORDER_NOT_FOUND;
         }
-        if (!amountMatches(payment.getAmount(), params.get("vnp_Amount"))) {
-            log.warn("VNPay IPN amount mismatch for payment {}: sent {}", txnRef, params.get("vnp_Amount"));
-            return IpnResult.AMOUNT_MISMATCH;
-        }
-        String orderId = payment.getOrder().getOrderId();
         boolean success = VNPAY_SUCCESS.equals(params.get("vnp_ResponseCode"));
-        if (!success) {
-            int updated = paymentRepository.settle(txnRef, PaymentStatus.PENDING,
-                    PaymentStatus.FAILED, null, Instant.now());
-            log.info("VNPay payment {} failed (response {})", txnRef, params.get("vnp_ResponseCode"));
-            return updated == 1 ? IpnResult.FAILED : alreadySettled(txnRef, IpnResult.FAILED);
-        }
-        int updated = paymentRepository.settle(txnRef, PaymentStatus.PENDING, PaymentStatus.CONFIRMED,
-                params.get("vnp_TransactionNo"), Instant.now());
-        if (updated == 0) {
-            return alreadySettled(txnRef, IpnResult.CONFIRMED);
-        }
-        orderRepository.updateStatus(orderId, OrderStatus.PENDING, OrderStatus.CONFIRMED);
-        log.info("VNPay payment {} confirmed for order {}", txnRef, orderId);
-        return IpnResult.CONFIRMED;
-    }
-
-    private IpnResult alreadySettled(String txnRef, IpnResult outcome) {
-        PaymentStatus status = paymentRepository.findByPaymentId(txnRef)
-                .map(Payment::getStatus)
-                .orElse(null);
-        if (status == PaymentStatus.CONFIRMED) {
-            return IpnResult.ALREADY_CONFIRMED;
-        }
-        if (status == PaymentStatus.FAILED) {
-            return IpnResult.ALREADY_FAILED;
-        }
-        log.warn("VNPay payment {} is {} after losing settle race, acknowledging", txnRef, status);
-        return outcome;
-    }
-
-    private static boolean amountMatches(BigDecimal amount, String vnpAmount) {
-        if (vnpAmount == null) {
-            return false;
-        }
-        try {
-            return amount.movePointRight(2).toBigIntegerExact()
-                    .equals(new BigDecimal(vnpAmount).toBigIntegerExact());
-        } catch (ArithmeticException | NumberFormatException e) {
-            return false;
-        }
+        return switch (settlementService.settle(orderId, amount, success, params.get("vnp_TransactionNo"))) {
+            case SETTLED -> success ? IpnResult.CONFIRMED : IpnResult.FAILED;
+            case ALREADY_SETTLED -> IpnResult.ALREADY_SETTLED;
+            case REFUND_REQUIRED -> IpnResult.REFUND_REQUIRED;
+            case NOT_FOUND -> IpnResult.ORDER_NOT_FOUND;
+            case AMOUNT_MISMATCH -> IpnResult.AMOUNT_MISMATCH;
+        };
     }
 
     private static long wholeVnd(BigDecimal amount) {
@@ -149,6 +118,7 @@ public class PaymentService {
     }
 
     public enum IpnResult {
-        CONFIRMED, ALREADY_CONFIRMED, FAILED, ALREADY_FAILED, ORDER_NOT_FOUND, AMOUNT_MISMATCH
+        CONFIRMED, ALREADY_CONFIRMED, FAILED, ALREADY_FAILED, ORDER_NOT_FOUND, AMOUNT_MISMATCH,
+        ALREADY_SETTLED, REFUND_REQUIRED
     }
 }

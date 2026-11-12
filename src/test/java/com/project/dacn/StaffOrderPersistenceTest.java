@@ -60,6 +60,11 @@ class StaffOrderPersistenceTest {
     @TestConfiguration
     static class MapperConfig {
         @Bean
+        com.project.dacn.service.order.ReservationPolicy reservationPolicy() {
+            return new com.project.dacn.service.order.ReservationPolicy(false, false, false);
+        }
+
+        @Bean
         OrderMapper orderMapper() {
             return Mappers.getMapper(OrderMapper.class);
         }

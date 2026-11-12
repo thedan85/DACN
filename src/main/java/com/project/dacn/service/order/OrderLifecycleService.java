@@ -13,6 +13,7 @@ import com.project.dacn.event.OrderEvent;
 import com.project.dacn.event.OrderEventReason;
 import com.project.dacn.event.OrderEventType;
 import com.project.dacn.messaging.outbox.OrderEventOutbox;
+import com.project.dacn.integration.payment.PaymentSettlementService.Result;
 import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
@@ -25,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -40,6 +42,7 @@ public class OrderLifecycleService {
     private final OrderResponseAssembler responseAssembler;
     private final OrderEventOutbox outbox;
     private final DatabaseClock clock;
+    private final ReservationPolicy reservationPolicy;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -129,22 +132,8 @@ public class OrderLifecycleService {
         Payment payment = lockPayment(orderId);
 
         Instant occurredAt = clock.now();
-        List<OrderItemRepository.StockReleaseTarget> targets =
-                orderItemRepository.findStockReleaseTargetsByOrderId(orderId);
-        for (OrderItemRepository.StockReleaseTarget target : targets) {
-            Long quantity = target.getQuantity();
-            if (quantity == null || quantity <= 0 || quantity > Integer.MAX_VALUE) {
-                throw new IllegalStateException("invalid stock release quantity: " + quantity);
-            }
-            int updated = variantRepository.incrementStockNative(
-                    target.getVariantId(), quantity.intValue());
-            if (updated != 1) {
-                throw new IllegalStateException(
-                        "stock target not found: " + target.getVariantId());
-            }
-        }
-
-        order.setStockReleasedAt(occurredAt);
+        releaseStock(order, occurredAt,
+                orderItemRepository.findStockReleaseTargetsByOrderId(orderId));
         order.setCancellationReason(OrderEventReason.STAFF_REJECTED);
         order.setStatus(OrderStatus.CANCELLED);
         if (payment.getStatus() == PaymentStatus.PENDING) {
@@ -186,6 +175,96 @@ public class OrderLifecycleService {
         append(order, payment, OrderEventType.ORDER_COMPLETED, null,
                 occurredAt, "ADMIN_COMPLETE");
         return responseAssembler.toResponse(order);
+    }
+
+    /** Only verified provider callbacks may enter this order-first transaction. */
+    @Transactional
+    public Result settleOnline(String orderId, BigDecimal amount, boolean success, String transactionId) {
+        boundLockWait();
+        if (orderId == null || orderId.isBlank()) {
+            return Result.NOT_FOUND;
+        }
+        Order order = orderRepository.findWithLockByOrderId(orderId).orElse(null);
+        if (order == null) {
+            return Result.NOT_FOUND;
+        }
+        Payment payment = paymentRepository.findWithLockByOrder_OrderId(orderId)
+                .orElseThrow(() -> new ReservationReviewRequiredException(orderId));
+        if (payment.getMethod() == PaymentMethod.COD) {
+            return Result.NOT_FOUND;
+        }
+        if (amount == null || payment.getAmount() == null
+                || payment.getAmount().compareTo(amount) != 0) {
+            return Result.AMOUNT_MISMATCH;
+        }
+        if (success && (transactionId == null || transactionId.isBlank())) {
+            return Result.NOT_FOUND;
+        }
+        PaymentStatus status = payment.getStatus();
+        if (status == PaymentStatus.CONFIRMED || status == PaymentStatus.REFUND_REQUIRED) {
+            // Never overwrite received-money evidence, even on a conflicting later callback.
+            return Result.ALREADY_SETTLED;
+        }
+        if (payment.getMethod() == null || payment.getPaidAt() != null
+                || payment.getTransactionId() != null
+                || order.getTotal() == null || payment.getAmount().compareTo(order.getTotal()) != 0
+                || (status != PaymentStatus.PENDING && status != PaymentStatus.FAILED)
+                || (reservationPolicy.isActive() && order.getPaymentExpiresAt() == null)) {
+            throw new ReservationReviewRequiredException(orderId);
+        }
+        List<OrderItemRepository.StockReleaseTarget> targets =
+                orderItemRepository.findStockReleaseTargetsByOrderId(orderId);
+        boolean reserved = order.getStatus() == OrderStatus.PENDING
+                && status == PaymentStatus.PENDING && order.getStockReleasedAt() == null;
+        boolean released = order.getStatus() == OrderStatus.CANCELLED
+                && order.getStockReleasedAt() != null && order.getCancellationReason() != null;
+        if (targets.isEmpty() || (!reserved && !released)) {
+            throw new ReservationReviewRequiredException(orderId);
+        }
+
+        Instant occurredAt = clock.now();
+        boolean expired = reserved && reservationPolicy.isActive()
+                && !occurredAt.isBefore(order.getPaymentExpiresAt());
+        if (expired || (reserved && !success)) {
+            releaseStock(order, occurredAt, targets);
+            order.setStatus(OrderStatus.CANCELLED);
+            payment.setStatus(PaymentStatus.FAILED);
+            OrderEventReason reason = expired ? OrderEventReason.PAYMENT_EXPIRED : OrderEventReason.PAYMENT_FAILED;
+            order.setCancellationReason(reason);
+            append(order, payment, expired ? OrderEventType.ORDER_EXPIRED : OrderEventType.PAYMENT_FAILED,
+                    reason, occurredAt, "PAYMENT_CALLBACK");
+        }
+        if (!success) {
+            return released ? Result.ALREADY_SETTLED : Result.SETTLED;
+        }
+
+        payment.setPaidAt(occurredAt);
+        payment.setTransactionId(transactionId);
+        if (released || expired) {
+            payment.setStatus(PaymentStatus.REFUND_REQUIRED);
+            append(order, payment, OrderEventType.REFUND_REQUIRED, null, occurredAt, "PAYMENT_CALLBACK");
+            return Result.REFUND_REQUIRED;
+        }
+        payment.setStatus(PaymentStatus.CONFIRMED);
+        order.setStatus(OrderStatus.CONFIRMED);
+        append(order, payment, OrderEventType.ORDER_CONFIRMED, null, occurredAt, "PAYMENT_CALLBACK");
+        return Result.SETTLED;
+    }
+
+    private void releaseStock(Order order, Instant occurredAt,
+                              List<OrderItemRepository.StockReleaseTarget> targets) {
+        requireUnreleased(order);
+        for (OrderItemRepository.StockReleaseTarget target : targets) {
+            Long quantity = target.getQuantity();
+            if (quantity == null || quantity <= 0 || quantity > Integer.MAX_VALUE) {
+                throw new IllegalStateException("invalid stock release quantity: " + quantity);
+            }
+            int updated = variantRepository.incrementStockNative(target.getVariantId(), quantity.intValue());
+            if (updated != 1) {
+                throw new IllegalStateException("stock target not found: " + target.getVariantId());
+            }
+        }
+        order.setStockReleasedAt(occurredAt);
     }
 
     private Order lockOrder(String orderId) {

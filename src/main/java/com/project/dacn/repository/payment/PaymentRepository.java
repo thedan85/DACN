@@ -18,6 +18,10 @@ import java.util.Optional;
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
     Optional<Payment> findByPaymentId(String paymentId);
 
+    /** Identity only: do not preload mutable payment/order state before the lifecycle lock. */
+    @Query("select p.order.orderId from Payment p where p.paymentId = :paymentId")
+    Optional<String> findOrderIdByPaymentId(@Param("paymentId") String paymentId);
+
     Optional<Payment> findByOrder_OrderId(String orderId);
 
     @EntityGraph(attributePaths = "order")

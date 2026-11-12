@@ -79,6 +79,19 @@ class VnpayWebhookControllerTest {
     }
 
     @Test
+    void ipnAcknowledgesRefundReviewWithoutClaimingConfirmedFulfilment() {
+        when(paymentService.handleIpn(any())).thenReturn(PaymentService.IpnResult.REFUND_REQUIRED);
+        assertThat(controller.ipn(signedParams())).containsExactlyInAnyOrderEntriesOf(
+                Map.of("RspCode", "00", "Message", "Received; refund review required"));
+    }
+
+    @Test
+    void ipnAcknowledgesGenericDuplicateWithoutInferringOriginalOutcome() {
+        when(paymentService.handleIpn(any())).thenReturn(PaymentService.IpnResult.ALREADY_SETTLED);
+        assertThat(controller.ipn(signedParams())).containsEntry("RspCode", "00");
+    }
+
+    @Test
     void returnSettlesValidSignatureAndRedirectsToOrder() {
         Map<String, String> params = signedParams();
         when(paymentService.handleIpn(any())).thenReturn(PaymentService.IpnResult.CONFIRMED);

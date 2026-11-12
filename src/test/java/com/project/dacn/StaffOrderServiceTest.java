@@ -94,7 +94,8 @@ class StaffOrderServiceTest {
                 orderItemRepository, orderMapper, paymentMapper, mediaRepository);
         OrderLifecycleService lifecycleService = new OrderLifecycleService(
                 orderRepository, paymentRepository, orderItemRepository,
-                variantRepository, responseAssembler, outbox, clock);
+                variantRepository, responseAssembler, outbox, clock,
+                new com.project.dacn.service.order.ReservationPolicy(false, false, false));
         ReflectionTestUtils.setField(lifecycleService, "transactionLockBounds", false);
         service = new OrderService(orderRepository, responseAssembler, lifecycleService);
     }

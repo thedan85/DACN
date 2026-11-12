@@ -43,8 +43,9 @@ public class VnpayWebhookController {
             return Map.of("RspCode", "97", "Message", "Invalid signature");
         }
         return switch (paymentService.handleIpn(params)) {
-            case CONFIRMED, ALREADY_CONFIRMED, FAILED, ALREADY_FAILED ->
+            case CONFIRMED, ALREADY_CONFIRMED, FAILED, ALREADY_FAILED, ALREADY_SETTLED ->
                     Map.of("RspCode", "00", "Message", "Confirm Success");
+            case REFUND_REQUIRED -> Map.of("RspCode", "00", "Message", "Received; refund review required");
             case ORDER_NOT_FOUND -> Map.of("RspCode", "01", "Message", "Order not found");
             case AMOUNT_MISMATCH -> Map.of("RspCode", "04", "Message", "Invalid amount");
         };

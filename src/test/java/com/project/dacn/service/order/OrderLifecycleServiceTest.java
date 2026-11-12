@@ -30,7 +30,7 @@ class OrderLifecycleServiceTest {
             mock(VariantRepository.class),
             mock(OrderResponseAssembler.class),
             outbox,
-            clock);
+            clock, new ReservationPolicy(false, false, false));
 
     @Test
     void paymentFromAnotherOrderFailsBeforeAppend() {

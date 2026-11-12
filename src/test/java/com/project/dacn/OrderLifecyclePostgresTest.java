@@ -814,6 +814,11 @@ class OrderLifecyclePostgresTest {
     @Import({OrderService.class, OrderLifecycleService.class, OrderResponseAssembler.class})
     static class Config {
         @Bean
+        com.project.dacn.service.order.ReservationPolicy reservationPolicy() {
+            return new com.project.dacn.service.order.ReservationPolicy(false, false, false);
+        }
+
+        @Bean
         OrderMapper orderMapper() {
             return org.mapstruct.factory.Mappers.getMapper(OrderMapper.class);
         }

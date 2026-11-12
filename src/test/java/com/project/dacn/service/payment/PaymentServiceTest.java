@@ -50,7 +50,8 @@ class PaymentServiceTest {
         props.setReturnUrl("http://localhost:8080/api/v1/webhooks/vnpay/return");
         VnpaySignatureService signature = new VnpaySignatureService(props);
         service = new PaymentService(paymentRepository, orderRepository,
-                new VnpayUrlBuilder(props, signature), MAPPER);
+                new VnpayUrlBuilder(props, signature), MAPPER,
+                org.mockito.Mockito.mock(com.project.dacn.integration.payment.PaymentSettlementService.class));
     }
 
     @Test
