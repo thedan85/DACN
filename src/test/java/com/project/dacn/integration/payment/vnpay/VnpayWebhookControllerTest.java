@@ -6,6 +6,7 @@ import com.project.dacn.entity.payment.Payment;
 import com.project.dacn.integration.payment.PaymentSettlementService;
 import com.project.dacn.repository.payment.PaymentRepository;
 import com.project.dacn.service.order.OrderLifecycleService;
+import com.project.dacn.service.order.ReservationReviewRequiredException;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -101,6 +102,28 @@ class VnpayWebhookControllerTest {
     void ipnAcknowledgesGenericDuplicateWithoutInferringOriginalOutcome() {
         when(paymentService.handleIpn(any())).thenReturn(PaymentService.IpnResult.ALREADY_SETTLED);
         assertThat(controller.ipn(signedParams())).containsEntry("RspCode", "00");
+    }
+
+    @ParameterizedTest
+    @CsvSource({"00,00", "24,02"})
+    void reviewRequiredFromActualPaymentAdapterReturnsErrorNotAcknowledgement(String response, String status) {
+        PaymentRepository payments = mock(PaymentRepository.class);
+        OrderLifecycleService lifecycle = mock(OrderLifecycleService.class);
+        when(payments.findOrderIdByPaymentId("PAY_abc")).thenReturn(Optional.of("ORD_abc"));
+        when(lifecycle.settleOnline(any(), any(), any(Boolean.class), any()))
+                .thenThrow(new ReservationReviewRequiredException("ORD_abc"));
+        var adapter = new PaymentService(payments, null, null, null,
+                new PaymentSettlementService(lifecycle), null, null, null);
+        var actual = new VnpayWebhookController(SIGNATURE, adapter, props());
+        Map<String, String> params = signedOutcome(response, status);
+        assertThat(SIGNATURE.verifyParams(params)).isTrue();
+        assertThat(actual.ipn(params)).containsExactlyInAnyOrderEntriesOf(
+                Map.of("RspCode", "99", "Message", "Reservation requires review"));
+        verify(payments).findOrderIdByPaymentId("PAY_abc");
+        verifyNoMoreInteractions(payments);
+        verify(lifecycle).settleOnline("ORD_abc", new java.math.BigDecimal("150000.00"),
+                "00".equals(response), "123456");
+        verifyNoMoreInteractions(lifecycle);
     }
 
     @Test
@@ -257,7 +280,7 @@ class VnpayWebhookControllerTest {
         PaymentRepository payments = mock(PaymentRepository.class);
         OrderLifecycleService lifecycle = mock(OrderLifecycleService.class);
         PaymentService adapter = new PaymentService(payments, null, null, null,
-                new PaymentSettlementService(lifecycle));
+                new PaymentSettlementService(lifecycle), null, null, null);
         var actual = new VnpayWebhookController(SIGNATURE, adapter, props());
         Map<String, String> params = signedOutcome(response, status);
         replaceAndSign(params, "vnp_Amount", amount);
@@ -300,7 +323,7 @@ class VnpayWebhookControllerTest {
         PaymentRepository payments = mock(PaymentRepository.class);
         OrderLifecycleService lifecycle = mock(OrderLifecycleService.class);
         PaymentService adapter = new PaymentService(payments, null, null, null,
-                new PaymentSettlementService(lifecycle));
+                new PaymentSettlementService(lifecycle), null, null, null);
         var actual = new VnpayWebhookController(SIGNATURE, adapter, props());
 
         assertThat(SIGNATURE.verifyParams(params)).isTrue();
@@ -319,7 +342,7 @@ class VnpayWebhookControllerTest {
         PaymentRepository payments = mock(PaymentRepository.class);
         OrderLifecycleService lifecycle = mock(OrderLifecycleService.class);
         PaymentService adapter = new PaymentService(payments, null, null, null,
-                new PaymentSettlementService(lifecycle));
+                new PaymentSettlementService(lifecycle), null, null, null);
         var actual = new VnpayWebhookController(SIGNATURE, adapter, props());
         when(payments.findByPaymentId("PAY_abc")).thenReturn(Optional.of(Payment.builder()
                 .order(Order.builder().orderId("ORD_abc").build()).build()));

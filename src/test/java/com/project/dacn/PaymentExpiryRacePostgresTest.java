@@ -655,10 +655,13 @@ class PaymentExpiryRacePostgresTest {
     static class Config {
         @Bean @Primary ControlledClock controlledClock(JdbcTemplate jdbc) { return new ControlledClock(jdbc); }
         @Bean PaymentService paymentService(PaymentRepository payments, OrderRepository orders,
-                                           PaymentMapper mapper, PaymentSettlementService settlement) {
+                                           PaymentMapper mapper, PaymentSettlementService settlement,
+                                           ReservationPolicy policy, DatabaseClock clock,
+                                           com.project.dacn.repository.order.OrderItemRepository items) {
             VnpayProperties properties = new VnpayProperties();
             return new PaymentService(payments, orders,
-                    new VnpayUrlBuilder(properties, new VnpaySignatureService(properties)), mapper, settlement);
+                    new VnpayUrlBuilder(properties, new VnpaySignatureService(properties)), mapper, settlement,
+                    policy, clock, items);
         }
     }
 }

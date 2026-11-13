@@ -1,6 +1,7 @@
 package com.project.dacn.integration.payment.vnpay;
 
 import com.project.dacn.service.payment.PaymentService;
+import com.project.dacn.service.order.ReservationReviewRequiredException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -54,13 +55,17 @@ public class VnpayWebhookController {
         if (!validOutcome(params)) {
             return Map.of("RspCode", "99", "Message", "Invalid payment outcome");
         }
-        return switch (paymentService.handleIpn(params)) {
-            case CONFIRMED, ALREADY_CONFIRMED, FAILED, ALREADY_FAILED, ALREADY_SETTLED ->
-                    Map.of("RspCode", "00", "Message", "Confirm Success");
-            case REFUND_REQUIRED -> Map.of("RspCode", "00", "Message", "Received; refund review required");
-            case ORDER_NOT_FOUND -> Map.of("RspCode", "01", "Message", "Order not found");
-            case AMOUNT_MISMATCH -> Map.of("RspCode", "04", "Message", "Invalid amount");
-        };
+        try {
+            return switch (paymentService.handleIpn(params)) {
+                case CONFIRMED, ALREADY_CONFIRMED, FAILED, ALREADY_FAILED, ALREADY_SETTLED ->
+                        Map.of("RspCode", "00", "Message", "Confirm Success");
+                case REFUND_REQUIRED -> Map.of("RspCode", "00", "Message", "Received; refund review required");
+                case ORDER_NOT_FOUND -> Map.of("RspCode", "01", "Message", "Order not found");
+                case AMOUNT_MISMATCH -> Map.of("RspCode", "04", "Message", "Invalid amount");
+            };
+        } catch (ReservationReviewRequiredException review) {
+            return Map.of("RspCode", "99", "Message", "Reservation requires review");
+        }
     }
 
     /**

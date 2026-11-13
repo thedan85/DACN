@@ -5,6 +5,9 @@ import org.junit.jupiter.api.Test;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -43,6 +46,27 @@ class VnpayUrlBuilderTest {
 
         assertThat(secureHash).matches("[0-9a-f]{128}");
         assertThat(SIGNATURE.verify(SIGNATURE.canonical(params), secureHash)).isTrue();
+    }
+
+    @Test
+    void absoluteExpiryKeepsCutoffAndConvertsAcrossVietnamMidnight() {
+        Map<String, String> params = queryParams(builder.build("PAY_absolute", 150000L,
+                "Thanh toán đơn hàng & repeat", "127.0.0.1", Instant.parse("2026-11-13T17:01:02Z")));
+        assertThat(SIGNATURE.verifyParams(params)).isTrue();
+        assertThat(params).containsEntry("vnp_ExpireDate", "20261114000102")
+                .containsEntry("vnp_TxnRef", "PAY_absolute").containsEntry("vnp_Amount", "15000000")
+                .containsEntry("vnp_OrderInfo", "Thanh toán đơn hàng & repeat");
+        params.put("vnp_ExpireDate", "20261114001602");
+        assertThat(SIGNATURE.verifyParams(params)).isFalse();
+    }
+
+    @Test
+    void oldOverloadRetainsItsFifteenMinuteIssuanceWindow() {
+        Map<String, String> params = queryParams(builder.build("PAY_legacy", 30L, "legacy", "127.0.0.1"));
+        DateTimeFormatter format = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+        assertThat(LocalDateTime.parse(params.get("vnp_ExpireDate"), format))
+                .isEqualTo(LocalDateTime.parse(params.get("vnp_CreateDate"), format).plusMinutes(15));
+        assertThat(SIGNATURE.verifyParams(params)).isTrue();
     }
 
     private static Map<String, String> queryParams(String url) {

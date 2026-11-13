@@ -35,8 +35,11 @@ class MomoWebhookControllerTest {
     @Test void reviewExceptionMustNotBecomeSuccess() {
         when(settlement.settle("ORD_1", new BigDecimal("30"), true, "TX1"))
                 .thenThrow(new ReservationReviewRequiredException("ORD_1"));
-        assertThatThrownBy(() -> controller.handleWebhook(payload("0")))
-                .isExactlyInstanceOf(ReservationReviewRequiredException.class);
+        var response = controller.handleWebhook(payload("0"));
+        assertThat(response.getStatusCode().value()).isEqualTo(400);
+        assertThat(response.getBody().getCode()).isEqualTo(400);
+        assertThat(response.getBody().getMessage()).isEqualTo("reservation requires review");
+        assertThat(response.getBody().getData()).isNull();
     }
     @Test void unknownOnlineOrderRetains404Envelope() {
         when(settlement.settle("ORD_1", new BigDecimal("30"), true, "TX1"))

@@ -4,6 +4,8 @@ import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.common.constant.PaymentMethod;
 import com.project.dacn.common.constant.PaymentStatus;
 import com.project.dacn.common.exception.ResourceNotFoundException;
+import com.project.dacn.common.exception.InvalidOrderStateException;
+import com.project.dacn.common.time.DatabaseClock;
 import com.project.dacn.dto.response.payment.PaymentResponse;
 import com.project.dacn.dto.response.payment.PaymentUrlResponse;
 import com.project.dacn.entity.order.Order;
@@ -12,7 +14,13 @@ import com.project.dacn.integration.payment.vnpay.VnpayUrlBuilder;
 import com.project.dacn.integration.payment.PaymentSettlementService;
 import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.order.OrderRepository;
+import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
+import com.project.dacn.service.order.ReservationPolicy;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
+import org.hibernate.Session;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,11 +41,32 @@ public class PaymentService {
     private final VnpayUrlBuilder vnpayUrlBuilder;
     private final PaymentMapper paymentMapper;
     private final PaymentSettlementService settlementService;
+    private final ReservationPolicy reservationPolicy;
+    private final DatabaseClock clock;
+    private final OrderItemRepository orderItemRepository;
 
-    @Transactional(readOnly = true)
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    private volatile Boolean transactionLockBounds;
+
+    @Transactional
     public PaymentUrlResponse createVnpayUrl(Long customerId, String orderId, String ipAddress) {
-        Payment payment = requirePayment(customerId, orderId);
-        Order order = payment.getOrder();
+        if (reservationPolicy.isOnlineWorkPaused()) {
+            throw new InvalidOrderStateException("online payment is temporarily unavailable");
+        }
+        boundLockWait();
+        Order order = orderRepository.findWithLockByOrderId(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("order not found: " + orderId));
+        // A caller or inverse association may already have managed an older snapshot.
+        entityManager.refresh(order, LockModeType.PESSIMISTIC_WRITE);
+        if (customerId == null || order.getCustomer() == null
+                || !customerId.equals(order.getCustomer().getId())) {
+            throw new ResourceNotFoundException("order not found: " + orderId);
+        }
+        Payment payment = paymentRepository.findWithLockByOrder_OrderId(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("payment not found: " + orderId));
+        entityManager.refresh(payment, LockModeType.PESSIMISTIC_WRITE);
         if (payment.getMethod() == PaymentMethod.COD) {
             throw new IllegalArgumentException("COD order does not need a payment URL");
         }
@@ -47,10 +76,40 @@ public class PaymentService {
         if (order.getStatus() != OrderStatus.PENDING) {
             throw new IllegalArgumentException("order is not pending: " + order.getStatus());
         }
-        String url = vnpayUrlBuilder.build(payment.getPaymentId(), wholeVnd(payment.getAmount()),
-                "Thanh toan don hang " + orderId, ipAddress);
+        if (payment.getMethod() == null || payment.getPaidAt() != null || payment.getTransactionId() != null
+                || order.getStockReleasedAt() != null || order.getCancellationReason() != null
+                || payment.getAmount() == null || order.getTotal() == null
+                || payment.getAmount().compareTo(order.getTotal()) != 0
+                || orderItemRepository.findStockReleaseTargetsByOrderId(orderId).isEmpty()) {
+            throw new InvalidOrderStateException("reservation requires review");
+        }
+        boolean active = reservationPolicy.isActive();
+        if (active) {
+            if (order.getPaymentExpiresAt() == null) {
+                throw new InvalidOrderStateException("reservation requires review");
+            }
+            if (!clock.now().isBefore(order.getPaymentExpiresAt())) {
+                throw new InvalidOrderStateException("payment reservation has expired");
+            }
+        }
+        long amount = wholeVnd(payment.getAmount());
+        String info = "Thanh toan don hang " + orderId;
+        String url = active
+                ? vnpayUrlBuilder.build(payment.getPaymentId(), amount, info, ipAddress, order.getPaymentExpiresAt())
+                : vnpayUrlBuilder.build(payment.getPaymentId(), amount, info, ipAddress);
         log.info("Created VNPay URL for order {} payment {}", orderId, payment.getPaymentId());
         return new PaymentUrlResponse(url);
+    }
+
+    private void boundLockWait() {
+        if (transactionLockBounds == null) {
+            transactionLockBounds = "PostgreSQL".equals(entityManager.unwrap(Session.class)
+                    .doReturningWork(connection -> connection.getMetaData().getDatabaseProductName()));
+        }
+        if (transactionLockBounds) {
+            // PostgreSQL ignores positive JPA lock hints; keep this bound transaction-local.
+            entityManager.createNativeQuery("set local lock_timeout = '2s'").executeUpdate();
+        }
     }
 
     @Transactional(readOnly = true)

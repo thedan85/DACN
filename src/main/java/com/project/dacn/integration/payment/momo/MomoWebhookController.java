@@ -2,6 +2,7 @@ package com.project.dacn.integration.payment.momo;
 
 import com.project.dacn.common.response.ApiResponse;
 import com.project.dacn.integration.payment.PaymentSettlementService;
+import com.project.dacn.service.order.ReservationReviewRequiredException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -52,8 +53,13 @@ public class MomoWebhookController {
                     .body(ApiResponse.of(400, "invalid amount", null));
         }
 
-        var result = settlementService.settle(
-                orderId, amount, success, stringValue(payload, "transId"));
+        PaymentSettlementService.Result result;
+        try {
+            result = settlementService.settle(orderId, amount, success, stringValue(payload, "transId"));
+        } catch (ReservationReviewRequiredException review) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.of(400, "reservation requires review", null));
+        }
         log.info("MoMo IPN order {} resultCode {} settlement {}",
                 orderId, payload.get("resultCode"), result);
 

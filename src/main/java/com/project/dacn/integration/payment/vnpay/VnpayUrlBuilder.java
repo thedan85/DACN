@@ -3,6 +3,7 @@ package com.project.dacn.integration.payment.vnpay;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
@@ -24,6 +25,16 @@ public class VnpayUrlBuilder {
 
     public String build(String txnRef, long amountVnd, String orderInfo, String ipAddress) {
         LocalDateTime now = LocalDateTime.now(VN_TIME);
+        return build(txnRef, amountVnd, orderInfo, ipAddress, now, now.plusMinutes(15));
+    }
+
+    public String build(String txnRef, long amountVnd, String orderInfo, String ipAddress, Instant expiresAt) {
+        return build(txnRef, amountVnd, orderInfo, ipAddress, LocalDateTime.now(VN_TIME),
+                LocalDateTime.ofInstant(expiresAt, VN_TIME));
+    }
+
+    private String build(String txnRef, long amountVnd, String orderInfo, String ipAddress,
+                         LocalDateTime now, LocalDateTime expiresAt) {
         Map<String, String> params = new LinkedHashMap<>();
         params.put("vnp_Version", properties.getVersion());
         params.put("vnp_Command", properties.getCommand());
@@ -37,7 +48,7 @@ public class VnpayUrlBuilder {
         params.put("vnp_ReturnUrl", properties.getReturnUrl());
         params.put("vnp_IpAddr", ipAddress);
         params.put("vnp_CreateDate", now.format(DATE_FORMAT));
-        params.put("vnp_ExpireDate", now.plusMinutes(15).format(DATE_FORMAT));
+        params.put("vnp_ExpireDate", expiresAt.format(DATE_FORMAT));
 
         String canonical = signatureService.canonical(params);
         return properties.getPayUrl()
