@@ -114,6 +114,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/admin/dashboard/**")
                         .hasAuthority(Permissions.ORDER_READ)
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/staff/orders/**").hasAuthority(Permissions.ORDER_UPDATE)
+                        .requestMatchers(HttpMethod.POST, "/api/v1/staff/orders/*/payment/confirm")
+                        .hasAuthority(Permissions.ORDER_UPDATE)
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/orders/*/complete")
                         .hasAuthority(Permissions.ORDER_COMPLETE)
                         .requestMatchers(HttpMethod.GET, "/api/v1/admin/users", "/api/v1/admin/users/**")

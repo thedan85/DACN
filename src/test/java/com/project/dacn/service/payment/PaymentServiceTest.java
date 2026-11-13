@@ -4,10 +4,12 @@ import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.common.constant.PaymentMethod;
 import com.project.dacn.common.constant.PaymentStatus;
 import com.project.dacn.common.exception.ResourceNotFoundException;
+import com.project.dacn.dto.response.payment.PaymentResponse;
 import com.project.dacn.dto.response.payment.PaymentVietQrResponse;
 import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.payment.Payment;
+import com.project.dacn.integration.payment.PaymentSettlementService;
 import com.project.dacn.integration.payment.vietqr.VietQrProperties;
 import com.project.dacn.integration.payment.vietqr.VietQrUrlBuilder;
 import com.project.dacn.integration.payment.vnpay.VnpayProperties;
@@ -28,6 +30,8 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -41,6 +45,9 @@ class PaymentServiceTest {
 
     @Mock
     OrderRepository orderRepository;
+
+    @Mock
+    PaymentSettlementService settlementService;
 
     PaymentService service;
 
@@ -60,7 +67,8 @@ class PaymentServiceTest {
 
         service = new PaymentService(paymentRepository, orderRepository,
                 new VnpayUrlBuilder(props, signature),
-                new VietQrUrlBuilder(vietQrProperties), vietQrProperties, MAPPER);
+                new VietQrUrlBuilder(vietQrProperties), vietQrProperties,
+                settlementService, MAPPER);
     }
 
     @Test
@@ -200,6 +208,70 @@ class PaymentServiceTest {
         assertThatThrownBy(() -> service.createVietQr(99L, "ORD_1"))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("order not found");
+    }
+
+    @Test
+    void confirmVietQrSettlesAndReturnsReloadedPayment() {
+        Order order = order("ORD_1", OrderStatus.PENDING, "150000.00");
+        Payment pending = payment("PAY_1", order, PaymentMethod.VIETQR,
+                PaymentStatus.PENDING, "150000.00");
+        Payment confirmed = payment("PAY_1", order("ORD_1", OrderStatus.CONFIRMED, "150000.00"),
+                PaymentMethod.VIETQR, PaymentStatus.CONFIRMED, "150000.00");
+        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(pending));
+        when(settlementService.settle(eq("ORD_1"), eq(new BigDecimal("150000.00")),
+                eq(true), isNull())).thenReturn(PaymentSettlementService.Result.SETTLED);
+        when(paymentRepository.findWithOrderByOrder_OrderId("ORD_1"))
+                .thenReturn(Optional.of(confirmed));
+
+        PaymentResponse response = service.confirmVietQrPayment("ORD_1");
+
+        assertThat(response.status()).isEqualTo(PaymentStatus.CONFIRMED);
+        assertThat(response.method()).isEqualTo(PaymentMethod.VIETQR);
+    }
+
+    @Test
+    void confirmVietQrReturnsRefundRequiredForCancelledOrder() {
+        Order order = order("ORD_1", OrderStatus.CANCELLED, "10000.00");
+        Payment pending = payment("PAY_1", order, PaymentMethod.VIETQR,
+                PaymentStatus.PENDING, "10000.00");
+        Payment refund = payment("PAY_1", order, PaymentMethod.VIETQR,
+                PaymentStatus.REFUND_REQUIRED, "10000.00");
+        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(pending));
+        when(settlementService.settle(eq("ORD_1"), eq(new BigDecimal("10000.00")),
+                eq(true), isNull())).thenReturn(PaymentSettlementService.Result.REFUND_REQUIRED);
+        when(paymentRepository.findWithOrderByOrder_OrderId("ORD_1"))
+                .thenReturn(Optional.of(refund));
+
+        assertThat(service.confirmVietQrPayment("ORD_1").status())
+                .isEqualTo(PaymentStatus.REFUND_REQUIRED);
+    }
+
+    @Test
+    void confirmVietQrIsIdempotentWhenAlreadySettled() {
+        Order order = order("ORD_1", OrderStatus.CONFIRMED, "10000.00");
+        Payment confirmed = payment("PAY_1", order, PaymentMethod.VIETQR,
+                PaymentStatus.CONFIRMED, "10000.00");
+        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(confirmed));
+        when(settlementService.settle(eq("ORD_1"), eq(new BigDecimal("10000.00")),
+                eq(true), isNull())).thenReturn(PaymentSettlementService.Result.ALREADY_SETTLED);
+        when(paymentRepository.findWithOrderByOrder_OrderId("ORD_1"))
+                .thenReturn(Optional.of(confirmed));
+
+        assertThat(service.confirmVietQrPayment("ORD_1").status())
+                .isEqualTo(PaymentStatus.CONFIRMED);
+    }
+
+    @Test
+    void confirmVietQrRejectsNonVietQrPayment() {
+        Order order = order("ORD_1", OrderStatus.PENDING, "10.00");
+        Payment payment = payment("PAY_1", order, PaymentMethod.COD,
+                PaymentStatus.PENDING, "10.00");
+        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> service.confirmVietQrPayment("ORD_1"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("VIETQR");
+        verifyNoInteractions(settlementService);
     }
 
     private static Order order(String orderId, OrderStatus status, String total) {

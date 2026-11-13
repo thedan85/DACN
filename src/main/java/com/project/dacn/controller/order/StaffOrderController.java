@@ -5,8 +5,10 @@ import com.project.dacn.common.response.ApiResponse;
 import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.order.StaffOrderStatusUpdateRequest;
 import com.project.dacn.dto.response.order.OrderResponse;
+import com.project.dacn.dto.response.payment.PaymentResponse;
 import com.project.dacn.security.Permissions;
 import com.project.dacn.service.order.OrderService;
+import com.project.dacn.service.payment.PaymentService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +18,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -28,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class StaffOrderController {
 
     private final OrderService service;
+    private final PaymentService paymentService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('" + Permissions.ORDER_READ + "')")
@@ -48,5 +52,11 @@ public class StaffOrderController {
             @PathVariable String orderId,
             @Valid @RequestBody StaffOrderStatusUpdateRequest request) {
         return ApiResponse.ok(service.updateStatusByStaff(orderId, request));
+    }
+
+    @PostMapping("/{orderId}/payment/confirm")
+    @PreAuthorize("hasAuthority('" + Permissions.ORDER_UPDATE + "')")
+    public ApiResponse<PaymentResponse> confirmPayment(@PathVariable String orderId) {
+        return ApiResponse.ok(paymentService.confirmVietQrPayment(orderId));
     }
 }

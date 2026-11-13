@@ -155,6 +155,7 @@ class SecurityRulesIntegrationTest {
                 Arguments.of(HttpMethod.POST, "/api/v1/uploads/variants/VAR_1"),
 
                 Arguments.of(HttpMethod.PATCH, "/api/v1/staff/orders/ORD_1/status"),
+                Arguments.of(HttpMethod.POST, "/api/v1/staff/orders/ORD_1/payment/confirm"),
                 Arguments.of(HttpMethod.POST, "/api/v1/admin/orders/ORD_1/complete"),
 
                 Arguments.of(HttpMethod.DELETE, "/api/v1/cart"),

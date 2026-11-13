@@ -9,6 +9,7 @@ import com.project.dacn.dto.response.payment.PaymentUrlResponse;
 import com.project.dacn.dto.response.payment.PaymentVietQrResponse;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.payment.Payment;
+import com.project.dacn.integration.payment.PaymentSettlementService;
 import com.project.dacn.integration.payment.vietqr.VietQrProperties;
 import com.project.dacn.integration.payment.vietqr.VietQrUrlBuilder;
 import com.project.dacn.integration.payment.vnpay.VnpayUrlBuilder;
@@ -36,6 +37,7 @@ public class PaymentService {
     private final VnpayUrlBuilder vnpayUrlBuilder;
     private final VietQrUrlBuilder vietQrUrlBuilder;
     private final VietQrProperties vietQrProperties;
+    private final PaymentSettlementService settlementService;
     private final PaymentMapper paymentMapper;
 
     @Transactional(readOnly = true)
@@ -83,6 +85,27 @@ public class PaymentService {
         return new PaymentVietQrResponse(qrUrl,
                 vietQrProperties.getBankId(), vietQrProperties.getAccountNo(),
                 vietQrProperties.getAccountName(), payment.getAmount(), orderId);
+    }
+
+    @Transactional
+    public PaymentResponse confirmVietQrPayment(String orderId) {
+        Payment payment = paymentRepository.findByOrder_OrderId(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("payment not found: " + orderId));
+        if (payment.getMethod() != PaymentMethod.VIETQR) {
+            throw new IllegalArgumentException(
+                    "payment is not a VIETQR payment: " + payment.getMethod());
+        }
+        var result = settlementService.settle(orderId, payment.getAmount(), true, null);
+        if (result == PaymentSettlementService.Result.NOT_FOUND) {
+            throw new ResourceNotFoundException("payment not found: " + orderId);
+        }
+        if (result == PaymentSettlementService.Result.AMOUNT_MISMATCH) {
+            throw new IllegalStateException("VietQR amount mismatch for order " + orderId);
+        }
+        Payment settled = paymentRepository.findWithOrderByOrder_OrderId(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("payment not found: " + orderId));
+        log.info("Confirmed VietQR payment for order {}: {}", orderId, settled.getStatus());
+        return paymentMapper.toPaymentResponse(settled);
     }
 
     /**

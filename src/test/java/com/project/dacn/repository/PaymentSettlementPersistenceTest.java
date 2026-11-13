@@ -106,4 +106,13 @@ class PaymentSettlementPersistenceTest {
         assertThat(orderRepository.findByOrderId(order.getOrderId()).orElseThrow().getStatus())
                 .isEqualTo(OrderStatus.CONFIRMED);
     }
+
+    @Test
+    void findWithOrderLoadsPaymentByOrderBusinessId() {
+        Payment found = paymentRepository.findWithOrderByOrder_OrderId(order.getOrderId())
+                .orElseThrow();
+
+        assertThat(found.getPaymentId()).isEqualTo(payment.getPaymentId());
+        assertThat(found.getOrder().getOrderId()).isEqualTo(order.getOrderId());
+    }
 }
