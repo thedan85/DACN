@@ -15,6 +15,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -79,12 +80,14 @@ class PaymentSettlementServiceTest {
         Payment payment = payment(PaymentStatus.PENDING, OrderStatus.CANCELLED);
         when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
         when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(payment.getOrder()));
-        when(paymentRepository.settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
+        when(paymentRepository.settleFrom(eq("PAY_1"),
+                eq(List.of(PaymentStatus.PENDING, PaymentStatus.FAILED)),
                 eq(PaymentStatus.REFUND_REQUIRED), eq("TXN_1"), any(Instant.class))).thenReturn(1);
 
         assertThat(service.settle("ORD_1", new BigDecimal("5000"), true, "TXN_1"))
                 .isEqualTo(PaymentSettlementService.Result.REFUND_REQUIRED);
-        verify(paymentRepository).settle(eq("PAY_1"), eq(PaymentStatus.PENDING),
+        verify(paymentRepository).settleFrom(eq("PAY_1"),
+                eq(List.of(PaymentStatus.PENDING, PaymentStatus.FAILED)),
                 eq(PaymentStatus.REFUND_REQUIRED), eq("TXN_1"), any(Instant.class));
         verify(orderRepository, never()).updateStatus(any(), any(), any());
     }
@@ -95,12 +98,29 @@ class PaymentSettlementServiceTest {
         Payment payment = payment(PaymentStatus.FAILED, OrderStatus.CANCELLED);
         when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
         when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(payment.getOrder()));
-        when(paymentRepository.settle(eq("PAY_1"), eq(PaymentStatus.FAILED),
+        when(paymentRepository.settleFrom(eq("PAY_1"),
+                eq(List.of(PaymentStatus.PENDING, PaymentStatus.FAILED)),
                 eq(PaymentStatus.REFUND_REQUIRED), eq("TXN_1"), any(Instant.class))).thenReturn(1);
 
         assertThat(service.settle("ORD_1", new BigDecimal("5000"), true, "TXN_1"))
                 .isEqualTo(PaymentSettlementService.Result.REFUND_REQUIRED);
         verify(orderRepository, never()).updateStatus(any(), any(), any());
+    }
+
+    @Test
+    void concurrentCancelAfterReadStillRecordsRefund() {
+        // Settlement read PENDING, then a staff cancel committed FAILED before
+        // settlement acquired the order lock. The refund UPDATE must match the
+        // now-FAILED row instead of losing the refund state.
+        Payment payment = payment(PaymentStatus.PENDING, OrderStatus.CANCELLED);
+        when(paymentRepository.findByOrder_OrderId("ORD_1")).thenReturn(Optional.of(payment));
+        when(orderRepository.findWithLockByOrderId("ORD_1")).thenReturn(Optional.of(payment.getOrder()));
+        when(paymentRepository.settleFrom(eq("PAY_1"),
+                eq(List.of(PaymentStatus.PENDING, PaymentStatus.FAILED)),
+                eq(PaymentStatus.REFUND_REQUIRED), eq("TXN_1"), any(Instant.class))).thenReturn(1);
+
+        assertThat(service.settle("ORD_1", new BigDecimal("5000"), true, "TXN_1"))
+                .isEqualTo(PaymentSettlementService.Result.REFUND_REQUIRED);
     }
 
     @Test

@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * Idempotent settlement shared by provider IPN handlers. Only a verified
@@ -50,9 +51,10 @@ public class PaymentSettlementService {
                     || order == null || order.getStatus() == OrderStatus.CANCELLED) {
                 // Money was taken for an order that will not be fulfilled. Keep
                 // the provider transaction so staff can refund it.
-                int updated = paymentRepository.settle(
-                        payment.getPaymentId(), status, PaymentStatus.REFUND_REQUIRED,
-                        transactionId, Instant.now());
+                int updated = paymentRepository.settleFrom(
+                        payment.getPaymentId(),
+                        List.of(PaymentStatus.PENDING, PaymentStatus.FAILED),
+                        PaymentStatus.REFUND_REQUIRED, transactionId, Instant.now());
                 return updated == 0 ? Result.ALREADY_SETTLED : Result.REFUND_REQUIRED;
             }
         }
