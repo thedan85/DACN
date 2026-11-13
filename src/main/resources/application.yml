@@ -102,6 +102,12 @@ payment:
     endpoint: ${MOMO_ENDPOINT:}
     redirect-url: ${MOMO_REDIRECT_URL:}
     ipn-url: ${MOMO_IPN_URL:}
+  vietqr:
+    bank-id: ${VIETQR_BANK_ID:}
+    account-no: ${VIETQR_ACCOUNT_NO:}
+    account-name: ${VIETQR_ACCOUNT_NAME:}
+    template: ${VIETQR_TEMPLATE:compact2}
+    image-base-url: ${VIETQR_IMAGE_BASE_URL:https://img.vietqr.io/image}
 
 app:
   cors:

@@ -173,6 +173,15 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(503, ex.getMessage(), null));
     }
 
+    @ExceptionHandler(VietQrNotConfiguredException.class)
+    public ResponseEntity<ApiResponse<?>> handleVietQrNotConfigured(
+            VietQrNotConfiguredException ex) {
+        log.error("VietQR requested but configuration is missing: {}", ex.getMessage());
+        return ResponseEntity.status(503)
+                .body(ApiResponse.of(503, ex.getMessage(), null));
+    }
+
+
     @ExceptionHandler(InvalidPasswordException.class)
     public ResponseEntity<ApiResponse<?>> handleInvalidPassword(InvalidPasswordException ex) {
         String message = messageSource.getMessage("error.password.invalid", null,

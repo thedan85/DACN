@@ -2,6 +2,7 @@ package com.project.dacn.common;
 
 import com.project.dacn.common.exception.GlobalExceptionHandler;
 import com.project.dacn.common.exception.ResourceNotFoundException;
+import com.project.dacn.common.exception.VietQrNotConfiguredException;
 import com.project.dacn.common.response.ApiResponse;
 import jakarta.validation.ConstraintViolationException;
 import org.junit.jupiter.api.Test;
@@ -107,5 +108,16 @@ class CatalogExceptionHandlerTest {
                 new org.springframework.web.multipart.support.MissingServletRequestPartException("file"));
         assertThat(response.getStatusCode().value()).isEqualTo(400);
         assertThat(response.getBody().getCode()).isEqualTo(400);
+    }
+
+    @Test
+    void vietQrNotConfiguredMapsTo503Envelope() {
+        ResponseEntity<ApiResponse<?>> response = handler.handleVietQrNotConfigured(
+                new VietQrNotConfiguredException("payment.vietqr.bank-id"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(503);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getCode()).isEqualTo(503);
+        assertThat(response.getBody().getMessage()).contains("payment.vietqr.bank-id");
     }
 }
