@@ -61,6 +61,21 @@ class VnpayUrlBuilderTest {
     }
 
     @Test
+    void subsecondDeadlineTruncatesWithoutRoundingOrCarry() {
+        assertSubsecondExpiry("2026-11-13T17:01:02.999Z", "20261114000102");
+        assertSubsecondExpiry("2026-11-13T17:01:59.999Z", "20261114000159");
+    }
+
+    private void assertSubsecondExpiry(String expiresAt, String expectedProviderTime) {
+        Map<String, String> params = queryParams(builder.build("PAY_subsecond", 150000L,
+                "subsecond", "127.0.0.1", Instant.parse(expiresAt)));
+        assertThat(SIGNATURE.verifyParams(params)).isTrue();
+        assertThat(params).containsEntry("vnp_ExpireDate", expectedProviderTime)
+                .containsEntry("vnp_TxnRef", "PAY_subsecond")
+                .containsEntry("vnp_Amount", "15000000");
+    }
+
+    @Test
     void oldOverloadRetainsItsFifteenMinuteIssuanceWindow() {
         Map<String, String> params = queryParams(builder.build("PAY_legacy", 30L, "legacy", "127.0.0.1"));
         DateTimeFormatter format = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");

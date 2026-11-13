@@ -213,6 +213,18 @@ class PaymentServiceTest {
         noWrites();
     }
 
+    @Test
+    void onlinePausePrecedesOwnershipAndStateClassification() {
+        lenient().when(reservationPolicy.isOnlineWorkPaused()).thenReturn(true);
+        for (String orderId : List.of("unknown", "ORD_foreign", "ORD_COD")) {
+            assertThatThrownBy(() -> service.createVnpayUrl(99L, orderId, "1.2.3.4"))
+                    .isInstanceOf(InvalidOrderStateException.class)
+                    .hasMessage("online payment is temporarily unavailable")
+                    .hasMessageNotContaining("order not found");
+        }
+        verifyNoInteractions(orderRepository, paymentRepository, builder, settlementService);
+    }
+
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void inactiveOldOrdersIgnoreNullAndPastProposedDeadlines(boolean proposed) {
