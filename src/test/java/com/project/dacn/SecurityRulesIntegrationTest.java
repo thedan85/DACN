@@ -163,6 +163,7 @@ class SecurityRulesIntegrationTest {
                 Arguments.of(HttpMethod.DELETE, "/api/v1/cart/items/1"),
                 Arguments.of(HttpMethod.POST, "/api/v1/cart/checkout"),
                 Arguments.of(HttpMethod.POST, "/api/v1/payments/vnpay/ORD_1"),
+                Arguments.of(HttpMethod.POST, "/api/v1/payments/vietqr/ORD_1"),
 
                 Arguments.of(HttpMethod.PATCH, "/api/v1/auth/me"),
                 Arguments.of(HttpMethod.POST, "/api/v1/auth/change-password"));

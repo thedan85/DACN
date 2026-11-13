@@ -3,6 +3,7 @@ package com.project.dacn.controller.payment;
 import com.project.dacn.common.response.ApiResponse;
 import com.project.dacn.dto.response.payment.PaymentResponse;
 import com.project.dacn.dto.response.payment.PaymentUrlResponse;
+import com.project.dacn.dto.response.payment.PaymentVietQrResponse;
 import com.project.dacn.security.CustomerIdentity;
 import com.project.dacn.service.payment.PaymentService;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -36,6 +37,12 @@ public class PaymentController {
     @GetMapping("/orders/{orderId}")
     public ApiResponse<PaymentResponse> get(Authentication auth, @PathVariable String orderId) {
         return ApiResponse.ok(service.get(identity.requireCustomerId(auth), orderId));
+    }
+
+    @PostMapping("/vietqr/{orderId}")
+    public ApiResponse<PaymentVietQrResponse> createVietQr(
+            Authentication auth, @PathVariable String orderId) {
+        return ApiResponse.ok(service.createVietQr(identity.requireCustomerId(auth), orderId));
     }
 
     /** VNPay rejects IPv6 loopback; map it so local sandbox runs still pass. */

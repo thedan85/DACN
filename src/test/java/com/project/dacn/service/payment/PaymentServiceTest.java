@@ -4,9 +4,12 @@ import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.common.constant.PaymentMethod;
 import com.project.dacn.common.constant.PaymentStatus;
 import com.project.dacn.common.exception.ResourceNotFoundException;
+import com.project.dacn.dto.response.payment.PaymentVietQrResponse;
 import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.payment.Payment;
+import com.project.dacn.integration.payment.vietqr.VietQrProperties;
+import com.project.dacn.integration.payment.vietqr.VietQrUrlBuilder;
 import com.project.dacn.integration.payment.vnpay.VnpayProperties;
 import com.project.dacn.integration.payment.vnpay.VnpaySignatureService;
 import com.project.dacn.integration.payment.vnpay.VnpayUrlBuilder;
@@ -49,8 +52,15 @@ class PaymentServiceTest {
         props.setPayUrl("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html");
         props.setReturnUrl("http://localhost:8080/api/v1/webhooks/vnpay/return");
         VnpaySignatureService signature = new VnpaySignatureService(props);
+
+        VietQrProperties vietQrProperties = new VietQrProperties();
+        vietQrProperties.setBankId("VCB");
+        vietQrProperties.setAccountNo("0123456789");
+        vietQrProperties.setAccountName("AQUA SHOP");
+
         service = new PaymentService(paymentRepository, orderRepository,
-                new VnpayUrlBuilder(props, signature), MAPPER);
+                new VnpayUrlBuilder(props, signature),
+                new VietQrUrlBuilder(vietQrProperties), vietQrProperties, MAPPER);
     }
 
     @Test
@@ -117,6 +127,77 @@ class PaymentServiceTest {
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.get(99L, "ORD_1"))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("order not found");
+    }
+
+    @Test
+    void createVietQrReturnsBankDetailsAndAmount() {
+        Order order = order("ORD_1", OrderStatus.PENDING, "150000.00");
+        Payment payment = payment("PAY_1", order, PaymentMethod.VIETQR,
+                PaymentStatus.PENDING, "150000.00");
+        when(paymentRepository.findWithOrderByOrderIdAndCustomerId("ORD_1", 7L))
+                .thenReturn(Optional.of(payment));
+
+        PaymentVietQrResponse response = service.createVietQr(7L, "ORD_1");
+
+        assertThat(response.qrUrl()).startsWith(
+                "https://img.vietqr.io/image/VCB-0123456789-compact2.png?");
+        assertThat(response.qrUrl()).contains("amount=150000", "addInfo=ORD_1");
+        assertThat(response.bankId()).isEqualTo("VCB");
+        assertThat(response.accountNo()).isEqualTo("0123456789");
+        assertThat(response.accountName()).isEqualTo("AQUA SHOP");
+        assertThat(response.amount()).isEqualByComparingTo("150000.00");
+        assertThat(response.addInfo()).isEqualTo("ORD_1");
+    }
+
+    @Test
+    void createVietQrRejectsNonVietQrPayment() {
+        Order order = order("ORD_1", OrderStatus.PENDING, "10.00");
+        Payment payment = payment("PAY_1", order, PaymentMethod.COD,
+                PaymentStatus.PENDING, "10.00");
+        when(paymentRepository.findWithOrderByOrderIdAndCustomerId("ORD_1", 7L))
+                .thenReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> service.createVietQr(7L, "ORD_1"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("VIETQR");
+    }
+
+    @Test
+    void createVietQrRejectsNonPendingOrder() {
+        Order order = order("ORD_1", OrderStatus.CONFIRMED, "10.00");
+        Payment payment = payment("PAY_1", order, PaymentMethod.VIETQR,
+                PaymentStatus.PENDING, "10.00");
+        when(paymentRepository.findWithOrderByOrderIdAndCustomerId("ORD_1", 7L))
+                .thenReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> service.createVietQr(7L, "ORD_1"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("order is not pending");
+    }
+
+    @Test
+    void createVnpayUrlRejectsVietQrOrder() {
+        Order order = order("ORD_1", OrderStatus.PENDING, "10.00");
+        Payment payment = payment("PAY_1", order, PaymentMethod.VIETQR,
+                PaymentStatus.PENDING, "10.00");
+        when(paymentRepository.findWithOrderByOrderIdAndCustomerId("ORD_1", 7L))
+                .thenReturn(Optional.of(payment));
+
+        assertThatThrownBy(() -> service.createVnpayUrl(7L, "ORD_1", "1.2.3.4"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("VIETQR");
+    }
+
+    @Test
+    void createVietQrRejectsForeignOrder() {
+        when(paymentRepository.findWithOrderByOrderIdAndCustomerId("ORD_1", 99L))
+                .thenReturn(Optional.empty());
+        when(orderRepository.findByOrderIdAndCustomer_Id("ORD_1", 99L))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createVietQr(99L, "ORD_1"))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("order not found");
     }
