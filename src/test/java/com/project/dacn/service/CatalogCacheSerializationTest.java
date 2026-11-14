@@ -162,7 +162,7 @@ class CatalogCacheSerializationTest {
                 List.of(new ProductAttributeValueResponse(
                         "PAV_1", "PRD_1", "ATTR_1", "Temperature", "AV_1", "25C", null)),
                 List.of(new VariantDetailResponse("VAR_1", "SKU-1",
-                        new BigDecimal("179000.00"), null,
+                        new BigDecimal("179000.00"), null, null,
                         List.of(new VariantAttributeValueResponse(
                                 "VAV_1", "VAR_1", "ATTR_2", "Color", "AV_2", "Red", null)),
                         List.of(new MediaResponse("MED_1", "https://x/v.jpg", null, "VAR_1",
@@ -188,7 +188,7 @@ class CatalogCacheSerializationTest {
                 new ProductDetailBaseRow("PRD_1", "ember-tetra", "Ember Tetra", "d", null,
                         ProductStatus.ACTIVE, null, null, null, null, null, null,
                         null, null, null, null, null, null,
-                        "ember-tetra-default", "SKU-1", new BigDecimal("179000.00"), 4)));
+                        "ember-tetra-default", "SKU-1", new BigDecimal("179000.00"), 4, 0L)));
         when(variantAttributeRepo.findByVariant_Product_ProductId("PRD_1")).thenReturn(List.of());
         when(mediaRepo.findByProductOrVariantProductId("PRD_1")).thenReturn(List.of());
         when(reviewService.listForProduct("PRD_1", false, PageRequest.of(0, 20)))
@@ -196,6 +196,7 @@ class CatalogCacheSerializationTest {
         VariantRepository.VariantStockView stock = mock(VariantRepository.VariantStockView.class);
         when(stock.getVariantId()).thenReturn("ember-tetra-default");
         when(stock.getStock()).thenReturn(3);
+        when(stock.getStockRevision()).thenReturn(1L);
         when(variantRepo.findStockByVariantIdIn(List.of("ember-tetra-default")))
                 .thenReturn(List.of(stock));
 

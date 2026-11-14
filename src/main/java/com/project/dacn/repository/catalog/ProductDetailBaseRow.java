@@ -32,5 +32,6 @@ public record ProductDetailBaseRow(
         String variantId,
         String sku,
         BigDecimal price,
-        Integer stock) {
+        Integer stock,
+        Long stockRevision) {
 }

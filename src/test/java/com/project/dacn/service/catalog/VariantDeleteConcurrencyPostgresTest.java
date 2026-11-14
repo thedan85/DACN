@@ -7,6 +7,7 @@ import com.project.dacn.dto.request.cart.CartCheckoutRequest;
 import com.project.dacn.dto.request.catalog.VariantUpdateRequest;
 import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.mapper.catalog.CatalogMapper;
+import com.project.dacn.repository.catalog.ProductDetailBaseRow;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.service.cart.CartService;
@@ -110,6 +111,33 @@ class VariantDeleteConcurrencyPostgresTest {
             }
             System.out.println("Confirmed Task10 scratch cleanup: " + ownedName);
         }
+    }
+
+    @Test
+    void detailProjectionCarriesPairedCheckoutAndReleaseRevisionsWithoutHiddenVariants() {
+        Fixture f = fixture();
+        ProductRepository products = context.getBean(ProductRepository.class);
+        var loaded = transaction.execute(s -> products.findDetailBaseBySlug(f.slug()));
+        assertThat(loaded).singleElement().satisfies(row -> {
+            assertThat(row.stock()).isEqualTo(10);
+            assertThat(row.stockRevision()).isZero();
+        });
+        String orderId = checkout(f).orderId();
+        var reserved = transaction.execute(s -> products.findDetailBaseBySlug(f.slug()));
+        assertThat(reserved).singleElement().satisfies(row -> {
+            assertThat(row.stock()).isEqualTo(7);
+            assertThat(row.stockRevision()).isEqualTo(1L);
+        });
+        context.getBean(OrderLifecycleService.class).reject(orderId);
+        var released = transaction.execute(s -> products.findDetailBaseBySlug(f.slug()));
+        assertThat(released).singleElement().satisfies(row -> {
+            assertThat(row.stock()).isEqualTo(10);
+            assertThat(row.stockRevision()).isEqualTo(2L);
+        });
+        transaction.executeWithoutResult(s -> variants.delete(f.variantId()));
+        List<ProductDetailBaseRow> deleted = transaction.execute(
+                s -> products.findDetailBaseBySlug(f.slug()));
+        assertThat(deleted).allSatisfy(row -> assertThat(row.variantId()).isNull());
     }
 
     @Test

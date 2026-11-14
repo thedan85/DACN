@@ -202,6 +202,7 @@ class CatalogPersistenceTest {
         assertThat(rows).extracting(ProductDetailBaseRow::variantId)
                 .containsExactlyInAnyOrder(first.getVariantId(), second.getVariantId());
         assertThat(rows).allSatisfy(row -> {
+            assertThat(row.stockRevision()).isZero();
             assertThat(row.productId()).isEqualTo(product.getProductId());
             assertThat(row.categoryName()).isEqualTo("Detail Cat");
             assertThat(row.thumbnail()).isEqualTo("https://img/detail.jpg");

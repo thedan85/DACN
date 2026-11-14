@@ -232,7 +232,7 @@ public class ProductService {
         // Attribute rows repeat per variant in the flat result; business ids
         // dedupe them, and insertion order keeps the attribute query order.
         Map<String, ProductAttributeValueResponse> attributesById = new LinkedHashMap<>();
-        record VariantBase(String variantId, String sku, BigDecimal price, Integer stock) {
+        record VariantBase(String variantId, String sku, BigDecimal price, Integer stock, Long stockRevision) {
         }
         Map<String, VariantBase> variantsById = new LinkedHashMap<>();
         for (ProductDetailBaseRow row : rows) {
@@ -245,7 +245,7 @@ public class ProductService {
             }
             if (row.variantId() != null) {
                 variantsById.putIfAbsent(row.variantId(), new VariantBase(
-                        row.variantId(), row.sku(), row.price(), row.stock()));
+                        row.variantId(), row.sku(), row.price(), row.stock(), row.stockRevision()));
             }
         }
 
@@ -301,7 +301,7 @@ public class ProductService {
                     }
                     return new VariantDetailResponse(
                             variant.variantId(), variant.sku(), variant.price(),
-                            variant.stock(),
+                            variant.stock(), variant.stockRevision(),
                             attributesByVariant.getOrDefault(variant.variantId(), List.of()),
                             media);
                 })
@@ -503,7 +503,7 @@ public class ProductService {
                 detail.attributes(),
                 detail.variants().stream()
                         .map(variant -> new VariantDetailResponse(variant.variantId(),
-                                variant.sku(), variant.price(), null,
+                                variant.sku(), variant.price(), null, null,
                                 variant.attributes(), variant.media()))
                         .toList(),
                 detail.reviews());
@@ -518,19 +518,20 @@ public class ProductService {
             return new ProductDetailResponse(withStock(detail.product(), 0),
                     detail.attributes(), detail.variants(), detail.reviews());
         }
-        Map<String, Integer> stockByVariant = new HashMap<>();
+        Map<String, VariantRepository.VariantStockView> stockByVariant = new HashMap<>();
         for (VariantRepository.VariantStockView view
                 : variantRepo.findStockByVariantIdIn(variantIds)) {
-            stockByVariant.put(view.getVariantId(),
-                    view.getStock() == null ? 0 : view.getStock());
+            stockByVariant.put(view.getVariantId(), view);
         }
         int totalStock = 0;
         List<VariantDetailResponse> variants = new ArrayList<>(detail.variants().size());
         for (VariantDetailResponse variant : detail.variants()) {
-            int stock = stockByVariant.getOrDefault(variant.variantId(), 0);
+            var live = stockByVariant.get(variant.variantId());
+            int stock = live == null || live.getStock() == null ? 0 : live.getStock();
             totalStock += stock;
             variants.add(new VariantDetailResponse(variant.variantId(), variant.sku(),
-                    variant.price(), stock, variant.attributes(), variant.media()));
+                    variant.price(), stock, live == null ? null : live.getStockRevision(),
+                    variant.attributes(), variant.media()));
         }
         return new ProductDetailResponse(withStock(detail.product(), totalStock),
                 detail.attributes(), variants, detail.reviews());
