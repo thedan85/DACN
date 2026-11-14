@@ -23,6 +23,7 @@ import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.Session;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -261,12 +263,23 @@ public class OrderLifecycleService {
      */
     @Transactional
     public boolean expireNextDue() {
+        return expireNextDue(Set.of());
+    }
+
+    /** Internal worker entry point: failed identities are bounded to this tick, not persisted. */
+    @Transactional
+    public boolean expireNextDue(Set<String> excludedOrderIds) {
+        if (excludedOrderIds.size() > OrderExpiryWorker.MAX_CLAIMS_PER_TICK) {
+            throw new IllegalArgumentException("too many excluded expiry candidates");
+        }
         if (!reservationPolicy.isActive() || reservationPolicy.isSweepingPaused()) {
             return false;
         }
         boundLockWait();
-        List<?> candidates = entityManager.createNativeQuery("""
-                select o.order_id from orders o
+        // A native entity result is fresh only when no prior managed snapshot can override it.
+        boolean freshContext = entityManager.unwrap(Session.class).getStatistics().getEntityCount() == 0;
+        var query = entityManager.createNativeQuery("""
+                select o.* from orders o
                   join payments p on p.order_id = o.id
                  where o.payment_expires_at <= clock_timestamp()
                    and o.order_status = 'PENDING'
@@ -278,19 +291,35 @@ public class OrderLifecycleService {
                    and p.payment_transaction_id is null
                    and p.payment_amount = o.order_total
                    and exists (select 1 from order_items oi where oi.order_id = o.id)
+                   %s
                  order by o.payment_expires_at asc, o.id asc
                  limit 1
                  for update of o skip locked
-                """).getResultList();
+                """.formatted(excludedOrderIds.isEmpty() ? "" : "and o.order_id not in (:excluded)"), Order.class);
+        if (!excludedOrderIds.isEmpty()) {
+            query.setParameter("excluded", excludedOrderIds);
+        }
+        List<?> candidates = query.getResultList();
         if (candidates.isEmpty()) {
             return false;
         }
-        String orderId = (String) candidates.get(0);
+        Order order = (Order) candidates.get(0);
         // The order lock is ours; re-read through the shared conventions.
-        Order order = lockOrder(orderId);
-        entityManager.refresh(order, LockModeType.PESSIMISTIC_WRITE);
-        Payment payment = paymentRepository.findWithLockByOrder_OrderId(orderId)
-                .orElseThrow(() -> new ReservationReviewRequiredException(orderId));
+        if (!freshContext) {
+            entityManager.refresh(order, LockModeType.PESSIMISTIC_WRITE);
+        }
+        String orderId = order.getOrderId();
+        Payment payment;
+        if (freshContext) {
+            // The inverse identity was loaded after the order lock; refresh acquires its payment lock.
+            payment = order.getPayment();
+            if (payment == null) {
+                return true;
+            }
+        } else {
+            payment = paymentRepository.findWithLockByOrder_OrderId(orderId)
+                    .orElseThrow(() -> new ReservationReviewRequiredException(orderId));
+        }
         entityManager.refresh(payment, LockModeType.PESSIMISTIC_WRITE);
         boolean reserved = order.getStatus() == OrderStatus.PENDING
                 && order.getStockReleasedAt() == null
@@ -307,35 +336,36 @@ public class OrderLifecycleService {
             // Stale scan: consume the claim without changes.
             return true;
         }
-        List<OrderItemRepository.StockReleaseTarget> targets =
-                orderItemRepository.findStockReleaseTargetsByOrderId(orderId);
-        if (targets.isEmpty()) {
-            return true;
-        }
         // Lock historical rows, including hidden variants, before sampling the decision clock.
-        List<?> locked = entityManager.createNativeQuery("""
-                select id from variants where id in (:ids) order by id for update
-                """).setParameter("ids", targets.stream()
-                .map(OrderItemRepository.StockReleaseTarget::getVariantId).toList()).getResultList();
-        if (locked.size() != targets.size()) {
-            throw new IllegalStateException("stock target not found");
+        List<OrderItemRepository.LockedStockReleaseTarget> targets =
+                orderItemRepository.findLockedStockReleaseTargets(order.getId());
+        if (targets.isEmpty() || targets.get(0).getTargetCount() != targets.size()) {
+            throw new ExpiryCandidateFailure(orderId, new IllegalStateException("stock target not found"));
         }
         Instant occurredAt = clock.now();
         if (occurredAt.isBefore(order.getPaymentExpiresAt())) {
             return true;
         }
 
-        releaseStock(order, occurredAt, targets);
+        try {
+            releaseStock(order, occurredAt, targets);
+        } catch (DataIntegrityViolationException | IllegalStateException error) {
+            throw new ExpiryCandidateFailure(orderId, error);
+        }
         order.setStatus(OrderStatus.CANCELLED);
         payment.setStatus(PaymentStatus.FAILED);
         order.setCancellationReason(OrderEventReason.PAYMENT_EXPIRED);
-        append(order, payment, OrderEventType.ORDER_EXPIRED, OrderEventReason.PAYMENT_EXPIRED,
-                occurredAt, "EXPIRY_SWEEP");
+        try {
+            append(order, payment, OrderEventType.ORDER_EXPIRED, OrderEventReason.PAYMENT_EXPIRED,
+                    occurredAt, "EXPIRY_SWEEP");
+        } catch (DataIntegrityViolationException error) {
+            throw new ExpiryCandidateFailure(orderId, error);
+        }
         return true;
     }
 
     private void releaseStock(Order order, Instant occurredAt,
-                              List<OrderItemRepository.StockReleaseTarget> targets) {
+                              List<? extends OrderItemRepository.StockReleaseTarget> targets) {
         requireUnreleased(order);
         for (OrderItemRepository.StockReleaseTarget target : targets) {
             Long quantity = target.getQuantity();

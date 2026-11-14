@@ -12,6 +12,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anySet;
 
 /** Worker orchestration only; real scheduled expiry proof runs against PostgreSQL. */
 class OrderExpiryWorkerTest {
@@ -104,6 +105,52 @@ class OrderExpiryWorkerTest {
         worker.sweep();
 
         verify(lifecycle, times(1)).expireNextDue();
+        assertThat(claims()).isZero();
+        assertThat(failures()).isEqualTo(1);
+    }
+
+    @Test
+    void candidateFailuresConsumeTheSameFiftyAttemptBudget() {
+        when(lifecycle.expireNextDue()).thenThrow(
+                new ExpiryCandidateFailure("bad-0", new IllegalStateException("stock overflow")));
+        when(lifecycle.expireNextDue(anySet())).thenAnswer(invocation -> {
+            java.util.Set<String> excluded = invocation.getArgument(0);
+            assertThat(excluded).contains("bad-0");
+            throw new ExpiryCandidateFailure("bad-" + excluded.size(),
+                    new IllegalStateException("stock overflow"));
+        });
+        var worker = new OrderExpiryWorker(lifecycle, new ReservationPolicy(true, false, false), registry);
+        worker.sweep();
+        verify(lifecycle, times(1)).expireNextDue();
+        verify(lifecycle, times(49)).expireNextDue(anySet());
+        assertThat(claims()).isZero();
+        assertThat(failures()).isEqualTo(50);
+    }
+
+    @Test
+    void infrastructureFailureAfterCandidateFailureStopsWithoutCountingSuccess() {
+        when(lifecycle.expireNextDue()).thenThrow(
+                new ExpiryCandidateFailure("bad", new IllegalStateException("stock overflow")));
+        when(lifecycle.expireNextDue(anySet())).thenThrow(
+                new org.springframework.dao.DataAccessResourceFailureException("connection unavailable"));
+        var worker = new OrderExpiryWorker(lifecycle, new ReservationPolicy(true, false, false), registry);
+        worker.sweep();
+        verify(lifecycle, times(1)).expireNextDue();
+        verify(lifecycle, times(1)).expireNextDue(anySet());
+        assertThat(claims()).isZero();
+        assertThat(failures()).isEqualTo(2);
+    }
+
+    @Test
+    void pauseAfterCandidateFailurePreventsTheNextClaim() {
+        var worker = new OrderExpiryWorker(lifecycle, new ReservationPolicy(true, false, false), registry);
+        when(lifecycle.expireNextDue()).thenAnswer(invocation -> {
+            ReflectionTestUtils.setField(worker, "reservationPolicy", new ReservationPolicy(true, false, true));
+            throw new ExpiryCandidateFailure("bad", new IllegalStateException("stock overflow"));
+        });
+        worker.sweep();
+        verify(lifecycle, times(1)).expireNextDue();
+        verify(lifecycle, times(0)).expireNextDue(anySet());
         assertThat(claims()).isZero();
         assertThat(failures()).isEqualTo(1);
     }

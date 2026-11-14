@@ -36,6 +36,25 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
     List<StockReleaseTarget> findStockReleaseTargetsByOrderId(
             @Param("orderId") String orderId);
 
+    interface LockedStockReleaseTarget extends StockReleaseTarget {
+        Long getTargetCount();
+    }
+
+    /** One ordered lock/read; count before joining detects missing historical variant rows. */
+    @Query(value = """
+            select v.id as "variantId", t.quantity as "quantity", t.target_count as "targetCount"
+              from (
+                  select oi.variant_id, sum(oi.quantity) as quantity, count(*) over () as target_count
+                    from order_items oi
+                   where oi.order_id = :orderPk
+                   group by oi.variant_id
+              ) t
+              join variants v on v.id = t.variant_id
+             order by v.id asc
+             for update of v
+            """, nativeQuery = true)
+    List<LockedStockReleaseTarget> findLockedStockReleaseTargets(@Param("orderPk") Long orderPk);
+
     Optional<OrderItem> findFirstByVariant_VariantIdAndOrder_Customer_IdAndOrder_StatusOrderByCreatedAtDesc(
             String variantId, Long customerId, OrderStatus status);
 

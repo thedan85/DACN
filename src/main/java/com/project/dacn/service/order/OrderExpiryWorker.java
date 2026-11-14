@@ -7,6 +7,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.util.HashSet;
+import java.util.Set;
+
 /** Bounded owner of scheduled expiry claims; the lifecycle owns each transaction. */
 @Slf4j
 @Component
@@ -45,21 +48,29 @@ public class OrderExpiryWorker {
     /**
      * One tick performs at most {@value #MAX_CLAIMS_PER_TICK} independent claim
      * transactions. The guard is rechecked before every claim; online pause
-     * does not stop sweeping. Failures stop the tick and are never counted as claims.
+     * does not stop sweeping. Infrastructure failures stop the tick; failed attempts never count as claims.
+     * Known candidate faults instead exclude that identity for the remainder of this tick.
      */
     @Scheduled(fixedDelay = 5_000)
     public void sweep() {
         Timer.Sample sample = Timer.start(meterRegistry);
+        Set<String> excluded = new HashSet<>();
         try {
             for (int i = 0; i < MAX_CLAIMS_PER_TICK; i++) {
                 if (!reservationPolicy.isActive() || reservationPolicy.isSweepingPaused()) {
                     return;
                 }
                 try {
-                    if (!lifecycle.expireNextDue()) {
+                    boolean claimed = excluded.isEmpty()
+                            ? lifecycle.expireNextDue() : lifecycle.expireNextDue(excluded);
+                    if (!claimed) {
                         return;
                     }
                     claims.increment();
+                } catch (ExpiryCandidateFailure error) {
+                    excluded.add(error.orderId());
+                    failures.increment();
+                    log.warn("Expiry candidate rolled back with {}", error.getCause().getClass().getSimpleName());
                 } catch (RuntimeException error) {
                     log.warn("Expiry claim failed with {}", error.getClass().getSimpleName());
                     failures.increment();

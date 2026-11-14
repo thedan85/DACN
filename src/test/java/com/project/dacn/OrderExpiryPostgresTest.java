@@ -11,6 +11,7 @@ import com.project.dacn.service.order.OrderExpiryWorker;
 import com.project.dacn.service.order.OrderLifecycleService;
 import com.project.dacn.service.order.ReservationPolicy;
 import com.project.dacn.support.ExternalPostgresDatabase;
+import com.project.dacn.support.ExpiryJdbcProfile;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -42,6 +43,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -712,7 +714,7 @@ class OrderExpiryPostgresTest {
              ExecutorService executor = Executors.newSingleThreadExecutor()) {
             holder.setAutoCommit(false);
             lockRow(holder, "payments", paymentPk(f.id()));
-            Future<Boolean> claim = executor.submit(lifecycle::expireNextDue);
+            Future<Boolean> claim = executor.submit(() -> lifecycle.expireNextDue());
             try {
                 assertThat(awaitBlocked(observer, backendPid(holder), claim)).containsIgnoringCase("payments");
                 try (PreparedStatement update = holder.prepareStatement("""
@@ -775,7 +777,8 @@ class OrderExpiryPostgresTest {
     private static AnnotationConfigApplicationContext newContext(DataSource source) {
         var fresh = new AnnotationConfigApplicationContext();
         // The harness, not an individual replay context, owns this shared pool.
-        fresh.registerBean(DataSource.class, () -> source, bean -> bean.setDestroyMethodName(""));
+        fresh.registerBean(DataSource.class, () -> new ExpiryJdbcProfile(source),
+                bean -> bean.setDestroyMethodName(""));
         fresh.register(Config.class);
         fresh.refresh();
         return fresh;
@@ -783,6 +786,82 @@ class OrderExpiryPostgresTest {
 
     private static ReservationPolicy activePolicy() {
         return new ReservationPolicy(true, false, false);
+    }
+
+    @Test
+    void failedOldestCandidateDoesNotStarveHealthyOrdersAcrossTicksAndCanRecover() {
+        Fixture bad = checkout(PaymentMethod.E_WALLET);
+        Fixture first = checkout(PaymentMethod.E_WALLET);
+        setDeadline(bad, clock.now().minusSeconds(60));
+        setDeadline(first, clock.now().minusSeconds(30));
+        jdbc.update("update variants set variant_stock=? where id=?", Integer.MAX_VALUE, bad.variant());
+        var badBefore = new java.util.HashMap<>(snapshot(bad));
+        badBefore.remove("stock");
+
+        worker().sweep();
+
+        assertExpired(first, null, 10);
+        assertThat(snapshot(bad)).containsAllEntriesOf(badBefore);
+        assertThat(stock(bad)).isEqualTo(Integer.MAX_VALUE);
+        assertThat(claims()).isEqualTo(1);
+        assertThat(failures()).isEqualTo(1);
+
+        Fixture second = checkout(PaymentMethod.E_WALLET);
+        setDeadline(second, clock.now().minusSeconds(10));
+        worker().sweep();
+        assertExpired(first, null, 10);
+        assertExpired(second, null, 10);
+        assertThat(snapshot(bad)).containsAllEntriesOf(badBefore);
+        assertThat(stock(bad)).isEqualTo(Integer.MAX_VALUE);
+        assertThat(claims()).isEqualTo(2);
+        assertThat(failures()).isEqualTo(2);
+
+        jdbc.update("update variants set variant_stock=7 where id=?", bad.variant());
+        worker().sweep();
+        assertExpired(bad, null, 10);
+        worker().sweep();
+        assertExpired(first, null, 10);
+        assertExpired(second, null, 10);
+        assertThat(claims()).isEqualTo(3);
+        assertThat(failures()).isEqualTo(2);
+    }
+
+    @Test
+    void profilesOneRealExpiryClaimWithoutRecordingBindValues() {
+        Fixture f = checkout(PaymentMethod.E_WALLET);
+        setDeadlinePast(f);
+        ExpiryJdbcProfile.start();
+        try {
+            assertThat(lifecycle.expireNextDue()).isTrue();
+        } finally {
+            var operations = ExpiryJdbcProfile.stop();
+            log.info("REMOTE_SUPABASE_SCRATCH expiry JDBC operations={}", operations.size());
+            operations.forEach(operation -> log.info("EXPIRY_JDBC {}", operation));
+        }
+        assertExpired(f, null, 10);
+    }
+
+    @Test
+    void callerManagedSnapshotsAreRefreshedBeforeExpiryDecisionsAndFacts() {
+        Fixture f = checkout(PaymentMethod.E_WALLET);
+        setDeadlinePast(f);
+        transaction.executeWithoutResult(status -> {
+            var managed = entityManager.find(com.project.dacn.entity.order.Order.class, f.id());
+            assertThat(managed.getTotal()).isEqualByComparingTo("30");
+            try (Connection external = connect(); Statement statement = external.createStatement()) {
+                statement.executeUpdate("update orders set order_total=31 where id=" + f.id());
+                statement.executeUpdate("update payments set payment_amount=31 where order_id=" + f.id());
+            } catch (Exception error) {
+                throw new IllegalStateException(error);
+            }
+            assertThat(lifecycle.expireNextDue()).isTrue();
+            assertThat(managed.getTotal()).isEqualByComparingTo("31");
+        });
+        assertExpired(f, null, 10);
+        var fact = mapper.readTree(jdbc.queryForObject("""
+                select payload::text from event_outbox where order_id=? and order_sequence=2
+                """, String.class, f.id()));
+        assertThat(fact.get("total").asString()).isEqualTo("31.00");
     }
 
     private static OrderExpiryWorker worker() {
