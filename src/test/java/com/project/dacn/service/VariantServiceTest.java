@@ -36,6 +36,7 @@ import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -215,14 +216,78 @@ class VariantServiceTest {
         VariantRepository.VariantStockView stock = mock(VariantRepository.VariantStockView.class);
         when(stock.getVariantId()).thenReturn("v");
         when(stock.getStock()).thenReturn(2);
+        when(stock.getStockRevision()).thenReturn(8L);
         when(repo.findStockByVariantIdIn(List.of("v"))).thenReturn(List.of(stock));
 
         PageResponse<VariantResponse> result =
                 service.listByProductSlug("Congo-Tetra", PageRequest.of(0, 20));
 
         assertThat(result.getContent().get(0).stock()).isEqualTo(2);
+        assertThat(result.getContent().get(0).stockRevision()).isEqualTo(8L);
+        verify(repo, times(1)).findStockByVariantIdIn(List.of("v"));
+        verify(repo, never()).findStockByVariantId(any());
         verifyNoInteractions(productRepo);
         verify(repo, never()).findByProduct_SlugIgnoreCase(any(), any());
+    }
+
+    @Test
+    void listCacheHitOverlaysStockAndRevisionFromOneBatch() {
+        when(cache.currentGeneration("variant")).thenReturn(OptionalLong.of(4));
+        when(cache.get(startsWith("pim:variant:list:4:"), any())).thenReturn(Optional.of(
+                new PageResponse<>(List.of(
+                        new VariantResponse("v1", "SKU-1", new BigDecimal("10.00"), null, null,
+                                "p-1", "P", false, null, null),
+                        new VariantResponse("v2", "SKU-2", new BigDecimal("20.00"), null, null,
+                                "p-1", "P", false, null, null)), 0, 20, 2, 1)));
+        VariantRepository.VariantStockView first = mock(VariantRepository.VariantStockView.class);
+        when(first.getVariantId()).thenReturn("v1");
+        when(first.getStock()).thenReturn(2);
+        when(first.getStockRevision()).thenReturn(5L);
+        VariantRepository.VariantStockView second = mock(VariantRepository.VariantStockView.class);
+        when(second.getVariantId()).thenReturn("v2");
+        when(second.getStock()).thenReturn(0);
+        when(second.getStockRevision()).thenReturn(3L);
+        when(repo.findStockByVariantIdIn(List.of("v1", "v2")))
+                .thenReturn(List.of(first, second));
+
+        PageResponse<VariantResponse> result = service.list(PageRequest.of(0, 20), false);
+
+        assertThat(result.getContent()).extracting(VariantResponse::stock).containsExactly(2, 0);
+        assertThat(result.getContent()).extracting(VariantResponse::stockRevision)
+                .containsExactly(5L, 3L);
+        verify(repo, times(1)).findStockByVariantIdIn(List.of("v1", "v2"));
+        verify(repo, never()).findStockByVariantId(any());
+        verify(repo, never()).findByDeletedFalseAndProduct_Status(any(), any());
+    }
+
+    @Test
+    void listByProductSlugMissStoresScrubbedPageAndReturnsLiveRevision() {
+        Variant v = Variant.builder().variantId("v").sku("SKU-1").build();
+        Page<Variant> page = new PageImpl<>(List.of(v), PageRequest.of(0, 20), 1);
+        when(cache.currentGeneration("variant")).thenReturn(OptionalLong.of(4));
+        when(cache.get(eq("pim:variant:by-product:congo-tetra:4:0:20:none"), any()))
+                .thenReturn(Optional.empty());
+        when(productRepo.findBySlugIgnoreCase("Congo-Tetra"))
+                .thenReturn(Optional.of(com.project.dacn.entity.catalog.Product.builder()
+                        .productId("p-1").slug("congo-tetra").name("P").description("d")
+                        .status(com.project.dacn.common.constant.ProductStatus.ACTIVE).build()));
+        when(repo.findByProduct_SlugIgnoreCase("Congo-Tetra", PageRequest.of(0, 20)))
+                .thenReturn(page);
+        when(mapper.toVariantResponse(v)).thenReturn(new VariantResponse("v", "SKU-1",
+                new BigDecimal("10.00"), 5, 2L, "p-1", "P", false, null, null));
+        ArgumentCaptor<Object> stored = ArgumentCaptor.forClass(Object.class);
+
+        PageResponse<VariantResponse> result =
+                service.listByProductSlug("Congo-Tetra", PageRequest.of(0, 20));
+
+        assertThat(result.getContent().get(0).stock()).isEqualTo(5);
+        assertThat(result.getContent().get(0).stockRevision()).isEqualTo(2L);
+        verify(cache).put(eq("pim:variant:by-product:congo-tetra:4:0:20:none"),
+                stored.capture(), eq(Duration.ofMinutes(2)));
+        assertThat(((PageResponse<VariantResponse>) stored.getValue())
+                .getContent().get(0).stock()).isNull();
+        assertThat(((PageResponse<VariantResponse>) stored.getValue())
+                .getContent().get(0).stockRevision()).isNull();
     }
 
     @Test
@@ -267,6 +332,7 @@ class VariantServiceTest {
         VariantResponse result = service.get("v");
 
         assertThat(result.stock()).isEqualTo(5);
+        assertThat(result.stockRevision()).isZero();
         verify(cache).put(eq("pim:variant:4:v"), stored.capture(), eq(Duration.ofMinutes(5)));
         assertThat(((VariantResponse) stored.getValue()).stock()).isNull();
         assertThat(((VariantResponse) stored.getValue()).stockRevision()).isNull();

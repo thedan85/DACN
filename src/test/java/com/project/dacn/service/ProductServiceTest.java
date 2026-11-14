@@ -106,6 +106,8 @@ class ProductServiceTest {
                 new ProductFilter(null, ProductStatus.ACTIVE, null), PageRequest.of(0, 20));
 
         assertThat(result.getContent().get(0).stock()).isEqualTo(4);
+        verify(variantRepo, times(1)).findStockByProductIdIn(List.of("PRD_1"));
+        verify(variantRepo, never()).findStockByProductId(any());
         verifyNoInteractions(repo);
     }
 
@@ -138,6 +140,8 @@ class ProductServiceTest {
         ProductResponse result = service.getBySlug("Ember-Tetra");
 
         assertThat(result.stock()).isEqualTo(30);
+        verify(variantRepo, times(1)).findStockByProductId("PRD_1");
+        verify(variantRepo, never()).findStockByProductIdIn(any());
         verify(repo, never()).findBySlugIgnoreCase(any());
     }
 
@@ -527,7 +531,8 @@ class ProductServiceTest {
                 .containsExactly(5, 0);
         assertThat(result.variants()).extracting(VariantDetailResponse::stockRevision)
                 .containsExactly(9L, null);
-        verify(variantRepo).findStockByVariantIdIn(List.of("VAR_1", "VAR_2"));
+        verify(variantRepo, times(1)).findStockByVariantIdIn(List.of("VAR_1", "VAR_2"));
+        verify(variantRepo, never()).findStockByVariantId(any());
         verifyNoInteractions(repo, mediaRepo, variantAttributeValueRepo, reviewService);
     }
 

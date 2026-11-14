@@ -126,14 +126,17 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
     }
 
     /**
-     * Cache-hit stock overlay. Uses the same {@code deleted = false} filter as
-     * {@link #findPriceRangesByProductIds}, so hit and miss agree.
+     * Cache-hit stock overlay and the live predicate shared with the stock
+     * snapshot projection: non-deleted variant rows of ACTIVE products, on top
+     * of the entities' SQL restrictions, so cache hit and miss agree. Task12
+     * snapshot reads must reuse exactly this filter.
      */
     @Query("""
             SELECT v.variantId AS variantId, v.stock AS stock, v.stockRevision AS stockRevision
             FROM Variant v
             WHERE v.variantId = :variantId
               AND v.deleted = false
+              AND v.product.status = com.project.dacn.common.constant.ProductStatus.ACTIVE
             """)
     Optional<VariantStockView> findStockByVariantId(@Param("variantId") String variantId);
 
@@ -142,6 +145,7 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
             FROM Variant v
             WHERE v.variantId IN :variantIds
               AND v.deleted = false
+              AND v.product.status = com.project.dacn.common.constant.ProductStatus.ACTIVE
             """)
     List<VariantStockView> findStockByVariantIdIn(@Param("variantIds") Collection<String> variantIds);
 
@@ -150,6 +154,7 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
             FROM Variant v
             WHERE v.product.productId = :productId
               AND v.deleted = false
+              AND v.product.status = com.project.dacn.common.constant.ProductStatus.ACTIVE
             GROUP BY v.product.productId
             """)
     Optional<ProductStockView> findStockByProductId(@Param("productId") String productId);
@@ -159,6 +164,7 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
             FROM Variant v
             WHERE v.product.productId IN :productIds
               AND v.deleted = false
+              AND v.product.status = com.project.dacn.common.constant.ProductStatus.ACTIVE
             GROUP BY v.product.productId
             """)
     List<ProductStockView> findStockByProductIdIn(@Param("productIds") Collection<String> productIds);

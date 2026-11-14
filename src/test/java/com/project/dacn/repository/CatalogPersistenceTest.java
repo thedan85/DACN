@@ -291,6 +291,79 @@ class CatalogPersistenceTest {
     }
 
     @Test
+    void liveStockProjectionsUseTheActiveProductVisibilityPredicate() {
+        Product active = productRepository.save(Product.builder()
+                .name("Snapshot Active").description("d").status(ProductStatus.ACTIVE).build());
+        Variant activeLive = variantRepository.save(Variant.builder().product(active).sku("SNAP-A")
+                .price(BigDecimal.ONE).stock(4).build());
+        Variant activeDeleted = variantRepository.save(Variant.builder().product(active)
+                .sku("SNAP-A-DEL").price(BigDecimal.ONE).stock(9).deleted(true).build());
+        Product draft = productRepository.save(Product.builder()
+                .name("Snapshot Draft").description("d").status(ProductStatus.DRAFT).build());
+        Variant draftLive = variantRepository.save(Variant.builder().product(draft).sku("SNAP-D")
+                .price(BigDecimal.ONE).stock(6).build());
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(variantRepository.findStockByProductId(active.getProductId()).orElseThrow()
+                .getTotalStock()).isEqualTo(4);
+        assertThat(variantRepository.findStockByProductId(draft.getProductId())).isEmpty();
+        assertThat(variantRepository.findStockByProductIdIn(
+                List.of(active.getProductId(), draft.getProductId())))
+                .singleElement()
+                .satisfies(view -> {
+                    assertThat(view.getProductId()).isEqualTo(active.getProductId());
+                    assertThat(view.getTotalStock()).isEqualTo(4L);
+                });
+
+        assertThat(variantRepository.findStockByVariantId(activeLive.getVariantId()).orElseThrow()
+                .getStock()).isEqualTo(4);
+        assertThat(variantRepository.findStockByVariantId(activeLive.getVariantId()).orElseThrow()
+                .getStockRevision()).isZero();
+        assertThat(variantRepository.findStockByVariantId(activeDeleted.getVariantId())).isEmpty();
+        assertThat(variantRepository.findStockByVariantId(draftLive.getVariantId())).isEmpty();
+        assertThat(variantRepository.findStockByVariantIdIn(List.of(
+                activeLive.getVariantId(), activeDeleted.getVariantId(), draftLive.getVariantId())))
+                .singleElement()
+                .satisfies(view -> {
+                    assertThat(view.getVariantId()).isEqualTo(activeLive.getVariantId());
+                    assertThat(view.getStock()).isEqualTo(4);
+                    assertThat(view.getStockRevision()).isZero();
+                });
+    }
+
+    @Test
+    void liveStockProjectionsBatchAWholePageInOneStatement() {
+        Product first = productRepository.save(Product.builder()
+                .name("Batch One").description("d").status(ProductStatus.ACTIVE).build());
+        Product second = productRepository.save(Product.builder()
+                .name("Batch Two").description("d").status(ProductStatus.ACTIVE).build());
+        List<String> variantIds = List.of(
+                variantRepository.save(Variant.builder().product(first).sku("BAT-1")
+                        .price(BigDecimal.ONE).stock(1).build()).getVariantId(),
+                variantRepository.save(Variant.builder().product(first).sku("BAT-2")
+                        .price(BigDecimal.ONE).stock(2).build()).getVariantId(),
+                variantRepository.save(Variant.builder().product(first).sku("BAT-3")
+                        .price(BigDecimal.ONE).stock(3).build()).getVariantId(),
+                variantRepository.save(Variant.builder().product(second).sku("BAT-4")
+                        .price(BigDecimal.ONE).stock(4).build()).getVariantId(),
+                variantRepository.save(Variant.builder().product(second).sku("BAT-5")
+                        .price(BigDecimal.ONE).stock(5).build()).getVariantId());
+        entityManager.flush();
+        entityManager.clear();
+        Statistics stats = statistics();
+
+        stats.clear();
+        assertThat(variantRepository.findStockByVariantIdIn(variantIds)).hasSize(5);
+        assertThat(stats.getPrepareStatementCount()).isEqualTo(1);
+
+        stats.clear();
+        assertThat(variantRepository.findStockByProductIdIn(
+                List.of(first.getProductId(), second.getProductId()))).hasSize(2);
+        assertThat(stats.getPrepareStatementCount()).isEqualTo(1);
+    }
+
+    @Test
     void categoryPageLoadsParentsInBatches() {
         for (int i = 0; i < 30; i++) {
             Category parent = categoryRepository.save(Category.builder()
