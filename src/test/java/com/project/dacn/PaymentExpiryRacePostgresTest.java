@@ -129,6 +129,8 @@ class PaymentExpiryRacePostgresTest {
     void realCheckoutThenPausedEqualityCallbackReleasesOnceAndRecordsConsecutiveSnapshots() throws Exception {
         Fixture f = checkout(PaymentMethod.E_WALLET);
         assertThat(stock(f)).isEqualTo(7);
+        assertThat(jdbc.queryForObject("select stock_revision from variants where id=?", Long.class, f.variant()))
+                .isEqualTo(1L);
         assertFacts(f, "ORDER_PLACED");
         withPolicy(new ReservationPolicy(true, true, true), () -> {
             clock.fixed.set(deadline(f)); // Exact database-derived equality, not wall-clock coincidence.
@@ -136,6 +138,8 @@ class PaymentExpiryRacePostgresTest {
             return null;
         });
         assertThat(stock(f)).isEqualTo(10);
+        assertThat(jdbc.queryForObject("select stock_revision from variants where id=?", Long.class, f.variant()))
+                .isEqualTo(2L);
         assertCancelled(f, "REFUND_REQUIRED", "PAYMENT_EXPIRED");
         assertFacts(f, "ORDER_PLACED", "ORDER_EXPIRED", "REFUND_REQUIRED");
         assertFact(f, 2, "CANCELLED", "FAILED", "PAYMENT_EXPIRED");
@@ -150,6 +154,8 @@ class PaymentExpiryRacePostgresTest {
         assertThat(pay(f, true, "overwrite")).isEqualTo(ALREADY_SETTLED);
         assertThat(pay(f, false, null)).isEqualTo(ALREADY_SETTLED);
         assertThat(snapshot(f)).isEqualTo(before);
+        assertThat(jdbc.queryForObject("select stock_revision from variants where id=?", Long.class, f.variant()))
+                .isEqualTo(2L);
     }
 
     @Test
@@ -624,6 +630,7 @@ class PaymentExpiryRacePostgresTest {
         long cart = jdbc.queryForObject("insert into carts(cart_id,customer_id) values (?,?) returning id", Long.class, "CRT" + suffix, customer);
         jdbc.update("insert into cart_items(cart_item_id,cart_id,variant_id,quantity) values (?,?,?,3)", "CI" + suffix, cart, variant);
         assertThat(jdbc.queryForObject("select variant_stock from variants where id=?", Integer.class, variant)).isEqualTo(10);
+        assertThat(jdbc.queryForObject("select stock_revision from variants where id=?", Long.class, variant)).isZero();
         var response = context.getBean(CartService.class).checkout(customer, new CartCheckoutRequest("fixture", "Fixture", "000", method));
         long id = jdbc.queryForObject("select id from orders where order_id=?", Long.class, response.orderId());
         clock.samples.set(0);

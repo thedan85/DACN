@@ -95,7 +95,7 @@ class CatalogCacheSerializationTest {
     @Test
     void variantResponseRoundTrips() {
         VariantResponse response = new VariantResponse("VAR_9", "FISH-9",
-                new BigDecimal("179000.00"), null, "PRD_1", "Ember Tetra", false,
+                new BigDecimal("179000.00"), null, null, "PRD_1", "Ember Tetra", false,
                 Instant.parse("2026-10-25T10:15:30.123456Z"),
                 Instant.parse("2026-10-25T10:16:31.654321Z"));
 

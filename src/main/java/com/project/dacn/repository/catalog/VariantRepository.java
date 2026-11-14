@@ -20,6 +20,10 @@ import java.util.Optional;
 public interface VariantRepository extends JpaRepository<Variant, Long> {
     Optional<Variant> findByVariantId(String variantId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select v from Variant v where v.variantId = :variantId")
+    Optional<Variant> findByVariantIdForUpdate(@Param("variantId") String variantId);
+
     Optional<Variant> findBySku(String sku);
 
     List<Variant> findByProduct_ProductId(String productId);
@@ -111,6 +115,8 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
         String getVariantId();
 
         Integer getStock();
+
+        long getStockRevision();
     }
 
     interface ProductStockView {
@@ -124,7 +130,7 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
      * {@link #findPriceRangesByProductIds}, so hit and miss agree.
      */
     @Query("""
-            SELECT v.variantId AS variantId, v.stock AS stock
+            SELECT v.variantId AS variantId, v.stock AS stock, v.stockRevision AS stockRevision
             FROM Variant v
             WHERE v.variantId = :variantId
               AND v.deleted = false
@@ -132,7 +138,7 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
     Optional<VariantStockView> findStockByVariantId(@Param("variantId") String variantId);
 
     @Query("""
-            SELECT v.variantId AS variantId, v.stock AS stock
+            SELECT v.variantId AS variantId, v.stock AS stock, v.stockRevision AS stockRevision
             FROM Variant v
             WHERE v.variantId IN :variantIds
               AND v.deleted = false

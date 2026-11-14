@@ -68,6 +68,33 @@ class CatalogPersistenceTest {
     EntityManager entityManager;
 
     @Test
+    void manualVariantWritesRefreshManagedStockAndUsePortableH2Locks() {
+        Product product = productRepository.save(Product.builder().name("Locked").description("d").build());
+        Variant variant = variantRepository.saveAndFlush(Variant.builder().product(product)
+                .sku("LOCKED").price(BigDecimal.TEN).stock(10).build());
+        entityManager.createNativeQuery("update variants set variant_stock=7, stock_revision=1 where id=:id")
+                .setParameter("id", variant.getId()).executeUpdate();
+        assertThat(variant.getStock()).isEqualTo(10);
+        var service = new com.project.dacn.service.catalog.VariantService(variantRepository, productRepository,
+                mapper, org.mockito.Mockito.mock(com.project.dacn.service.catalog.CatalogCache.class));
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "entityManager", entityManager);
+        var response = service.update(variant.getVariantId(),
+                new com.project.dacn.dto.request.catalog.VariantUpdateRequest("fresh", null, null, null));
+        assertThat(response.stock()).isEqualTo(7);
+        assertThat(response.stockRevision()).isEqualTo(1L);
+        assertThat(variantRepository.findStockByVariantId(variant.getVariantId()).orElseThrow().getStockRevision())
+                .isEqualTo(1L);
+        assertThat(response.sku()).isEqualTo("fresh");
+        assertThatThrownBy(() -> service.replace(variant.getVariantId(),
+                new com.project.dacn.dto.request.catalog.VariantUpdateRequest("wrong", BigDecimal.ONE, 7, 0L)))
+                .isInstanceOf(org.springframework.dao.ConcurrencyFailureException.class);
+        assertThat(variant.getSku()).isEqualTo("fresh");
+        service.delete(variant.getVariantId());
+        assertThat(entityManager.createNativeQuery("select variant_stock from variants where id=:id")
+                .setParameter("id", variant.getId()).getSingleResult()).isEqualTo(7);
+    }
+
+    @Test
     void persistCatalogChainThroughBusinessKeys() {
         Category parent = categoryRepository.save(Category.builder().name("Fish").slug("fish").build());
         Category child = categoryRepository.save(Category.builder()

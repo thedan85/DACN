@@ -21,6 +21,18 @@ class CatalogMapperTest {
     private final CatalogMapper mapper = Mappers.getMapper(CatalogMapper.class);
 
     @Test
+    void variantResponseUsesAuthoritativeRevisionAndUpdateDoesNotMapExpectedRevision() {
+        var variant = com.project.dacn.entity.catalog.Variant.builder().variantId("v")
+                .sku("old").price(BigDecimal.TEN).stock(7).stockRevision(9).build();
+        assertThat(mapper.toVariantResponse(variant).stockRevision()).isEqualTo(9L);
+        mapper.updateVariant(new com.project.dacn.dto.request.catalog.VariantUpdateRequest(
+                "new", null, null, 0L), variant);
+        assertThat(variant.getSku()).isEqualTo("new");
+        assertThat(variant.getStock()).isEqualTo(7);
+        assertThat(variant.getStockRevision()).isEqualTo(9L);
+    }
+
+    @Test
     void productCreateIgnoresBusinessIdAndCategory() {
         assertThat(mapper.toProduct(
                 new ProductCreateRequest("P", "d", "detail", "cat-1", null, null)).getProductId())

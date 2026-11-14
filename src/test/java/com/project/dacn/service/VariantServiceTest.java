@@ -43,6 +43,11 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class VariantServiceTest {
 
+    @org.junit.jupiter.api.BeforeEach
+    void injectPersistenceContext() {
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "entityManager", entityManager);
+    }
+
     @Mock
     VariantRepository repo;
 
@@ -55,8 +60,25 @@ class VariantServiceTest {
     @Mock
     CatalogCache cache;
 
+    @Mock
+    jakarta.persistence.EntityManager entityManager;
+
     @InjectMocks
     VariantService service;
+
+    @Test
+    void explicitStockRequiresRevisionBeforeAnyMutation() {
+        Variant v = Variant.builder().variantId("v").sku("old").stock(10).build();
+        org.mockito.Mockito.lenient().when(repo.findByVariantId("v")).thenReturn(Optional.of(v));
+
+        assertThatThrownBy(() -> service.update("v",
+                new com.project.dacn.dto.request.catalog.VariantUpdateRequest("new", BigDecimal.ONE, 7, null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("expectedStockRevision is required when stock is supplied");
+        assertThat(v.getSku()).isEqualTo("old");
+        verify(mapper, never()).updateVariant(any(), any());
+        verify(cache, never()).bumpAfterCommit(any());
+    }
 
     @Test
     void createRequiresExistingProduct() {
@@ -75,7 +97,7 @@ class VariantServiceTest {
                         .productId("p-1").slug("congo-tetra").name("P").description("d").build()));
         when(repo.findByProduct_SlugIgnoreCase("congo-tetra", Pageable.unpaged())).thenReturn(page);
         when(mapper.toVariantResponse(v)).thenReturn(
-                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P", false, null, null));
+                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5, 0L, "p-1", "P", false, null, null));
         PageResponse<VariantResponse> result =
                 service.listByProductSlug("congo-tetra", Pageable.unpaged());
         assertThat(result.getContent()).hasSize(1);
@@ -85,7 +107,8 @@ class VariantServiceTest {
     @Test
     void deleteSetsFlagNotRow() {
         Variant v = Variant.builder().variantId("v").sku("SKU-1").build();
-        when(repo.findByVariantId("v")).thenReturn(Optional.of(v));
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "transactionLockBounds", false);
+        when(repo.findByVariantIdForUpdate("v")).thenReturn(Optional.of(v));
         service.delete("v");
         assertThat(v.getDeleted()).isTrue();
         verify(repo, org.mockito.Mockito.never()).delete(any());
@@ -120,7 +143,7 @@ class VariantServiceTest {
     void cachedVariantWithMissingStockRowFallsBackToTheDatabase() {
         when(cache.currentGeneration("variant")).thenReturn(OptionalLong.of(4));
         when(cache.get(eq("pim:variant:4:v"), any())).thenReturn(Optional.of(
-                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), null,
+                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), null, null,
                         "p-1", "P", false, null, null)));
         when(repo.findStockByVariantId("v")).thenReturn(Optional.empty());
         when(repo.findByVariantId("v")).thenReturn(Optional.empty());
@@ -139,7 +162,7 @@ class VariantServiceTest {
                 .build();
         when(repo.findByVariantId("v")).thenReturn(Optional.of(v));
         when(mapper.toVariantResponse(v)).thenReturn(
-                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P",
+                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5, 0L, "p-1", "P",
                         false, null, null));
 
         service.get("v", true);
@@ -156,7 +179,7 @@ class VariantServiceTest {
                 .build();
         when(repo.findByVariantId("v")).thenReturn(Optional.of(v));
         when(mapper.toVariantResponse(v)).thenReturn(
-                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5, "p-1", "P",
+                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5, 0L, "p-1", "P",
                         false, null, null));
 
         assertThatThrownBy(() -> service.get("v"))
@@ -168,15 +191,17 @@ class VariantServiceTest {
     void getCacheHitOverlaysStockAndSkipsRepository() {
         when(cache.currentGeneration("variant")).thenReturn(OptionalLong.of(4));
         when(cache.get(eq("pim:variant:4:v"), any())).thenReturn(Optional.of(
-                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), null,
+                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), null, null,
                         "p-1", "P", false, null, null)));
         VariantRepository.VariantStockView stock = mock(VariantRepository.VariantStockView.class);
         when(stock.getStock()).thenReturn(7);
+        when(stock.getStockRevision()).thenReturn(8L);
         when(repo.findStockByVariantId("v")).thenReturn(Optional.of(stock));
 
         VariantResponse result = service.get("v");
 
         assertThat(result.stock()).isEqualTo(7);
+        assertThat(result.stockRevision()).isEqualTo(8L);
         verify(repo, never()).findByVariantId(any());
     }
 
@@ -185,7 +210,7 @@ class VariantServiceTest {
         when(cache.currentGeneration("variant")).thenReturn(OptionalLong.of(4));
         when(cache.get(eq("pim:variant:by-product:congo-tetra:4:0:20:none"), any()))
                 .thenReturn(Optional.of(new PageResponse<>(List.of(
-                        new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), null,
+                        new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), null, null,
                                 "p-1", "P", false, null, null)), 0, 20, 1, 1)));
         VariantRepository.VariantStockView stock = mock(VariantRepository.VariantStockView.class);
         when(stock.getVariantId()).thenReturn("v");
@@ -210,7 +235,7 @@ class VariantServiceTest {
                 eq(com.project.dacn.common.constant.ProductStatus.ACTIVE), any(Pageable.class)))
                 .thenReturn(page);
         when(mapper.toVariantResponse(v)).thenReturn(new VariantResponse("v", "SKU-1",
-                new BigDecimal("10.00"), 5, "p-1", "P", false, null, null));
+                new BigDecimal("10.00"), 5, 0L, "p-1", "P", false, null, null));
         ArgumentCaptor<Object> stored = ArgumentCaptor.forClass(Object.class);
 
         PageResponse<VariantResponse> result = service.list(PageRequest.of(0, 20), false);
@@ -220,6 +245,8 @@ class VariantServiceTest {
                 eq(Duration.ofMinutes(2)));
         assertThat(((PageResponse<VariantResponse>) stored.getValue())
                 .getContent().get(0).stock()).isNull();
+        assertThat(((PageResponse<VariantResponse>) stored.getValue())
+                .getContent().get(0).stockRevision()).isNull();
     }
 
     @Test
@@ -233,7 +260,7 @@ class VariantServiceTest {
         when(cache.get(eq("pim:variant:4:v"), any())).thenReturn(Optional.empty());
         when(repo.findByVariantId("v")).thenReturn(Optional.of(v));
         when(mapper.toVariantResponse(v)).thenReturn(
-                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5,
+                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5, 0L,
                         "p-1", "P", false, null, null));
         ArgumentCaptor<Object> stored = ArgumentCaptor.forClass(Object.class);
 
@@ -242,6 +269,7 @@ class VariantServiceTest {
         assertThat(result.stock()).isEqualTo(5);
         verify(cache).put(eq("pim:variant:4:v"), stored.capture(), eq(Duration.ofMinutes(5)));
         assertThat(((VariantResponse) stored.getValue()).stock()).isNull();
+        assertThat(((VariantResponse) stored.getValue()).stockRevision()).isNull();
     }
 
     @Test
@@ -250,8 +278,6 @@ class VariantServiceTest {
                 com.project.dacn.entity.catalog.Product.builder()
                         .productId("p-1").slug("p").name("P").description("d").build()));
         when(mapper.toVariant(any())).thenReturn(Variant.builder().variantId("v").sku("S").build());
-        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
-
         service.create(new VariantCreateRequest("p-1", "S-1", new BigDecimal("10.00"), 1));
 
         verify(cache).bumpAfterCommit("variant", "product");
@@ -267,7 +293,7 @@ class VariantServiceTest {
         when(cache.currentGeneration("variant")).thenReturn(OptionalLong.empty());
         when(repo.findByVariantId("v")).thenReturn(Optional.of(v));
         when(mapper.toVariantResponse(v)).thenReturn(
-                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5,
+                new VariantResponse("v", "SKU-1", new BigDecimal("10.00"), 5, 0L,
                         "p-1", "P", false, null, null));
 
         service.get("v");
