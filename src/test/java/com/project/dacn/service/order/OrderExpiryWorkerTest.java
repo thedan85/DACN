@@ -13,6 +13,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.Mockito.atLeast;
+import static org.mockito.Mockito.atMost;
+import static org.mockito.Mockito.mockingDetails;
 
 /** Worker orchestration only; real scheduled expiry proof runs against PostgreSQL. */
 class OrderExpiryWorkerTest {
@@ -41,7 +44,9 @@ class OrderExpiryWorkerTest {
 
         worker.sweep();
 
-        verify(lifecycle, times(3)).expireNextDue();
+        // Two successes can replenish two slots before an already-started empty claim finishes.
+        verify(lifecycle, atLeast(3)).expireNextDue();
+        verify(lifecycle, atMost(6)).expireNextDue();
         assertThat(claims()).isEqualTo(2);
         assertThat(failures()).isZero();
     }
@@ -71,7 +76,8 @@ class OrderExpiryWorkerTest {
 
         worker.sweep();
 
-        verify(lifecycle, times(2)).expireNextDue();
+        verify(lifecycle, atLeast(2)).expireNextDue();
+        verify(lifecycle, atMost(5)).expireNextDue();
         assertThat(claims()).isEqualTo(1);
     }
 
@@ -82,8 +88,11 @@ class OrderExpiryWorkerTest {
         AtomicInteger calls = new AtomicInteger();
         OrderExpiryWorker[] worker = new OrderExpiryWorker[1];
         when(lifecycle.expireNextDue()).thenAnswer(invocation -> {
-            if (calls.incrementAndGet() == 3) {
-                ReflectionTestUtils.setField(worker[0], "reservationPolicy", paused);
+            // Publish the third-call pause before another mocked completion can replenish its slot.
+            synchronized (calls) {
+                if (calls.incrementAndGet() == 3) {
+                    ReflectionTestUtils.setField(worker[0], "reservationPolicy", paused);
+                }
             }
             return true;
         });
@@ -91,8 +100,9 @@ class OrderExpiryWorkerTest {
 
         worker[0].sweep();
 
-        verify(lifecycle, times(3)).expireNextDue();
-        assertThat(claims()).isEqualTo(3);
+        verify(lifecycle, atLeast(3)).expireNextDue();
+        verify(lifecycle, atMost(6)).expireNextDue();
+        assertThat(claims()).isEqualTo(calls.get());
         assertThat(failures()).isZero();
     }
 
@@ -104,9 +114,10 @@ class OrderExpiryWorkerTest {
 
         worker.sweep();
 
-        verify(lifecycle, times(1)).expireNextDue();
+        verify(lifecycle, atLeast(1)).expireNextDue();
+        verify(lifecycle, atMost(4)).expireNextDue();
         assertThat(claims()).isZero();
-        assertThat(failures()).isEqualTo(1);
+        assertThat(failures()).isEqualTo(attempts());
     }
 
     @Test
@@ -121,8 +132,11 @@ class OrderExpiryWorkerTest {
         });
         var worker = new OrderExpiryWorker(lifecycle, new ReservationPolicy(true, false, false), registry);
         worker.sweep();
-        verify(lifecycle, times(1)).expireNextDue();
-        verify(lifecycle, times(49)).expireNextDue(anySet());
+        verify(lifecycle, atLeast(1)).expireNextDue();
+        verify(lifecycle, atMost(4)).expireNextDue();
+        verify(lifecycle, atLeast(46)).expireNextDue(anySet());
+        verify(lifecycle, atMost(49)).expireNextDue(anySet());
+        assertThat(attempts()).isEqualTo(50);
         assertThat(claims()).isZero();
         assertThat(failures()).isEqualTo(50);
     }
@@ -135,10 +149,12 @@ class OrderExpiryWorkerTest {
                 new org.springframework.dao.DataAccessResourceFailureException("connection unavailable"));
         var worker = new OrderExpiryWorker(lifecycle, new ReservationPolicy(true, false, false), registry);
         worker.sweep();
-        verify(lifecycle, times(1)).expireNextDue();
-        verify(lifecycle, times(1)).expireNextDue(anySet());
+        verify(lifecycle, atLeast(1)).expireNextDue();
+        verify(lifecycle, atMost(4)).expireNextDue();
+        verify(lifecycle, atLeast(1)).expireNextDue(anySet());
+        verify(lifecycle, atMost(4)).expireNextDue(anySet());
         assertThat(claims()).isZero();
-        assertThat(failures()).isEqualTo(2);
+        assertThat(failures()).isEqualTo(attempts());
     }
 
     @Test
@@ -149,10 +165,16 @@ class OrderExpiryWorkerTest {
             throw new ExpiryCandidateFailure("bad", new IllegalStateException("stock overflow"));
         });
         worker.sweep();
-        verify(lifecycle, times(1)).expireNextDue();
+        verify(lifecycle, atLeast(1)).expireNextDue();
+        verify(lifecycle, atMost(4)).expireNextDue();
         verify(lifecycle, times(0)).expireNextDue(anySet());
         assertThat(claims()).isZero();
-        assertThat(failures()).isEqualTo(1);
+        assertThat(failures()).isEqualTo(attempts());
+    }
+
+    private int attempts() {
+        return (int) mockingDetails(lifecycle).getInvocations().stream()
+                .filter(invocation -> invocation.getMethod().getName().equals("expireNextDue")).count();
     }
 
     private double claims() {

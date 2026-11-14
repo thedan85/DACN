@@ -48,6 +48,11 @@ These are caller requirements, not guards already wired by Task 2. “Online adm
 - A fully verified callback that raises `ReservationReviewRequiredException` returns VNPay `{RspCode:"99", Message:"Reservation requires review"}`. MoMo had no named review message; it uses its existing HTTP400 bad-request `ApiResponse` shape with `code=400`, `message="reservation requires review"`, and `data=null`. Neither path acknowledges success, invents a settlement result, or writes lifecycle/stock/payment facts for the review case. Ordinary recorded `REFUND_REQUIRED` receipts retain their prior acknowledgements; review rejection does not claim a refund.
 - Signature, merchant/reference/outcome checks and browser-return amount syntax remain mandatory. Browser return stays read-only and keeps HTTP303 redirect compatibility. Local signed fixtures and owned-scratch PostgreSQL checks do not authorize provider issuance, sandbox acceptance, activation, or actual legacy cutover.
 
+### Bounded scheduled expiry (Task 9)
+
+- One five-second fixed-delay coordinator admits at most four concurrent, independent per-order transactions and 50 total attempts per tick, including failures. Hikari remains max5/min1. Every attempt rechecks activation and sweep pause; online pause alone does not stop sweeping.
+- Pause, exhaustion or infrastructure failure stops new attempts; started transactions drain before the tick returns. Candidate-local faults roll back and enter a bounded tick-local exclusion set, then become eligible for retry next tick. These implementation bounds and isolated scratch verification do not authorize deployment or activation; defaults remain disabled.
+
 ## Restricted read-only inventory
 
 `LegacyReservationQueries.inventory()` is an internal/operator-only Spring repository call. It has no public endpoint, startup hook, scheduler, provider call, or write method. Execute it only through an approved restricted backend operator session. This task exercises it only against seeded invocation-owned scratch databases.

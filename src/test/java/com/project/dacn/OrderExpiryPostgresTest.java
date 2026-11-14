@@ -774,6 +774,59 @@ class OrderExpiryPostgresTest {
         assertThat(failures()).isZero();
     }
 
+    @Test
+    void oneCoordinatorHoldsExactlyFourRealClaimTransactionsAndLeavesTheFifthPoolSlotFree() throws Exception {
+        List<Fixture> fixtures = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            Fixture f = checkout(PaymentMethod.E_WALLET);
+            setDeadlinePast(f);
+            fixtures.add(f);
+        }
+        // Correctness-fixture setup only: remove connection-creation timing from the 2s lock proof.
+        List<Connection> warm = new ArrayList<>();
+        try {
+            for (int i = 0; i < 4; i++) warm.add(pool.getConnection());
+        } finally {
+            for (Connection connection : warm) connection.close();
+        }
+        try (Connection holder = connect(); Connection observer = connect();
+             ExecutorService driver = Executors.newSingleThreadExecutor()) {
+            holder.setAutoCommit(false);
+            for (int i = 0; i < 4; i++) lockRow(holder, "payments", paymentPk(fixtures.get(i).id()));
+            int holderPid = backendPid(holder);
+            Future<?> sweep = driver.submit(() -> worker().sweep());
+            try {
+                int blocked = 0;
+                long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                while (blocked != 4 && System.nanoTime() < until) {
+                    try (var refresh = observer.createStatement()) {
+                        refresh.execute("select pg_stat_clear_snapshot()");
+                    }
+                    try (PreparedStatement query = observer.prepareStatement("""
+                            select count(*) from pg_stat_activity
+                             where wait_event_type='Lock' and ?=any(pg_blocking_pids(pid))
+                            """)) {
+                        query.setInt(1, holderPid);
+                        try (ResultSet rows = query.executeQuery()) {
+                            rows.next();
+                            blocked = rows.getInt(1);
+                        }
+                    }
+                    assertThat(sweep.isDone()).isFalse();
+                }
+                assertThat(blocked).as("four independently locked payment waiters").isEqualTo(4);
+                assertThat(pool.getHikariPoolMXBean().getActiveConnections()).isEqualTo(4);
+                assertThat(clock.samples.get()).isZero();
+            } finally {
+                holder.rollback();
+            }
+            sweep.get(30, TimeUnit.SECONDS);
+        }
+        for (Fixture f : fixtures) assertExpired(f, null, 10);
+        assertThat(claims()).isEqualTo(6);
+        assertThat(failures()).isZero();
+    }
+
     private static AnnotationConfigApplicationContext newContext(DataSource source) {
         var fresh = new AnnotationConfigApplicationContext();
         // The harness, not an individual replay context, owns this shared pool.
