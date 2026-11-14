@@ -19,6 +19,7 @@ import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.Session;
@@ -249,6 +250,88 @@ public class OrderLifecycleService {
         order.setStatus(OrderStatus.CONFIRMED);
         append(order, payment, OrderEventType.ORDER_CONFIRMED, null, occurredAt, "PAYMENT_CALLBACK");
         return Result.SETTLED;
+    }
+
+    /**
+     * Claims at most one due order in a short per-order transaction.
+     * Returns false when no eligible due candidate exists. A candidate whose
+     * post-lock freshness check fails is consumed without any changes and
+     * returns true. Missing targets, overflow or outbox failures roll back
+     * stock, marker, state, sequence and facts together.
+     */
+    @Transactional
+    public boolean expireNextDue() {
+        if (!reservationPolicy.isActive() || reservationPolicy.isSweepingPaused()) {
+            return false;
+        }
+        boundLockWait();
+        List<?> candidates = entityManager.createNativeQuery("""
+                select o.order_id from orders o
+                  join payments p on p.order_id = o.id
+                 where o.payment_expires_at <= clock_timestamp()
+                   and o.order_status = 'PENDING'
+                   and o.stock_released_at is null
+                   and o.cancellation_reason is null
+                   and p.payment_method <> 'COD'
+                   and p.payment_status = 'PENDING'
+                   and p.paid_at is null
+                   and p.payment_transaction_id is null
+                   and p.payment_amount = o.order_total
+                   and exists (select 1 from order_items oi where oi.order_id = o.id)
+                 order by o.payment_expires_at asc, o.id asc
+                 limit 1
+                 for update of o skip locked
+                """).getResultList();
+        if (candidates.isEmpty()) {
+            return false;
+        }
+        String orderId = (String) candidates.get(0);
+        // The order lock is ours; re-read through the shared conventions.
+        Order order = lockOrder(orderId);
+        entityManager.refresh(order, LockModeType.PESSIMISTIC_WRITE);
+        Payment payment = paymentRepository.findWithLockByOrder_OrderId(orderId)
+                .orElseThrow(() -> new ReservationReviewRequiredException(orderId));
+        entityManager.refresh(payment, LockModeType.PESSIMISTIC_WRITE);
+        boolean reserved = order.getStatus() == OrderStatus.PENDING
+                && order.getStockReleasedAt() == null
+                && order.getCancellationReason() == null
+                && order.getPaymentExpiresAt() != null
+                && payment.getMethod() != null
+                && payment.getMethod() != PaymentMethod.COD
+                && payment.getStatus() == PaymentStatus.PENDING
+                && payment.getPaidAt() == null
+                && payment.getTransactionId() == null
+                && payment.getAmount() != null && order.getTotal() != null
+                && payment.getAmount().compareTo(order.getTotal()) == 0;
+        if (!reserved) {
+            // Stale scan: consume the claim without changes.
+            return true;
+        }
+        List<OrderItemRepository.StockReleaseTarget> targets =
+                orderItemRepository.findStockReleaseTargetsByOrderId(orderId);
+        if (targets.isEmpty()) {
+            return true;
+        }
+        // Lock historical rows, including hidden variants, before sampling the decision clock.
+        List<?> locked = entityManager.createNativeQuery("""
+                select id from variants where id in (:ids) order by id for update
+                """).setParameter("ids", targets.stream()
+                .map(OrderItemRepository.StockReleaseTarget::getVariantId).toList()).getResultList();
+        if (locked.size() != targets.size()) {
+            throw new IllegalStateException("stock target not found");
+        }
+        Instant occurredAt = clock.now();
+        if (occurredAt.isBefore(order.getPaymentExpiresAt())) {
+            return true;
+        }
+
+        releaseStock(order, occurredAt, targets);
+        order.setStatus(OrderStatus.CANCELLED);
+        payment.setStatus(PaymentStatus.FAILED);
+        order.setCancellationReason(OrderEventReason.PAYMENT_EXPIRED);
+        append(order, payment, OrderEventType.ORDER_EXPIRED, OrderEventReason.PAYMENT_EXPIRED,
+                occurredAt, "EXPIRY_SWEEP");
+        return true;
     }
 
     private void releaseStock(Order order, Instant occurredAt,
