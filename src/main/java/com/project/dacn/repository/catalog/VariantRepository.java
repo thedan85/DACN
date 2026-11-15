@@ -114,6 +114,8 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
     interface VariantStockView {
         String getVariantId();
 
+        String getProductId();
+
         Integer getStock();
 
         long getStockRevision();
@@ -132,7 +134,8 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
      * snapshot reads must reuse exactly this filter.
      */
     @Query("""
-            SELECT v.variantId AS variantId, v.stock AS stock, v.stockRevision AS stockRevision
+            SELECT v.variantId AS variantId, v.product.productId AS productId,
+                   v.stock AS stock, v.stockRevision AS stockRevision
             FROM Variant v
             WHERE v.variantId = :variantId
               AND v.deleted = false
@@ -141,7 +144,8 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
     Optional<VariantStockView> findStockByVariantId(@Param("variantId") String variantId);
 
     @Query("""
-            SELECT v.variantId AS variantId, v.stock AS stock, v.stockRevision AS stockRevision
+            SELECT v.variantId AS variantId, v.product.productId AS productId,
+                   v.stock AS stock, v.stockRevision AS stockRevision
             FROM Variant v
             WHERE v.variantId IN :variantIds
               AND v.deleted = false
@@ -168,4 +172,24 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
             GROUP BY v.product.productId
             """)
     List<ProductStockView> findStockByProductIdIn(@Param("productIds") Collection<String> productIds);
+
+    /**
+     * Snapshot product aggregate: same visible-variant filter as
+     * {@link #findStockByProductIdIn}, plus ACTIVE products with no visible
+     * variants (stock zero). The left join keeps the product row; the join and
+     * product filters state exactly `v.deleted = false AND
+     * v.product.status = ProductStatus.ACTIVE`.
+     */
+    @Query("""
+            SELECT p.productId AS productId, COALESCE(SUM(v.stock), 0) AS totalStock
+            FROM Product p
+            LEFT JOIN Variant v ON v.product = p
+                AND v.deleted = false
+                AND v.product.status = com.project.dacn.common.constant.ProductStatus.ACTIVE
+            WHERE p.productId IN :productIds
+              AND p.status = com.project.dacn.common.constant.ProductStatus.ACTIVE
+            GROUP BY p.productId
+            """)
+    List<ProductStockView> findSnapshotStockByProductIdIn(
+            @Param("productIds") Collection<String> productIds);
 }

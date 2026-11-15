@@ -57,6 +57,9 @@ public class SecurityConfig {
                         // bearer is rejected by the controller, never downgraded.
                         .requestMatchers(HttpMethod.POST, "/api/v1/realtime/credentials").permitAll()
 
+                        // Public bounded stock snapshot; only this exact route is widened.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/stock/snapshots").permitAll()
+
                         // Session endpoints.
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login",
                                 "/api/v1/auth/google", "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()

@@ -364,6 +364,53 @@ class CatalogPersistenceTest {
     }
 
     @Test
+    void snapshotProductAggregateAgreesWithCatalogProjectionAndIncludesZeroVariantProducts() {
+        Product active = productRepository.save(Product.builder()
+                .name("Snapshot Aggregate Active").description("d").status(ProductStatus.ACTIVE).build());
+        Product noVariants = productRepository.save(Product.builder()
+                .name("Snapshot Aggregate Empty").description("d").status(ProductStatus.ACTIVE).build());
+        Product draft = productRepository.save(Product.builder()
+                .name("Snapshot Aggregate Draft").description("d").status(ProductStatus.DRAFT).build());
+        Variant live = variantRepository.save(Variant.builder().product(active).sku("SNAP-AGG-1")
+                .price(BigDecimal.ONE).stock(4).build());
+        variantRepository.save(Variant.builder().product(active).sku("SNAP-AGG-DEL")
+                .price(BigDecimal.ONE).stock(9).deleted(true).build());
+        Variant draftLive = variantRepository.save(Variant.builder().product(draft).sku("SNAP-AGG-D")
+                .price(BigDecimal.ONE).stock(6).build());
+        entityManager.flush();
+        entityManager.clear();
+
+        List<String> requested = List.of(active.getProductId(), noVariants.getProductId(),
+                draft.getProductId());
+
+        assertThat(variantRepository.findStockByProductIdIn(requested))
+                .singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getProductId()).isEqualTo(active.getProductId());
+                    assertThat(row.getTotalStock()).isEqualTo(4L);
+                });
+        assertThat(variantRepository.findSnapshotStockByProductIdIn(requested))
+                .hasSize(2)
+                .anySatisfy(row -> {
+                    assertThat(row.getProductId()).isEqualTo(active.getProductId());
+                    assertThat(row.getTotalStock()).isEqualTo(4L);
+                })
+                .anySatisfy(row -> {
+                    assertThat(row.getProductId()).isEqualTo(noVariants.getProductId());
+                    assertThat(row.getTotalStock()).isZero();
+                });
+
+        assertThat(variantRepository.findStockByVariantIdIn(
+                List.of(live.getVariantId(), draftLive.getVariantId())))
+                .singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getVariantId()).isEqualTo(live.getVariantId());
+                    assertThat(row.getProductId()).isEqualTo(active.getProductId());
+                    assertThat(row.getStock()).isEqualTo(4);
+                });
+    }
+
+    @Test
     void categoryPageLoadsParentsInBatches() {
         for (int i = 0; i < 30; i++) {
             Category parent = categoryRepository.save(Category.builder()
