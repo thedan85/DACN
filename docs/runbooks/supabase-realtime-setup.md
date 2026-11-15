@@ -160,6 +160,67 @@ its reservations, local sends, accounting, and processed-hint updates together.
 Malformed hints may retry until bounded stale cleanup handles them; never widen
 the wrapper or discard durable business facts to clear a bad hint.
 
+### Inventory stock invalidation triggers
+
+Apply this operator-stage script after the application migrations, as the backend
+role that owns the application objects. Run it with `--single-transaction` twice;
+the second run proves idempotence and leaves one function and one trigger per
+name.
+
+```bash
+psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 --single-transaction -f src/main/resources/db/supabase/inventory_realtime.sql
+psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 --single-transaction -f src/main/resources/db/supabase/inventory_realtime.sql
+```
+
+The script fails closed with a clear `raise exception` before creating anything
+when a prerequisite is missing: V33 `public.realtime_signal_outbox`, the
+`public.app_realtime_control` row `id=1`,
+`public.app_realtime_enqueue_signal(text,text,jsonb)` with effective `EXECUTE`
+for the applying role, `public.products.id`/`product_id`/`product_status`, and
+`public.variants.product_id`/`variant_stock`/`is_deleted`/`stock_revision`.
+Plain PostgreSQL is supported. No Supabase `realtime` schema, no
+`anon`/`authenticated` roles, and no notification-stage objects are required or
+created.
+
+The triggers are `AFTER ... FOR EACH ROW` on `public.variants` and
+`public.products`. They call only
+`public.app_realtime_enqueue_signal('stock:' || productId, 'stock.changed', jsonb_build_object('productId', productId))`.
+The payload is exactly `{"productId":"<productId>"}`, at most 1 KB, and carries
+no stock value, revision, SKU, customer, order, or `NEW`/`OLD` record. A changed
+stock enqueue requires a non-deleted variant of an `ACTIVE` product. Variant
+delete and restore enqueue only for an `ACTIVE` parent. Product status changes
+enqueue when the transition touches `ACTIVE` (entering or leaving); hidden to
+hidden changes stay silent. Hiding a product queues exactly one invalidation for
+prior viewers; later stock or visibility changes while it is hidden disclose
+nothing. A no-op stock update enqueues nothing. An enqueue error is caught in its
+own exception block and raised as a payload-free warning, so the stock or
+visibility write still commits.
+
+The trigger path never calls `realtime.send`, locks or updates
+`public.app_realtime_control`, or writes `realtime_token_leases` or
+`realtime_send_accounting`. Budget, coalescing, recipient admission, and delivery
+remain foundation-owned. Stock revision remains V35-owned: the script does not
+create, replace, drop, or alter `advance_variant_stock_revision()` or
+`variants_stock_revision`, and revisions continue to advance even if all three
+operator triggers are absent.
+
+Verify the installed shape after applying:
+
+```sql
+select p.oid::regprocedure, p.prosecdef, p.proconfig
+  from pg_proc p
+ where p.oid = 'public.enqueue_stock_signal()'::regprocedure;
+select tgname, tgrelid::regclass
+  from pg_trigger
+ where tgname in ('variants_stock_signal', 'variants_visibility_signal',
+                  'products_visibility_signal')
+   and not tgisinternal;
+```
+
+Do not apply this script to the live project during implementation. Hosted
+application, Realtime settings, and delivery remain disabled and separately
+approved.
+
 ## 4. Budget
 
 1. Read the verified unused Free-plan message allowance.

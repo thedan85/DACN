@@ -16,6 +16,9 @@ Task 2 supplies configuration and a read-only backend inventory only. Do not act
 
 `ReservationPolicy.isActive()`, `isOnlineWorkPaused()`, and `isSweepingPaused()` read independent immutable deployment values. There is no HTTP control, configuration refresh endpoint, or persistent activation latch. A stopped worker does not imply an inactive policy. Before first activation, all three defaults remain false; pauses may be enabled independently for maintenance.
 
+Stock invalidation hints for Realtime are installed separately by the operator-stage "Inventory stock
+invalidation triggers" subsection in `supabase-realtime-setup.md`. Stock revision remains V35-owned and independent of that script.
+
 After first approved activation, **retain `reservation-policy-enabled=true` on every serving instance, restart, recovery build, and rollback build**. Setting it false is unsupported, including as a kill switch. This invariant is operator-enforced, not database-enforced. Keep activation records and deployment checks outside the application. If configuration consistency cannot be guaranteed, block activation; after activation, keep maintenance in force rather than deploy an unsafe rollback.
 
 ### Required runtime policy matrix
