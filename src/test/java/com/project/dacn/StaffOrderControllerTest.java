@@ -8,6 +8,7 @@ import com.project.dacn.controller.order.StaffOrderController;
 import com.project.dacn.dto.request.order.StaffOrderStatusUpdateRequest;
 import com.project.dacn.dto.response.order.OrderResponse;
 import com.project.dacn.dto.response.payment.PaymentResponse;
+import com.project.dacn.integration.shipping.ShippingException;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.security.CustomUserDetailsService;
 import com.project.dacn.security.JwtService;
@@ -113,8 +114,25 @@ class StaffOrderControllerTest {
                 .andExpect(jsonPath("$.data.status").value("CONFIRMED"));
     }
 
+    @Test
+    void shipReturnsUpdatedOrder() throws Exception {
+        when(service.shipOrder("ORD_1", null)).thenReturn(order(OrderStatus.CONFIRMED));
+        mockMvc.perform(post("/api/v1/staff/orders/ORD_1/ship"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.orderId").value("ORD_1"));
+    }
+
+    @Test
+    void shipReturns502WhenGhnFails() throws Exception {
+        when(service.shipOrder("ORD_1", null)).thenThrow(new ShippingException("GHN: bad ward"));
+        mockMvc.perform(post("/api/v1/staff/orders/ORD_1/ship"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.message").value("GHN: bad ward"));
+    }
+
     private OrderResponse order(OrderStatus status) {
         return new OrderResponse("ORD_1", "CUS_1", "Jane", status,
-                new BigDecimal("8000.00"), "addr", "Jane", "090", List.of(), null, null, null);
+                new BigDecimal("8000.00"), "addr", "Jane", "090", null, null, null, List.of(),
+                null, null, null);
     }
 }

@@ -1,10 +1,12 @@
 package com.project.dacn.service.order;
 
 import com.project.dacn.common.constant.OrderStatus;
+import com.project.dacn.common.constant.PaymentMethod;
 import com.project.dacn.common.constant.PaymentStatus;
 import com.project.dacn.common.exception.InvalidOrderStateException;
 import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.common.response.PageResponse;
+import com.project.dacn.dto.request.order.ShipOrderRequest;
 import com.project.dacn.dto.request.order.StaffOrderStatusUpdateRequest;
 import com.project.dacn.dto.response.order.OrderItemResponse;
 import com.project.dacn.dto.response.order.OrderResponse;
@@ -13,6 +15,10 @@ import com.project.dacn.entity.catalog.Media;
 import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.order.OrderItem;
+import com.project.dacn.entity.payment.Payment;
+import com.project.dacn.integration.shipping.ghn.GhnClient;
+import com.project.dacn.integration.shipping.ghn.GhnStatusMapper;
+import com.project.dacn.integration.shipping.ghn.dto.GhnCreateOrderRequest;
 import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.catalog.MediaRepository;
@@ -21,11 +27,15 @@ import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -35,6 +45,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
@@ -49,6 +60,7 @@ public class OrderService {
     private final VariantRepository variantRepository;
     private final MediaRepository mediaRepository;
     private final PaymentRepository paymentRepository;
+    private final GhnClient ghnClient;
 
     public PageResponse<OrderResponse> list(Long customerId, OrderStatus status, String q,
                                             Instant createdAfter, Pageable pageable) {
@@ -97,8 +109,7 @@ public class OrderService {
         }
         order.setStatus(target);
         if (target == OrderStatus.CANCELLED) {
-            restock(order);
-            failPendingPayment(orderId);
+            cancel(order);
             // settle() clears the persistence context, detaching the lazy
             // customer proxy; reload before mapping the response.
             order = orderRepository.findByOrderId(orderId)
@@ -124,6 +135,217 @@ public class OrderService {
         }
         order.setStatus(OrderStatus.COMPLETED);
         return toResponse(order);
+    }
+
+    // shortcut: the GHN call holds the order lock for at most the read timeout; move it outside the transaction if ship traffic grows.
+    @Transactional
+    public OrderResponse shipOrder(String orderId, ShipOrderRequest request) {
+        Order order = orderRepository.findWithLockByOrderId(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("order not found: " + orderId));
+        if (order.getStatus() != OrderStatus.CONFIRMED) {
+            throw new InvalidOrderStateException("order is not confirmed: " + order.getStatus());
+        }
+        if (order.getGhnOrderCode() != null) {
+            throw new InvalidOrderStateException("order already has GHN order: " + order.getGhnOrderCode());
+        }
+        mergeShipAddress(order, request);
+        if (!StringUtils.hasText(order.getShippingProvince())
+                || !StringUtils.hasText(order.getShippingWard())) {
+            throw new InvalidOrderStateException("order has no GHN address");
+        }
+        Payment payment = requireShippablePayment(orderId);
+        List<OrderItem> items = orderItemRepository.findByOrder_OrderId(orderId);
+        int units = items.stream().mapToInt(OrderItem::getQuantity).sum();
+        if (units * 500 >= 20_000) {
+            throw new InvalidOrderStateException("order exceeds GHN 20 kg limit");
+        }
+        GhnCreateOrderRequest ghnRequest = buildGhnRequest(
+                order, payment, items, Math.max(500, units * 500));
+        GhnClient.CreatedOrder created = ghnClient.createOrder(ghnRequest);
+        order.setGhnOrderCode(created.orderCode());
+        return toResponse(order);
+    }
+
+    @Transactional
+    public void applyGhnEvent(String ghnOrderCode, String clientOrderCode,
+            GhnStatusMapper.Event event) {
+        Order order = findLockedOrder(ghnOrderCode, clientOrderCode);
+        if (order == null) {
+            log.info("Ignoring GHN callback for unknown order {} / {}", ghnOrderCode, clientOrderCode);
+            return;
+        }
+        switch (event) {
+            case SHIPPING -> moveToShipping(order);
+            case DELIVERED -> moveToCompleted(order);
+            case CANCELLED -> cancelFromGhn(order, false);
+            case RETURNED -> cancelFromGhn(order, true);
+            case NONE -> log.info("Ignoring GHN status for order {}", order.getOrderId());
+        }
+    }
+
+    /**
+     * Locks by GHN code first. A manual GHN order may only fall back to the
+     * internal order id after staff confirmation, so PENDING is never advanced.
+     */
+    private Order findLockedOrder(String ghnOrderCode, String clientOrderCode) {
+        if (StringUtils.hasText(ghnOrderCode)) {
+            Order order = orderRepository.findWithLockByGhnOrderCode(ghnOrderCode).orElse(null);
+            if (order != null) {
+                return order;
+            }
+        }
+        if (!StringUtils.hasText(clientOrderCode)) {
+            return null;
+        }
+        Order order = orderRepository.findWithLockByOrderId(clientOrderCode).orElse(null);
+        if (order == null) {
+            return null;
+        }
+        if (order.getStatus() == OrderStatus.PENDING) {
+            log.info("Ignoring GHN callback for pending order {}", order.getOrderId());
+            return null;
+        }
+        if (order.getGhnOrderCode() == null) {
+            order.setGhnOrderCode(ghnOrderCode);
+        } else if (!order.getGhnOrderCode().equals(ghnOrderCode)) {
+            log.warn("Ignoring GHN callback for order {} with stored code {}",
+                    order.getOrderId(), order.getGhnOrderCode());
+            return null;
+        }
+        return order;
+    }
+
+    private void moveToShipping(Order order) {
+        if (order.getStatus() == OrderStatus.SHIPPING) {
+            return;
+        }
+        if (order.getStatus() != OrderStatus.CONFIRMED) {
+            log.info("Ignoring SHIPPING for order {} in status {}",
+                    order.getOrderId(), order.getStatus());
+            return;
+        }
+        Payment payment = paymentRepository.findByOrder_OrderId(order.getOrderId()).orElse(null);
+        if (!isShippable(payment)) {
+            log.warn("Ignoring SHIPPING for unpaid order {}", order.getOrderId());
+            return;
+        }
+        order.setStatus(OrderStatus.SHIPPING);
+    }
+
+    private void moveToCompleted(Order order) {
+        if (order.getStatus() == OrderStatus.COMPLETED) {
+            return;
+        }
+        if (order.getStatus() != OrderStatus.CONFIRMED
+                && order.getStatus() != OrderStatus.SHIPPING) {
+            log.info("Ignoring DELIVERED for order {} in status {}",
+                    order.getOrderId(), order.getStatus());
+            return;
+        }
+        Payment payment = paymentRepository.findByOrder_OrderId(order.getOrderId()).orElse(null);
+        if (!isShippable(payment)) {
+            log.warn("Ignoring DELIVERED for unpaid order {}", order.getOrderId());
+            return;
+        }
+        order.setStatus(OrderStatus.COMPLETED);
+    }
+
+    private void cancelFromGhn(Order order, boolean allowFromCompleted) {
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            return;
+        }
+        if (order.getStatus() == OrderStatus.COMPLETED && !allowFromCompleted) {
+            return;
+        }
+        if (allowFromCompleted && order.getStatus() == OrderStatus.PENDING) {
+            return;
+        }
+        cancel(order);
+    }
+
+    private void cancel(Order order) {
+        order.setStatus(OrderStatus.CANCELLED);
+        restock(order);
+        failPendingPayment(order.getOrderId());
+    }
+
+    private Payment requireShippablePayment(String orderId) {
+        Payment payment = paymentRepository.findByOrder_OrderId(orderId).orElse(null);
+        if (payment == null) {
+            throw new InvalidOrderStateException("order is not paid: no payment");
+        }
+        if (!isShippable(payment)) {
+            throw new InvalidOrderStateException("order is not paid: " + payment.getStatus());
+        }
+        return payment;
+    }
+
+    private boolean isShippable(Payment payment) {
+        return payment != null
+                && (payment.getMethod() == PaymentMethod.COD
+                        || payment.getStatus() == PaymentStatus.CONFIRMED);
+    }
+
+    private void mergeShipAddress(Order order, ShipOrderRequest request) {
+        if (request == null) {
+            return;
+        }
+        if (StringUtils.hasText(request.address())) {
+            order.setAddress(request.address().trim());
+        }
+        if (StringUtils.hasText(request.province())) {
+            order.setShippingProvince(request.province().trim());
+        }
+        if (StringUtils.hasText(request.ward())) {
+            order.setShippingWard(request.ward().trim());
+        }
+    }
+
+    private int vnd(BigDecimal amount) {
+        if (amount == null || amount.signum() < 0) {
+            throw new InvalidOrderStateException("invalid VND amount: " + amount);
+        }
+        try {
+            return amount.setScale(0, RoundingMode.HALF_UP).intValueExact();
+        } catch (ArithmeticException ex) {
+            throw new InvalidOrderStateException(amount + " is out of range");
+        }
+    }
+
+    private GhnCreateOrderRequest buildGhnRequest(Order order, Payment payment,
+            List<OrderItem> items, int weight) {
+        // shortcut: fixed parcel size and 500 g per unit; add per-variant dimensions when the catalog supports them.
+        List<GhnCreateOrderRequest.Item> ghnItems = items.stream()
+                .map(item -> new GhnCreateOrderRequest.Item(
+                        item.getVariant().getProduct().getName(),
+                        item.getVariant().getVariantId(),
+                        item.getQuantity(),
+                        vnd(item.getUnitPrice())))
+                .toList();
+        return new GhnCreateOrderRequest(
+                1,
+                "CHOXEMHANGKHONGTHU",
+                order.getOrderId(),
+                order.getRecipientName(),
+                order.getPhone(),
+                order.getAddress(),
+                order.getShippingWard(),
+                order.getShippingProvince(),
+                true,
+                content(items),
+                weight,
+                20,
+                20,
+                10,
+                2,
+                payment.getMethod() == PaymentMethod.COD ? vnd(order.getTotal()) : 0,
+                ghnItems);
+    }
+
+    private String content(List<OrderItem> items) {
+        return items.stream()
+                .map(item -> item.getVariant().getProduct().getName() + " x" + item.getQuantity())
+                .collect(Collectors.joining(", "));
     }
 
     private void restock(Order order) {

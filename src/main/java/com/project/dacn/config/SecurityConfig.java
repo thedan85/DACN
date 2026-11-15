@@ -65,6 +65,9 @@ public class SecurityConfig {
                                 "/api/v1/product-attributes/**", "/api/v1/variant-attributes/**",
                                 "/api/v1/media/**").permitAll()
 
+                        // Shipping master data is read-only and comes from GHN.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/shipping/**").permitAll()
+
                         // Writes are checked here as well as with @PreAuthorize so a caller
                         // without the permission is rejected before MVC validates the body.
                         .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasAuthority(Permissions.PRODUCT_CREATE)
@@ -114,7 +117,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/admin/dashboard/**")
                         .hasAuthority(Permissions.ORDER_READ)
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/staff/orders/**").hasAuthority(Permissions.ORDER_UPDATE)
-                        .requestMatchers(HttpMethod.POST, "/api/v1/staff/orders/*/payment/confirm")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/staff/orders/*/payment/confirm",
+                                "/api/v1/staff/orders/*/ship")
                         .hasAuthority(Permissions.ORDER_UPDATE)
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/orders/*/complete")
                         .hasAuthority(Permissions.ORDER_COMPLETE)

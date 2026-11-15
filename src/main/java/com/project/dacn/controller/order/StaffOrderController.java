@@ -3,6 +3,7 @@ package com.project.dacn.controller.order;
 import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.common.response.ApiResponse;
 import com.project.dacn.common.response.PageResponse;
+import com.project.dacn.dto.request.order.ShipOrderRequest;
 import com.project.dacn.dto.request.order.StaffOrderStatusUpdateRequest;
 import com.project.dacn.dto.response.order.OrderResponse;
 import com.project.dacn.dto.response.payment.PaymentResponse;
@@ -58,5 +59,13 @@ public class StaffOrderController {
     @PreAuthorize("hasAuthority('" + Permissions.ORDER_UPDATE + "')")
     public ApiResponse<PaymentResponse> confirmPayment(@PathVariable String orderId) {
         return ApiResponse.ok(paymentService.confirmVietQrPayment(orderId));
+    }
+
+    @PostMapping("/{orderId}/ship")
+    @PreAuthorize("hasAuthority('" + Permissions.ORDER_UPDATE + "')")
+    public ApiResponse<OrderResponse> ship(
+            @PathVariable String orderId,
+            @RequestBody(required = false) ShipOrderRequest request) {
+        return ApiResponse.ok(service.shipOrder(orderId, request));
     }
 }
