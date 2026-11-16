@@ -111,9 +111,9 @@ class LegacyReservationQueriesPostgresTest {
     @Test
     void inventoryIncludesEveryActualEnumTripleAndMissingRowsWithoutJoinMultiplication() {
         var inventory = queries.inventory();
-        assertThat(inventory.orders()).hasSize(133);
-        assertThat(inventory.countsByPair()).hasSize(127);
-        assertThat(inventory.countsByPair().values().stream().mapToLong(Long::longValue).sum()).isEqualTo(133);
+        assertThat(inventory.orders()).hasSize(158);
+        assertThat(inventory.countsByPair()).hasSize(152);
+        assertThat(inventory.countsByPair().values().stream().mapToLong(Long::longValue).sum()).isEqualTo(158);
         Map<LegacyReservationQueries.StatusPair, Long> additionalCounts = Map.of(
                 new LegacyReservationQueries.StatusPair(OrderStatus.PENDING, PaymentMethod.BANK_TRANSFER, PaymentStatus.PENDING), 4L,
                 new LegacyReservationQueries.StatusPair(OrderStatus.PENDING, PaymentMethod.E_WALLET, PaymentStatus.PENDING), 2L,
@@ -150,15 +150,15 @@ class LegacyReservationQueriesPostgresTest {
                 OrderStatus.PENDING, null, null), 1L).containsEntry(new LegacyReservationQueries.StatusPair(
                 OrderStatus.COMPLETED, null, null), 1L);
         assertThat(inventory.orders()).filteredOn(row -> row.disposition() == COD_UNCHANGED).hasSize(25);
-        assertThat(inventory.orders()).filteredOn(row -> row.disposition() == PRESERVE_RECEIVED_MONEY).hasSize(40);
-        assertThat(inventory.orders()).filteredOn(row -> row.disposition() == PENDING_RECONCILIATION).hasSize(7);
-        assertThat(inventory.orders()).filteredOn(row -> row.disposition() == BLOCK_ACTIVATION).hasSize(9);
-        assertThat(inventory.orders()).filteredOn(row -> row.disposition() == QUARANTINE).hasSize(52);
+        assertThat(inventory.orders()).filteredOn(row -> row.disposition() == PRESERVE_RECEIVED_MONEY).hasSize(50);
+        assertThat(inventory.orders()).filteredOn(row -> row.disposition() == PENDING_RECONCILIATION).hasSize(8);
+        assertThat(inventory.orders()).filteredOn(row -> row.disposition() == BLOCK_ACTIVATION).hasSize(11);
+        assertThat(inventory.orders()).filteredOn(row -> row.disposition() == QUARANTINE).hasSize(64);
     }
 
     @Test
     void confirmedUnpaidBlocksActivationAndCompletedUnpaidStaysQuarantinedWithoutInventingMoney() {
-        assertThat(queries.inventory().unresolvedConfirmedUnpaidCount()).isEqualTo(9);
+        assertThat(queries.inventory().unresolvedConfirmedUnpaidCount()).isEqualTo(11);
         for (PaymentMethod method : PaymentMethod.values()) {
             var confirmed = evidence("ORD_T2_CONFIRMED_" + method + "_PENDING");
             var completed = evidence("ORD_T2_COMPLETED_" + method + "_PENDING");
@@ -260,7 +260,7 @@ class LegacyReservationQueriesPostgresTest {
         transaction.setReadOnly(true);
         transaction.executeWithoutResult(status -> {
             assertThat(jdbc.queryForObject("show transaction_read_only", String.class)).isEqualTo("on");
-            assertThat(queries.inventory().orders()).hasSize(133);
+            assertThat(queries.inventory().orders()).hasSize(158);
         });
         assertThat(tableFingerprints()).isEqualTo(originalTables);
     }
@@ -320,7 +320,7 @@ class LegacyReservationQueriesPostgresTest {
         jdbc.update("update payments set paid_at = ?::timestamptz, payment_transaction_id = ? "
                         + "where order_id = (select id from orders where order_id = ?)",
                 "2026-10-01T00:00:00Z", "fixture-provider-conflict", "ORD_T2_CONFLICTING_EVIDENCE");
-        assertThat(jdbc.queryForObject("select count(*) from orders", Long.class)).isEqualTo(133);
+        assertThat(jdbc.queryForObject("select count(*) from orders", Long.class)).isEqualTo(158);
     }
 
     private static void addOrder(String id, OrderStatus order, PaymentMethod method,

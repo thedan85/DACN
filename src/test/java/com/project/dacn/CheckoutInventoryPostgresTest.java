@@ -131,9 +131,9 @@ class CheckoutInventoryPostgresTest {
             mapper = context.getBean(ObjectMapper.class);
             assertThat(jdbc.queryForObject("""
                     select count(*) from flyway_schema_history
-                     where version = '34' and success
+                     where version = '35' and success
                     """, Long.class)).isEqualTo(1);
-            System.out.println("Flyway history: V34 successful");
+            System.out.println("Flyway history: V35 successful");
             entityManager = SharedEntityManagerCreator.createSharedEntityManager(
                     context.getBean(EntityManagerFactory.class));
             transaction = new TransactionTemplate(context.getBean(PlatformTransactionManager.class));
@@ -466,7 +466,7 @@ class CheckoutInventoryPostgresTest {
         long customer = customerWithCart(variant, 2);
 
         RuntimeException failure = catchRuntime(() -> pausedOnlineService.checkout(customer,
-                new CartCheckoutRequest("fixture", "Fixture", "000", PaymentMethod.E_WALLET)));
+                new CartCheckoutRequest("fixture", "Fixture", "000", null, null, PaymentMethod.E_WALLET)));
 
         assertThat(failure).isInstanceOf(InvalidOrderStateException.class)
                 .hasMessage("online checkout is temporarily unavailable");
@@ -635,7 +635,7 @@ class CheckoutInventoryPostgresTest {
 
     private static OrderResponse checkout(long customer, PaymentMethod method) {
         return service.checkout(customer,
-                new CartCheckoutRequest("fixture", "Fixture", "000", method));
+                new CartCheckoutRequest("fixture", "Fixture", "000", null, null, method));
     }
 
     private static CartService serviceWith(ReservationPolicy policy) {
@@ -661,7 +661,7 @@ class CheckoutInventoryPostgresTest {
     private static OrderResponse checkoutInTransaction(CartService target, long customer,
                                                        PaymentMethod method) {
         return transaction.execute(status -> target.checkout(customer,
-                new CartCheckoutRequest("fixture", "Fixture", "000", method)));
+                new CartCheckoutRequest("fixture", "Fixture", "000", null, null, method)));
     }
 
     private static long customerWithCart(long variant, int quantity) {

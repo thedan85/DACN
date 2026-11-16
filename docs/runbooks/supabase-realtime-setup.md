@@ -79,14 +79,14 @@ psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 --single-transaction -f src/main/reso
 ```
 
 The second run proves idempotence. The script fails closed when
-`realtime.messages` or the V33 tables are missing. It creates receive policies
+`realtime.messages` or the V34 tables are missing. It creates receive policies
 only; there is no client insert/update/delete policy, and `PUBLIC` cannot
 execute the helpers. `authenticated` can execute only the active-inbox helper;
 the applying backend role can execute the send wrapper and dispatcher. Use one
 transaction and stop on errors so a failed privilege check cannot leave a
 partially installed security boundary.
 
-Prerequisites include the V33 Realtime transport/control tables and the control singleton,
+Prerequisites include the V34 Realtime transport/control tables and the control singleton,
 `users.id`/`users.user_status`, existing `anon`/`authenticated` roles,
 `realtime.messages.extension`, `realtime.topic()`, and
 `realtime.send(jsonb,text,text,boolean)`. No `users.inbox_revision` or inbox
@@ -173,7 +173,7 @@ psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 --single-transaction -f src/main/reso
 ```
 
 The script fails closed with a clear `raise exception` before creating anything
-when a prerequisite is missing: V33 `public.realtime_signal_outbox`, the
+when a prerequisite is missing: V34 `public.realtime_signal_outbox`, the
 `public.app_realtime_control` row `id=1`,
 `public.app_realtime_enqueue_signal(text,text,jsonb)` with effective `EXECUTE`
 for the applying role, `public.products.id`/`product_id`/`product_status`, and
@@ -199,7 +199,7 @@ visibility write still commits.
 The trigger path never calls `realtime.send`, locks or updates
 `public.app_realtime_control`, or writes `realtime_token_leases` or
 `realtime_send_accounting`. Budget, coalescing, recipient admission, and delivery
-remain foundation-owned. Stock revision remains V35-owned: the script does not
+remain foundation-owned. Stock revision remains V36-owned: the script does not
 create, replace, drop, or alter `advance_variant_stock_revision()` or
 `variants_stock_revision`, and revisions continue to advance even if all three
 operator triggers are absent.

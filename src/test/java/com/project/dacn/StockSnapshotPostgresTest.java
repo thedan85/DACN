@@ -85,11 +85,11 @@ class StockSnapshotPostgresTest {
                     .unwrap(SessionFactory.class).getStatistics();
             assertThat(jdbc.queryForObject("""
                     select count(*) from flyway_schema_history
-                     where version in ('33', '34', '35') and success
+                     where version in ('34', '35', '36') and success
                     """, Long.class)).isEqualTo(3);
             assertThat(jdbc.queryForObject("select current_database()", String.class))
                     .isEqualTo(ownedName);
-            System.out.println("Task12 PostgreSQL evidence: Flyway V33/V34/V35 successful, "
+            System.out.println("Task12 PostgreSQL evidence: Flyway V34/V35/V36 successful, "
                     + "scratch identity verified");
         } catch (Exception | AssertionError failure) {
             cleanup();

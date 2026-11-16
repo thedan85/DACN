@@ -21,7 +21,6 @@ import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
-import com.project.dacn.integration.payment.PaymentSettlementService;
 import com.project.dacn.service.order.ReservationPolicy;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,7 +76,7 @@ class PaymentServiceTest {
     @Spy ReservationPolicy reservationPolicy = new ReservationPolicy(true, false, false);
     private final VnpaySignatureService signature = new VnpaySignatureService(props());
     @Spy VnpayUrlBuilder builder = new VnpayUrlBuilder(props(), signature);
-    private final VietQrProperties vietQrProperties = vietQrProperties();
+    @Spy VietQrProperties vietQrProperties = vietQrProperties();
     @Spy VietQrUrlBuilder vietQrUrlBuilder = new VietQrUrlBuilder(vietQrProperties);
     @Spy PaymentMapper mapper = MAPPER;
     @InjectMocks PaymentService service;

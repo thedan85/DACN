@@ -7,7 +7,7 @@
 --   psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 --single-transaction \
 --     -f src/main/resources/db/supabase/inventory_realtime.sql
 --
--- Run it twice to prove idempotence. It needs V33/V34/V35 only: no Supabase
+-- Run it twice to prove idempotence. It needs V34/V35/V36 only: no Supabase
 -- realtime schema, no anon/authenticated roles, and no notification-stage
 -- objects. It never sends a message, locks the shared control row, updates the
 -- budget, or writes leases/accounting. Those stay foundation-owned.

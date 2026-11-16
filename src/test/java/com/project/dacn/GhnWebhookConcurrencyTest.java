@@ -20,6 +20,8 @@ import com.project.dacn.repository.identity.CustomerRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
+import com.project.dacn.service.order.OrderLifecycleService;
+import com.project.dacn.service.order.OrderResponseAssembler;
 import com.project.dacn.service.order.OrderService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -48,12 +50,16 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @DataJpaTest
 @ActiveProfiles("test")
-@Import({StaffOrderPersistenceTest.MapperConfig.class, OrderService.class})
+@Import({StaffOrderPersistenceTest.MapperConfig.class, OrderService.class,
+        OrderResponseAssembler.class})
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 class GhnWebhookConcurrencyTest {
 
     @MockitoBean
     GhnClient ghnClient;
+
+    @MockitoBean
+    OrderLifecycleService orderLifecycleService;
 
     @Autowired
     OrderService service;

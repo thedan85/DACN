@@ -8,6 +8,8 @@ import com.project.dacn.controller.payment.PaymentController;
 import com.project.dacn.dto.request.cart.CartCheckoutRequest;
 import com.project.dacn.integration.payment.PaymentSettlementService;
 import com.project.dacn.integration.payment.momo.*;
+import com.project.dacn.integration.payment.vietqr.VietQrProperties;
+import com.project.dacn.integration.payment.vietqr.VietQrUrlBuilder;
 import com.project.dacn.integration.payment.vnpay.*;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
@@ -442,7 +444,7 @@ class PaymentUrlPostgresTest {
         long cart = jdbc.queryForObject("insert into carts(cart_id,customer_id) values (?,?) returning id", Long.class, "CRT" + suffix, customer);
         jdbc.update("insert into cart_items(cart_item_id,cart_id,variant_id,quantity) values (?,?,?,3)", "CI" + suffix, cart, variant);
         var response = context.getBean(CartService.class).checkout(customer,
-                new CartCheckoutRequest("fixture", "Fixture", "000", PaymentMethod.E_WALLET));
+                new CartCheckoutRequest("fixture", "Fixture", "000", null, null, PaymentMethod.E_WALLET));
         long id = jdbc.queryForObject("select id from orders where order_id=?", Long.class, response.orderId());
         clock.samples.set(0);
         return new Fixture(id, response.orderId(), customer);
@@ -519,5 +521,12 @@ class PaymentUrlPostgresTest {
         }
         @Bean VnpaySignatureService signatureService(VnpayProperties properties) { return new VnpaySignatureService(properties); }
         @Bean VnpayUrlBuilder urlBuilder(VnpayProperties properties, VnpaySignatureService signature) { return new VnpayUrlBuilder(properties, signature); }
+        @Bean VietQrProperties vietQrProperties() {
+            var properties = new VietQrProperties();
+            properties.setBankId("VCB"); properties.setAccountNo("0123456789");
+            properties.setAccountName("AQUA SHOP");
+            return properties;
+        }
+        @Bean VietQrUrlBuilder vietQrUrlBuilder(VietQrProperties properties) { return new VietQrUrlBuilder(properties); }
     }
 }

@@ -112,8 +112,8 @@ class VnpayWebhookControllerTest {
         when(payments.findOrderIdByPaymentId("PAY_abc")).thenReturn(Optional.of("ORD_abc"));
         when(lifecycle.settleOnline(any(), any(), any(Boolean.class), any()))
                 .thenThrow(new ReservationReviewRequiredException("ORD_abc"));
-        var adapter = new PaymentService(payments, null, null, null,
-                new PaymentSettlementService(lifecycle), null, null, null);
+        var adapter = new PaymentService(payments, null, null, null, null,
+                new PaymentSettlementService(lifecycle), null, null, null, null);
         var actual = new VnpayWebhookController(SIGNATURE, adapter, props());
         Map<String, String> params = signedOutcome(response, status);
         assertThat(SIGNATURE.verifyParams(params)).isTrue();
@@ -279,8 +279,8 @@ class VnpayWebhookControllerTest {
     void returnRejectsInvalidSignedAmountsBeforePersistenceOrLifecycle(String response, String status, String amount) {
         PaymentRepository payments = mock(PaymentRepository.class);
         OrderLifecycleService lifecycle = mock(OrderLifecycleService.class);
-        PaymentService adapter = new PaymentService(payments, null, null, null,
-                new PaymentSettlementService(lifecycle), null, null, null);
+        PaymentService adapter = new PaymentService(payments, null, null, null, null,
+                new PaymentSettlementService(lifecycle), null, null, null, null);
         var actual = new VnpayWebhookController(SIGNATURE, adapter, props());
         Map<String, String> params = signedOutcome(response, status);
         replaceAndSign(params, "vnp_Amount", amount);
@@ -322,8 +322,8 @@ class VnpayWebhookControllerTest {
     void invalidSignedEvidenceCannotReachPersistenceOrLifecycle(Map<String, String> params) {
         PaymentRepository payments = mock(PaymentRepository.class);
         OrderLifecycleService lifecycle = mock(OrderLifecycleService.class);
-        PaymentService adapter = new PaymentService(payments, null, null, null,
-                new PaymentSettlementService(lifecycle), null, null, null);
+        PaymentService adapter = new PaymentService(payments, null, null, null, null,
+                new PaymentSettlementService(lifecycle), null, null, null, null);
         var actual = new VnpayWebhookController(SIGNATURE, adapter, props());
 
         assertThat(SIGNATURE.verifyParams(params)).isTrue();
@@ -341,8 +341,8 @@ class VnpayWebhookControllerTest {
     void returnWithRealPaymentAdapterOnlyReadsIdentity(String response, String status, String outcome, String amount) {
         PaymentRepository payments = mock(PaymentRepository.class);
         OrderLifecycleService lifecycle = mock(OrderLifecycleService.class);
-        PaymentService adapter = new PaymentService(payments, null, null, null,
-                new PaymentSettlementService(lifecycle), null, null, null);
+        PaymentService adapter = new PaymentService(payments, null, null, null, null,
+                new PaymentSettlementService(lifecycle), null, null, null, null);
         var actual = new VnpayWebhookController(SIGNATURE, adapter, props());
         when(payments.findByPaymentId("PAY_abc")).thenReturn(Optional.of(Payment.builder()
                 .order(Order.builder().orderId("ORD_abc").build()).build()));

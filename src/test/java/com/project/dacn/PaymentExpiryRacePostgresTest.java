@@ -631,7 +631,7 @@ class PaymentExpiryRacePostgresTest {
         jdbc.update("insert into cart_items(cart_item_id,cart_id,variant_id,quantity) values (?,?,?,3)", "CI" + suffix, cart, variant);
         assertThat(jdbc.queryForObject("select variant_stock from variants where id=?", Integer.class, variant)).isEqualTo(10);
         assertThat(jdbc.queryForObject("select stock_revision from variants where id=?", Long.class, variant)).isZero();
-        var response = context.getBean(CartService.class).checkout(customer, new CartCheckoutRequest("fixture", "Fixture", "000", method));
+        var response = context.getBean(CartService.class).checkout(customer, new CartCheckoutRequest("fixture", "Fixture", "000", null, null, method));
         long id = jdbc.queryForObject("select id from orders where order_id=?", Long.class, response.orderId());
         clock.samples.set(0);
         return new Fixture(id, response.orderId(), variant, new BigDecimal("30.00"));
@@ -667,8 +667,8 @@ class PaymentExpiryRacePostgresTest {
                                            com.project.dacn.repository.order.OrderItemRepository items) {
             VnpayProperties properties = new VnpayProperties();
             return new PaymentService(payments, orders,
-                    new VnpayUrlBuilder(properties, new VnpaySignatureService(properties)), mapper, settlement,
-                    policy, clock, items);
+                    new VnpayUrlBuilder(properties, new VnpaySignatureService(properties)),
+                    null, null, settlement, mapper, policy, clock, items);
         }
     }
 }

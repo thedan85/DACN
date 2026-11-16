@@ -18,6 +18,8 @@ import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
+import com.project.dacn.service.order.OrderLifecycleService;
+import com.project.dacn.service.order.OrderResponseAssembler;
 import com.project.dacn.service.order.OrderService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -79,8 +81,10 @@ class OrderServiceGhnStatusTest {
 
     @BeforeEach
     void setUp() {
-        service = new OrderService(orderRepository, orderItemRepository, orderMapper,
-                paymentMapper, variantRepository, mediaRepository, paymentRepository, ghnClient);
+        service = new OrderService(orderRepository,
+                org.mockito.Mockito.mock(OrderResponseAssembler.class),
+                org.mockito.Mockito.mock(OrderLifecycleService.class),
+                orderItemRepository, variantRepository, paymentRepository, ghnClient);
 
         order = Order.builder()
                 .id(1L)

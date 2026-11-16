@@ -394,7 +394,7 @@ class CartWriteConcurrencyPostgresTest {
             case CLEAR -> { service.clear(fixture.customer); yield null; }
             case GET -> service.getDetail(fixture.customer);
             case CHECKOUT -> service.checkout(fixture.customer,
-                    new CartCheckoutRequest("fixture", "Fixture", "000", PaymentMethod.COD));
+                    new CartCheckoutRequest("fixture", "Fixture", "000", null, null, PaymentMethod.COD));
         };
     }
 

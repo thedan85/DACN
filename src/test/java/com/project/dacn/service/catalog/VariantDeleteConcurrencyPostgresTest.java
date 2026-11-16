@@ -306,7 +306,7 @@ class VariantDeleteConcurrencyPostgresTest {
 
     private static com.project.dacn.dto.response.order.OrderResponse checkout(Fixture f) {
         return context.getBean(CartService.class).checkout(f.customer(),
-                new CartCheckoutRequest("fixture", "Fixture", "000", PaymentMethod.COD));
+                new CartCheckoutRequest("fixture", "Fixture", "000", null, null, PaymentMethod.COD));
     }
 
     private static Map<String, Object> snapshot(Fixture f) {

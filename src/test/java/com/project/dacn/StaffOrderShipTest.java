@@ -24,6 +24,8 @@ import com.project.dacn.repository.identity.CustomerRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
+import com.project.dacn.service.order.OrderLifecycleService;
+import com.project.dacn.service.order.OrderResponseAssembler;
 import com.project.dacn.service.order.OrderService;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,11 +49,15 @@ import static org.mockito.Mockito.when;
 
 @DataJpaTest
 @ActiveProfiles("test")
-@Import({StaffOrderPersistenceTest.MapperConfig.class, OrderService.class})
+@Import({StaffOrderPersistenceTest.MapperConfig.class, OrderService.class,
+        OrderResponseAssembler.class})
 class StaffOrderShipTest {
 
     @MockitoBean
     GhnClient ghnClient;
+
+    @MockitoBean
+    OrderLifecycleService orderLifecycleService;
 
     @Autowired
     OrderService service;
