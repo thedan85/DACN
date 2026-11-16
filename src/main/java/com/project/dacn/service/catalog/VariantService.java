@@ -17,12 +17,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.type.TypeReference;
 
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @Transactional
@@ -33,6 +36,19 @@ public class VariantService {
     };
     private static final TypeReference<PageResponse<VariantResponse>> VARIANT_PAGE = new TypeReference<>() {
     };
+
+    /**
+     * A cached variant payload has no stock, but re-reading it from the remote
+     * DB on every hit dominated latency. A short-lived process-local snapshot
+     * collapses concurrent reads into one query per variant. Checkout still
+     * re-checks stock with a conditional UPDATE, so no oversell is possible.
+     */
+    private static final Duration STOCK_SNAPSHOT_TTL = Duration.ofSeconds(2);
+    private final ConcurrentHashMap<String, StockSnapshot> stockSnapshots =
+            new ConcurrentHashMap<>();
+
+    private record StockSnapshot(int stock, long expiresAtNanos) {
+    }
 
     private final VariantRepository repo;
     private final ProductRepository productRepo;
@@ -177,9 +193,37 @@ public class VariantService {
     }
 
     private Integer variantStock(String variantId) {
-        return repo.findStockByVariantId(variantId)
+        String key = "variant:" + variantId;
+        Integer snapshot = stockSnapshot(key);
+        if (snapshot != null) {
+            return snapshot;
+        }
+        Integer stock = repo.findStockByVariantId(variantId)
                 .map(VariantRepository.VariantStockView::getStock)
                 .orElse(null);
+        // A missing row means the variant is gone; do not cache that, so the
+        // next call re-reads and lets the DB decide.
+        if (stock != null) {
+            rememberStock(key, stock);
+        }
+        return stock;
+    }
+
+    private Integer stockSnapshot(String key) {
+        StockSnapshot snapshot = stockSnapshots.get(key);
+        if (snapshot == null) {
+            return null;
+        }
+        if (System.nanoTime() - snapshot.expiresAtNanos() >= 0) {
+            stockSnapshots.remove(key, snapshot);
+            return null;
+        }
+        return snapshot.stock();
+    }
+
+    private void rememberStock(String key, int stock) {
+        stockSnapshots.put(key, new StockSnapshot(
+                stock, System.nanoTime() + STOCK_SNAPSHOT_TTL.toNanos()));
     }
 
     private PageResponse<VariantResponse> scrubVariantStock(PageResponse<VariantResponse> page) {
@@ -194,9 +238,24 @@ public class VariantService {
                 .filter(Objects::nonNull)
                 .toList();
         Map<String, Integer> stockByVariant = new HashMap<>();
-        if (!variantIds.isEmpty()) {
-            for (VariantRepository.VariantStockView view : repo.findStockByVariantIdIn(variantIds)) {
-                stockByVariant.put(view.getVariantId(), view.getStock());
+        List<String> missing = new ArrayList<>();
+        for (String variantId : variantIds) {
+            Integer snapshot = stockSnapshot("variant:" + variantId);
+            if (snapshot == null) {
+                missing.add(variantId);
+            } else {
+                stockByVariant.put(variantId, snapshot);
+            }
+        }
+        if (!missing.isEmpty()) {
+            for (VariantRepository.VariantStockView view : repo.findStockByVariantIdIn(missing)) {
+                Integer stock = view.getStock() == null ? 0 : view.getStock();
+                stockByVariant.put(view.getVariantId(), stock);
+                rememberStock("variant:" + view.getVariantId(), stock);
+            }
+            for (String variantId : missing) {
+                stockByVariant.putIfAbsent(variantId, 0);
+                rememberStock("variant:" + variantId, stockByVariant.get(variantId));
             }
         }
         return newPageResponse(page, page.getContent().stream()

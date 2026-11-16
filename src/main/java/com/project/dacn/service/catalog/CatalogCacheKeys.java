@@ -27,6 +27,8 @@ public final class CatalogCacheKeys {
     public static final Duration VARIANT_PAGE_TTL = Duration.ofMinutes(2);
     public static final Duration CATEGORY_DETAIL_TTL = Duration.ofMinutes(10);
     public static final Duration CATEGORY_PAGE_TTL = Duration.ofMinutes(5);
+    /** Reference-data lists (attributes, values, media) change rarely. */
+    public static final Duration REFERENCE_PAGE_TTL = Duration.ofMinutes(5);
 
     private static final int MAX_KEYWORD_LENGTH = 64;
     private static final int MAX_PAGE_NUMBER = 4;
@@ -75,6 +77,30 @@ public final class CatalogCacheKeys {
 
     public static String categoryList(long generation, Pageable pageable) {
         return "pim:category:list:" + generation + ":" + pageSegment(pageable);
+    }
+
+    /**
+     * Reference-data lists are invalidated with {@link #PRODUCT_SCOPE}: every
+     * writer that changes attributes, values or media already bumps that scope
+     * after commit, so the same generation keeps these caches coherent without
+     * a second invalidation path.
+     */
+    public static String attributeList(long generation, Pageable pageable) {
+        return "pim:attribute:list:" + generation + ":" + pageSegment(pageable);
+    }
+
+    public static String attributeValueList(long generation, Pageable pageable) {
+        return "pim:attribute-value:list:" + generation + ":" + pageSegment(pageable);
+    }
+
+    public static String attributeValueListByAttribute(long generation, String attributeId,
+            Pageable pageable) {
+        return "pim:attribute-value:by-attribute:" + generation + ":" + attributeId
+                + ":" + pageSegment(pageable);
+    }
+
+    public static String mediaList(long generation, Pageable pageable) {
+        return "pim:media:list:" + generation + ":" + pageSegment(pageable);
     }
 
     public static boolean isCacheablePage(Pageable pageable) {
