@@ -7,6 +7,7 @@ import com.project.dacn.config.SecurityConfig;
 import com.project.dacn.controller.cart.CartController;
 import com.project.dacn.controller.catalog.ProductController;
 import com.project.dacn.messaging.outbox.OrderEventCodec;
+import com.project.dacn.service.cart.CompatibilityService;
 import com.project.dacn.messaging.outbox.OrderEventOutbox;
 import com.project.dacn.security.AuthenticationEntryPoint;
 import com.project.dacn.security.CustomAccessDeniedHandler;
@@ -18,6 +19,9 @@ import com.project.dacn.service.cart.CartService;
 import com.project.dacn.service.catalog.CatalogCache;
 import com.project.dacn.service.catalog.ProductService;
 import com.project.dacn.service.engagement.ReviewService;
+import com.project.dacn.service.order.OrderLifecycleService;
+import com.project.dacn.service.order.OrderResponseAssembler;
+import com.project.dacn.service.order.ReservationPolicy;
 import com.project.dacn.support.ExternalPostgresDatabase;
 import com.zaxxer.hikari.HikariDataSource;
 import org.junit.jupiter.api.Test;
@@ -554,12 +558,18 @@ class InventoryPerformanceTest {
     @EnableJpaRepositories("com.project.dacn.repository")
     @ComponentScan("com.project.dacn.mapper")
     @Import({CartController.class, ProductController.class, CartService.class, ProductService.class,
+            CompatibilityService.class, OrderLifecycleService.class, OrderResponseAssembler.class,
             ReviewService.class, CustomerIdentity.class, SecurityConfig.class, JwtService.class,
             JwtAuthenticationFilter.class, CustomUserDetailsService.class, AuthenticationEntryPoint.class,
             CustomAccessDeniedHandler.class, GlobalExceptionHandler.class, ProductSortConverter.class,
             DatabaseClock.class, OrderEventOutbox.class, OrderEventCodec.class})
     private static class Fixture {
         // Curated imports omit all provider clients, mail services, delivery, Realtime, and @EnableScheduling.
+        @Bean
+        ReservationPolicy reservationPolicy() {
+            return new ReservationPolicy(false, false, false);
+        }
+
         @Bean
         CatalogCache catalogCache(ObjectMapper mapper) {
             return new CatalogCache(null, mapper) {

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
+import org.opentest4j.TestAbortedException;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -96,12 +97,27 @@ class NotificationRealtimeScriptSmokeTest {
             assertThat(scratchName).startsWith("verify_event_foundation_");
         }
         database.migrate();
+        requireSupabaseRoles(database);
         script = Files.readString(
                 Path.of("src/main/resources/db/supabase/notification_realtime.sql"));
         try (Connection connection = connect()) {
             execute(connection, STUBS);
             execute(connection, script);
             execute(connection, script);
+        }
+    }
+
+    private static void requireSupabaseRoles(ExternalPostgresDatabase database) throws SQLException {
+        try (Connection connection = DriverManager.getConnection(
+                System.getenv("TEST_POSTGRES_URL"), database.username(), database.password());
+             Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery(
+                     "select count(*) from pg_roles where rolname in ('anon','authenticated')")) {
+            rows.next();
+            if (rows.getInt(1) < 2) {
+                throw new TestAbortedException(
+                        "anon/authenticated cluster roles absent on local PostgreSQL; Realtime script smoke needs Supabase roles");
+            }
         }
     }
 

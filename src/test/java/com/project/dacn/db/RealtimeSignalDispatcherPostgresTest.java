@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.opentest4j.TestAbortedException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
@@ -101,6 +102,7 @@ class RealtimeSignalDispatcherPostgresTest {
                 .getPath().substring(1);
         assertThat(scratchName).startsWith("verify_event_foundation_");
         database.migrate();
+        requireSupabaseRoles(database);
         script = Files.readString(
                 Path.of("src/main/resources/db/supabase/notification_realtime.sql"));
         try (Connection connection = DriverManager.getConnection(
@@ -129,6 +131,20 @@ class RealtimeSignalDispatcherPostgresTest {
                     "select id from users where user_id = 'user-task15'")) {
                 assertThat(rows.next()).isTrue();
                 inboxUserId = rows.getLong(1);
+            }
+        }
+    }
+
+    private static void requireSupabaseRoles(ExternalPostgresDatabase database) throws SQLException {
+        try (Connection connection = DriverManager.getConnection(
+                System.getenv("TEST_POSTGRES_URL"), database.username(), database.password());
+             Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery(
+                     "select count(*) from pg_roles where rolname in ('anon','authenticated')")) {
+            rows.next();
+            if (rows.getInt(1) < 2) {
+                throw new TestAbortedException(
+                        "anon/authenticated cluster roles absent on local PostgreSQL; Realtime dispatcher needs Supabase roles");
             }
         }
     }

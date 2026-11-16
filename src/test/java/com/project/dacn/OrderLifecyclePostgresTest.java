@@ -9,6 +9,7 @@ import com.project.dacn.common.time.DatabaseClock;
 import com.project.dacn.dto.request.order.StaffOrderStatusUpdateRequest;
 import com.project.dacn.dto.response.order.OrderResponse;
 import com.project.dacn.event.OrderEventReason;
+import com.project.dacn.integration.shipping.ghn.GhnClient;
 import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.messaging.outbox.OrderEventCodec;
@@ -816,6 +817,11 @@ class OrderLifecyclePostgresTest {
         @Bean
         com.project.dacn.service.order.ReservationPolicy reservationPolicy() {
             return new com.project.dacn.service.order.ReservationPolicy(false, false, false);
+        }
+
+        @Bean
+        GhnClient ghnClient() {
+            return org.mockito.Mockito.mock(GhnClient.class);
         }
 
         @Bean
