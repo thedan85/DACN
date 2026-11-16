@@ -196,7 +196,7 @@ class CartWriteConcurrencyPostgresTest {
     }
 
     @Test
-    void positiveJpaHintDoesNotSetPostgresLockTimeout() throws Exception {
+    void positiveJpaHintAppliesBoundedPostgresLockTimeout() throws Exception {
         Fixture fixture = seed(true);
         try (Connection holder = connect()) {
             holder.setAutoCommit(false);
@@ -210,9 +210,12 @@ class CartWriteConcurrencyPostgresTest {
             });
             long elapsed = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
             assertThat(outcome.error).isInstanceOf(jakarta.persistence.PessimisticLockException.class);
-            assertThat(elapsed).as("positive hint must not be mistaken for PostgreSQL SET LOCAL").isBetween(2800L, 6000L);
+            // Hibernate 7 applies a positive jakarta.persistence.lock.timeout as a
+            // bounded SET LOCAL lock_timeout; that 2s hint wins over the server's 3s.
+            assertThat(elapsed).as("positive hint applies its own bounded lock timeout")
+                    .isStrictlyBetween(1500L, 2750L);
             holder.rollback();
-            System.out.printf("Positive JPA hint 2000: server 3s timeout won, elapsed=%dms%n", elapsed);
+            System.out.printf("Positive JPA hint 2000: hint timeout won, elapsed=%dms%n", elapsed);
         }
     }
 

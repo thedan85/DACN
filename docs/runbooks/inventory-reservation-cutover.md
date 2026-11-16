@@ -114,21 +114,23 @@ Task 2 tests verify property defaults/all eight flag combinations across fresh c
 
 Local, invocation-owned PostgreSQL 16 verification ran against a dedicated Docker
 scratch database with Flyway head V36 and all three deployment flags at their
-disabled defaults. Full backend suite: 1601 tests, 1 failure, 0 errors, 10
-skipped; the retained failure is
-`CartWriteConcurrencyPostgresTest.positiveJpaHintDoesNotSetPostgresLockTimeout`,
-whose premise that a positive JPA lock hint is not applied as PostgreSQL
-`SET LOCAL lock_timeout` no longer holds under Hibernate 7.4.5. It is not waived
-and is not proof of a product defect. The local checkout `phase=after` harness
-measured p95 `43.6269ms` over 60 samples on that Docker database; this is not a
-same-environment comparison with the hosted Task 0 baseline (`2777.443600ms`).
-Expiry burst p95 was `5527.214ms` over 50 claims with zero processing failures,
-and the local 195-interest simulation admitted 20 leases with 175 REST-only.
-Real browser flows exercised stale-stock warnings, preserved checkout details,
-last-item rejection, and REST-only refocus recovery against the local backend.
-Two PostgreSQL tests that require Supabase `anon`/`authenticated` cluster roles
-abort on a stock local container; no cluster roles were created. These are local
-scratch proofs only. They do not authorize production inspection, data repair,
+disabled defaults. Final full backend suite (clean, uncontended): **1601 tests,
+0 failures, 0 errors, 10 skipped, exit 0**; `-DskipTests package` exit 0. The
+10 skips are Rabbit broker classes only. Two Realtime-script classes that
+require Supabase `anon`/`authenticated` cluster roles abort with `Tests run: 0`
+and provide no local PostgreSQL proof; no cluster roles were created. A corrected
+`CartWriteConcurrencyPostgresTest` now asserts the Hibernate 7.4.5 behavior that
+a positive JPA lock hint applies its own bounded `SET LOCAL lock_timeout` (~2 s)
+and wins over the test's server `3s` setting; this corrects an invalidated test
+premise, not a product defect, and no production code uses a positive JPA lock
+hint. The local checkout `phase=after` harness measured p95 `43.6269ms` over 60
+samples on that Docker database; this is not a same-environment comparison with
+the hosted Task 0 baseline (`2777.443600ms`). Expiry burst p95 was `5527.214ms`
+over 50 claims with zero processing failures, and the local 195-interest
+simulation admitted 20 leases with 175 REST-only. Real browser flows exercised
+stale-stock warnings, preserved checkout details, last-item rejection, and
+REST-only refocus recovery against the local backend. These are local scratch
+proofs only. They do not authorize production inspection, data repair,
 deployment, policy activation, provider sandbox work, or live enablement. Actual
 legacy cutover, hosted Realtime enablement, provider evidence, and notification
 delivery remain explicitly blocked without separate approval.
