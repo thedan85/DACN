@@ -19,6 +19,7 @@ import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.order.OrderItem;
 import com.project.dacn.entity.payment.Payment;
+import com.project.dacn.integration.shipping.ghn.GhnClient;
 import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.messaging.outbox.OrderEventOutbox;
@@ -82,6 +83,9 @@ class StaffOrderServiceTest {
     @Mock
     DatabaseClock clock;
 
+    @Mock
+    GhnClient ghnClient;
+
     OrderMapper orderMapper = Mappers.getMapper(OrderMapper.class);
 
     PaymentMapper paymentMapper = Mappers.getMapper(PaymentMapper.class);
@@ -97,7 +101,8 @@ class StaffOrderServiceTest {
                 variantRepository, responseAssembler, outbox, clock,
                 new com.project.dacn.service.order.ReservationPolicy(false, false, false));
         ReflectionTestUtils.setField(lifecycleService, "transactionLockBounds", false);
-        service = new OrderService(orderRepository, responseAssembler, lifecycleService);
+        service = new OrderService(orderRepository, responseAssembler, lifecycleService,
+                orderItemRepository, variantRepository, paymentRepository, ghnClient);
     }
 
     @Test

@@ -75,6 +75,15 @@ public class Order extends BaseEntity {
     @OneToOne(mappedBy = "order", fetch = FetchType.LAZY)
     private Payment payment;
 
+    @Column(name = "shipping_province")
+    private String shippingProvince;
+
+    @Column(name = "shipping_ward")
+    private String shippingWard;
+
+    @Column(name = "ghn_order_code", unique = true, length = 50)
+    private String ghnOrderCode;
+
     @Override
     protected String getBusinessId() {
         return orderId;

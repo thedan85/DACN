@@ -36,6 +36,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
@@ -186,5 +187,42 @@ class PaymentSettlementPersistenceTest {
         assertThat(paymentRepository.findOrderIdByPaymentId(payment.getPaymentId())).contains(order.getOrderId());
         assertThat(entityManager.contains(order)).isFalse();
         assertThat(entityManager.contains(payment)).isFalse();
+    }
+
+    @Test
+    void findWithOrderLoadsPaymentByOrderBusinessId() {
+        Payment found = paymentRepository.findWithOrderByOrder_OrderId(order.getOrderId())
+                .orElseThrow();
+
+        assertThat(found.getPaymentId()).isEqualTo(payment.getPaymentId());
+        assertThat(found.getOrder().getOrderId()).isEqualTo(order.getOrderId());
+    }
+
+    @Test
+    void refundTransitionMatchesPaymentFailedByConcurrentCancel() {
+        paymentRepository.settle(payment.getPaymentId(), PaymentStatus.PENDING,
+                PaymentStatus.FAILED, null, Instant.now());
+
+        int updated = paymentRepository.settleFrom(payment.getPaymentId(),
+                List.of(PaymentStatus.PENDING, PaymentStatus.FAILED),
+                PaymentStatus.REFUND_REQUIRED, "TX1", Instant.now());
+
+        assertThat(updated).isEqualTo(1);
+        assertThat(paymentRepository.findByPaymentId(payment.getPaymentId()).orElseThrow()
+                .getStatus()).isEqualTo(PaymentStatus.REFUND_REQUIRED);
+    }
+
+    @Test
+    void refundTransitionDoesNotDowngradeConfirmedPayment() {
+        paymentRepository.settle(payment.getPaymentId(), PaymentStatus.PENDING,
+                PaymentStatus.CONFIRMED, "TX1", Instant.now());
+
+        int updated = paymentRepository.settleFrom(payment.getPaymentId(),
+                List.of(PaymentStatus.PENDING, PaymentStatus.FAILED),
+                PaymentStatus.REFUND_REQUIRED, "TX2", Instant.now());
+
+        assertThat(updated).isZero();
+        assertThat(paymentRepository.findByPaymentId(payment.getPaymentId()).orElseThrow()
+                .getStatus()).isEqualTo(PaymentStatus.CONFIRMED);
     }
 }

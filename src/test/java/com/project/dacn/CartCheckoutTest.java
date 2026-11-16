@@ -174,12 +174,15 @@ class CartCheckoutTest {
                     .thenAnswer(inv -> inv.getArgument(0));
 
             OrderResponse o = service.checkout(1L,
-                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD));
+                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD));
 
             assertThat(o.status()).isEqualTo(OrderStatus.PENDING);
             assertThat(o.total()).isEqualByComparingTo(new BigDecimal("20.00"));
             assertThat(o.items()).hasSize(1);
             assertThat(o.items().get(0).attributes()).isNotNull().isEmpty();
+            assertThat(o.shippingProvince()).isEqualTo("Hồ Chí Minh");
+            assertThat(o.shippingWard()).isEqualTo("Phường Chợ Quán");
+            assertThat(o.ghnOrderCode()).isNull();
             var order = inOrder(orderLifecycleService, cartItemRepository);
             order.verify(orderLifecycleService).recordPlaced(
                     any(Order.class), any(Payment.class),
@@ -196,7 +199,7 @@ class CartCheckoutTest {
                     .thenReturn(List.of());
 
             assertThatThrownBy(() -> service.checkout(1L,
-                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
+                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD)))
                     .isInstanceOf(IllegalArgumentException.class);
             verify(orderRepository, never()).save(any(Order.class));
         }
@@ -209,7 +212,7 @@ class CartCheckoutTest {
                     .thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.checkout(1L,
-                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
+                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD)))
                     .isInstanceOf(IllegalArgumentException.class);
             verify(orderRepository, never()).save(any(Order.class));
             verify(cartRepository, never()).save(any(Cart.class));
@@ -226,7 +229,7 @@ class CartCheckoutTest {
                     .thenReturn(List.of(existing));
 
             assertThatThrownBy(() -> service.checkout(1L,
-                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
+                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD)))
                     .isInstanceOf(OutOfStockException.class);
             verify(orderRepository, never()).save(any(Order.class));
             verify(cartItemRepository, never()).deleteByCart_Id(any());
@@ -243,7 +246,7 @@ class CartCheckoutTest {
             when(variantRepository.decrementStockNative(20L, 2)).thenReturn(0);
 
             assertThatThrownBy(() -> service.checkout(1L,
-                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
+                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD)))
                     .isInstanceOf(OutOfStockException.class);
             verify(orderRepository, never()).save(any(Order.class));
         }
@@ -366,10 +369,16 @@ class CartCheckoutTest {
                     .cart(cart).variant(variant).quantity(2).build());
 
             OrderResponse o = service.checkout(customer.getId(),
-                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD));
+                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD));
 
             assertThat(o.status()).isEqualTo(OrderStatus.PENDING);
             assertThat(o.total()).isEqualByComparingTo(new BigDecimal("20.00"));
+            assertThat(o.shippingProvince()).isEqualTo("Hồ Chí Minh");
+            assertThat(o.shippingWard()).isEqualTo("Phường Chợ Quán");
+            assertThat(orderRepository.findByOrderId(o.orderId()).orElseThrow().getShippingProvince())
+                    .isEqualTo("Hồ Chí Minh");
+            assertThat(orderRepository.findByOrderId(o.orderId()).orElseThrow().getShippingWard())
+                    .isEqualTo("Phường Chợ Quán");
             assertThat(orderRepository.findAll()).hasSize(1);
             var json = new tools.jackson.databind.ObjectMapper().valueToTree(o);
             assertThat(json.has("paymentExpiresAt")).as("nullable deadline read contract").isTrue();

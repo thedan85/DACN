@@ -11,6 +11,7 @@ import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.security.JwtService;
 import com.project.dacn.security.RateLimiter;
+import com.project.dacn.integration.shipping.ghn.GhnClient;
 import com.project.dacn.service.catalog.CatalogCache;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -77,6 +78,9 @@ class SecurityRulesIntegrationTest {
 
     @MockitoSpyBean
     RealtimeAdmissionService admissionService;
+
+    @MockitoBean
+    GhnClient ghnClient;
 
     @Autowired
     private MockMvc mockMvc;
@@ -428,6 +432,8 @@ class SecurityRulesIntegrationTest {
                 Arguments.of(HttpMethod.POST, "/api/v1/uploads/variants/VAR_1"),
 
                 Arguments.of(HttpMethod.PATCH, "/api/v1/staff/orders/ORD_1/status"),
+                Arguments.of(HttpMethod.POST, "/api/v1/staff/orders/ORD_1/payment/confirm"),
+                Arguments.of(HttpMethod.POST, "/api/v1/staff/orders/ORD_1/ship"),
                 Arguments.of(HttpMethod.POST, "/api/v1/admin/orders/ORD_1/complete"),
 
                 Arguments.of(HttpMethod.DELETE, "/api/v1/cart"),
@@ -436,6 +442,7 @@ class SecurityRulesIntegrationTest {
                 Arguments.of(HttpMethod.DELETE, "/api/v1/cart/items/1"),
                 Arguments.of(HttpMethod.POST, "/api/v1/cart/checkout"),
                 Arguments.of(HttpMethod.POST, "/api/v1/payments/vnpay/ORD_1"),
+                Arguments.of(HttpMethod.POST, "/api/v1/payments/vietqr/ORD_1"),
 
                 Arguments.of(HttpMethod.PATCH, "/api/v1/auth/me"),
                 Arguments.of(HttpMethod.POST, "/api/v1/auth/change-password"));
@@ -475,7 +482,9 @@ class SecurityRulesIntegrationTest {
                 "/api/v1/media",
                 "/api/v1/media/no-such-id",
                 "/api/v1/webhooks/vnpay/ipn",
-                "/api/v1/webhooks/vnpay/return");
+                "/api/v1/webhooks/vnpay/return",
+                "/api/v1/shipping/ghn/provinces",
+                "/api/v1/shipping/ghn/wards?provinceId=1000001");
     }
 
     @ParameterizedTest(name = "{0} is public")

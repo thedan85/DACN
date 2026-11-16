@@ -212,7 +212,8 @@ public class CartService {
                         .multiply(BigDecimal.valueOf(item.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         Order order = orderMapper.toOrder(new OrderCreateRequest(
-                customer.getCustomerId(), total, req.address(), req.recipientName(), req.phone()));
+                customer.getCustomerId(), total, req.address(), req.recipientName(), req.phone(),
+                req.province(), req.ward()));
         order.setCustomer(customer);
         if (method != PaymentMethod.COD && reservationPolicy.isActive()) {
             order.setPaymentExpiresAt(databaseClock.now().plus(Duration.ofMinutes(15)));

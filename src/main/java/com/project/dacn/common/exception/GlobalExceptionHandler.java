@@ -151,6 +151,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(502, "UPLOAD_FAILED: " + ex.getMessage(), null));
     }
 
+    @ExceptionHandler(com.project.dacn.integration.shipping.ShippingException.class)
+    public ResponseEntity<ApiResponse<?>> handleShipping(
+            com.project.dacn.integration.shipping.ShippingException ex) {
+        return ResponseEntity.status(502).body(ApiResponse.of(502, ex.getMessage(), null));
+    }
+
     @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
     public ResponseEntity<ApiResponse<?>> handleOversize(
             org.springframework.web.multipart.MaxUploadSizeExceededException ex) {
@@ -202,6 +208,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(503)
                 .body(ApiResponse.of(503, ex.getMessage(), null));
     }
+
+    @ExceptionHandler(VietQrNotConfiguredException.class)
+    public ResponseEntity<ApiResponse<?>> handleVietQrNotConfigured(
+            VietQrNotConfiguredException ex) {
+        log.error("VietQR requested but configuration is missing: {}", ex.getMessage());
+        return ResponseEntity.status(503)
+                .body(ApiResponse.of(503, ex.getMessage(), null));
+    }
+
 
     @ExceptionHandler(InvalidPasswordException.class)
     public ResponseEntity<ApiResponse<?>> handleInvalidPassword(InvalidPasswordException ex) {

@@ -28,6 +28,9 @@ public interface OrderMapper {
     @Mapping(target = "paymentExpiresAt", ignore = true)
     @Mapping(target = "cancellationReason", ignore = true)
     @Mapping(target = "stockReleasedAt", ignore = true)
+    @Mapping(source = "province", target = "shippingProvince")
+    @Mapping(source = "ward", target = "shippingWard")
+    @Mapping(target = "ghnOrderCode", ignore = true)
     Order toOrder(OrderCreateRequest request);
 
     @Mapping(target = "items", ignore = true)
@@ -45,7 +48,8 @@ public interface OrderMapper {
         OrderResponse base = toOrderResponse(order);
         return new OrderResponse(base.orderId(), base.customerId(), base.customerName(),
                 base.status(), base.total(), base.address(), base.recipientName(),
-                base.phone(), items == null ? List.of() : items,
+                base.phone(), base.shippingProvince(), base.shippingWard(),
+                base.ghnOrderCode(), items == null ? List.of() : items,
                 base.createdAt(), base.updatedAt(), payment,
                 base.paymentExpiresAt(), base.cancellationReason());
     }

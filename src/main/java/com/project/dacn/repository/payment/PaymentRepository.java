@@ -27,6 +27,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     @EntityGraph(attributePaths = "order")
     List<Payment> findByOrder_OrderIdIn(Collection<String> orderIds);
 
+    @EntityGraph(attributePaths = "order")
+    Optional<Payment> findWithOrderByOrder_OrderId(String orderId);
+
     /** Payment and its order in one query, scoped to the owning customer. */
     @EntityGraph(attributePaths = "order")
     @Query("select p from Payment p where p.order.orderId = :orderId "
@@ -55,4 +58,18 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
                @Param("next") PaymentStatus next,
                @Param("transactionId") String transactionId,
                @Param("paidAt") Instant paidAt);
+
+    /**
+     * Refund transition that also matches a concurrent staff cancel: the cancel
+     * may commit PENDING -> FAILED after settlement read the payment but before
+     * settlement acquired the order lock.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Payment p set p.status = :next, p.transactionId = :transactionId, "
+            + "p.paidAt = :paidAt where p.paymentId = :paymentId and p.status in :current")
+    int settleFrom(@Param("paymentId") String paymentId,
+                   @Param("current") Collection<PaymentStatus> current,
+                   @Param("next") PaymentStatus next,
+                   @Param("transactionId") String transactionId,
+                   @Param("paidAt") Instant paidAt);
 }

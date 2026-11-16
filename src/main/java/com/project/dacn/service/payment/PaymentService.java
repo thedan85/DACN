@@ -8,10 +8,13 @@ import com.project.dacn.common.exception.InvalidOrderStateException;
 import com.project.dacn.common.time.DatabaseClock;
 import com.project.dacn.dto.response.payment.PaymentResponse;
 import com.project.dacn.dto.response.payment.PaymentUrlResponse;
+import com.project.dacn.dto.response.payment.PaymentVietQrResponse;
 import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.payment.Payment;
-import com.project.dacn.integration.payment.vnpay.VnpayUrlBuilder;
 import com.project.dacn.integration.payment.PaymentSettlementService;
+import com.project.dacn.integration.payment.vietqr.VietQrProperties;
+import com.project.dacn.integration.payment.vietqr.VietQrUrlBuilder;
+import com.project.dacn.integration.payment.vnpay.VnpayUrlBuilder;
 import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
@@ -39,8 +42,10 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
     private final VnpayUrlBuilder vnpayUrlBuilder;
-    private final PaymentMapper paymentMapper;
+    private final VietQrUrlBuilder vietQrUrlBuilder;
+    private final VietQrProperties vietQrProperties;
     private final PaymentSettlementService settlementService;
+    private final PaymentMapper paymentMapper;
     private final ReservationPolicy reservationPolicy;
     private final DatabaseClock clock;
     private final OrderItemRepository orderItemRepository;
@@ -67,8 +72,10 @@ public class PaymentService {
         Payment payment = paymentRepository.findWithLockByOrder_OrderId(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("payment not found: " + orderId));
         entityManager.refresh(payment, LockModeType.PESSIMISTIC_WRITE);
-        if (payment.getMethod() == PaymentMethod.COD) {
-            throw new IllegalArgumentException("COD order does not need a payment URL");
+        if (payment.getMethod() == PaymentMethod.COD
+                || payment.getMethod() == PaymentMethod.VIETQR) {
+            throw new IllegalArgumentException(
+                    "payment method does not need a VNPay URL: " + payment.getMethod());
         }
         if (payment.getStatus() != PaymentStatus.PENDING) {
             throw new IllegalArgumentException("payment is not pending: " + payment.getStatus());
@@ -115,6 +122,48 @@ public class PaymentService {
     @Transactional(readOnly = true)
     public PaymentResponse get(Long customerId, String orderId) {
         return paymentMapper.toPaymentResponse(requirePayment(customerId, orderId));
+    }
+
+    @Transactional(readOnly = true)
+    public PaymentVietQrResponse createVietQr(Long customerId, String orderId) {
+        Payment payment = requirePayment(customerId, orderId);
+        if (payment.getMethod() != PaymentMethod.VIETQR) {
+            throw new IllegalArgumentException(
+                    "payment is not a VIETQR payment: " + payment.getMethod());
+        }
+        if (payment.getStatus() != PaymentStatus.PENDING) {
+            throw new IllegalArgumentException("payment is not pending: " + payment.getStatus());
+        }
+        if (payment.getOrder().getStatus() != OrderStatus.PENDING) {
+            throw new IllegalArgumentException(
+                    "order is not pending: " + payment.getOrder().getStatus());
+        }
+        String qrUrl = vietQrUrlBuilder.build(orderId, wholeVnd(payment.getAmount()));
+        log.info("Created VietQR URL for order {} payment {}", orderId, payment.getPaymentId());
+        return new PaymentVietQrResponse(qrUrl,
+                vietQrProperties.getBankId(), vietQrProperties.getAccountNo(),
+                vietQrProperties.getAccountName(), payment.getAmount(), orderId);
+    }
+
+    @Transactional
+    public PaymentResponse confirmVietQrPayment(String orderId) {
+        Payment payment = paymentRepository.findByOrder_OrderId(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("payment not found: " + orderId));
+        if (payment.getMethod() != PaymentMethod.VIETQR) {
+            throw new IllegalArgumentException(
+                    "payment is not a VIETQR payment: " + payment.getMethod());
+        }
+        var result = settlementService.settle(orderId, payment.getAmount(), true, null);
+        if (result == PaymentSettlementService.Result.NOT_FOUND) {
+            throw new ResourceNotFoundException("payment not found: " + orderId);
+        }
+        if (result == PaymentSettlementService.Result.AMOUNT_MISMATCH) {
+            throw new IllegalStateException("VietQR amount mismatch for order " + orderId);
+        }
+        Payment settled = paymentRepository.findWithOrderByOrder_OrderId(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("payment not found: " + orderId));
+        log.info("Confirmed VietQR payment for order {}: {}", orderId, settled.getStatus());
+        return paymentMapper.toPaymentResponse(settled);
     }
 
     /**

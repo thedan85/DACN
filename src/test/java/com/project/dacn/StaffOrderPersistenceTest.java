@@ -16,6 +16,7 @@ import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.order.OrderItem;
 import com.project.dacn.entity.payment.Payment;
 import com.project.dacn.event.OrderEventReason;
+import com.project.dacn.integration.shipping.ghn.GhnClient;
 import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.messaging.outbox.OrderEventOutbox;
@@ -56,6 +57,9 @@ import static org.mockito.Mockito.when;
 @Import({OrderService.class, OrderLifecycleService.class, OrderResponseAssembler.class,
         StaffOrderPersistenceTest.MapperConfig.class})
 class StaffOrderPersistenceTest {
+
+    @MockitoBean
+    GhnClient ghnClient;
 
     @TestConfiguration
     static class MapperConfig {

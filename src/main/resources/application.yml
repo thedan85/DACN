@@ -137,6 +137,12 @@ payment:
     endpoint: ${MOMO_ENDPOINT:}
     redirect-url: ${MOMO_REDIRECT_URL:}
     ipn-url: ${MOMO_IPN_URL:}
+  vietqr:
+    bank-id: ${VIETQR_BANK_ID:}
+    account-no: ${VIETQR_ACCOUNT_NO:}
+    account-name: ${VIETQR_ACCOUNT_NAME:}
+    template: ${VIETQR_TEMPLATE:compact2}
+    image-base-url: ${VIETQR_IMAGE_BASE_URL:https://img.vietqr.io/image}
 
 app:
   inventory:
@@ -176,6 +182,7 @@ shipping:
     base-url: ${GHTK_BASE_URL:}
     token: ${GHTK_TOKEN:}
   ghn:
-    base-url: ${GHN_BASE_URL:https://online-gateway.ghn.vn/shiip/public-api}
+    base-url: ${GHN_BASE_URL:}
     token: ${GHN_TOKEN:}
     shop-id: ${GHN_SHOP_ID:}
+    webhook-secret: ${GHN_WEBHOOK_SECRET:}

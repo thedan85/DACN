@@ -3,6 +3,7 @@ package com.project.dacn;
 import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.response.order.OrderResponse;
+import com.project.dacn.integration.shipping.ghn.GhnClient;
 import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.catalog.MediaRepository;
@@ -43,6 +44,7 @@ class CustomerOrderServiceTest {
     @Mock VariantRepository variantRepository;
     @Mock MediaRepository mediaRepository;
     @Mock PaymentRepository paymentRepository;
+    @Mock GhnClient ghnClient;
     OrderService service;
 
     @BeforeEach
@@ -50,7 +52,8 @@ class CustomerOrderServiceTest {
         OrderResponseAssembler assembler = new OrderResponseAssembler(
                 orderItemRepository, orderMapper, paymentMapper, mediaRepository);
         service = new OrderService(orderRepository, assembler,
-                mock(OrderLifecycleService.class));
+                mock(OrderLifecycleService.class), orderItemRepository,
+                variantRepository, paymentRepository, ghnClient);
     }
 
     @Test
