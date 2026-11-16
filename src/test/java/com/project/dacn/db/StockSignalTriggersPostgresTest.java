@@ -81,9 +81,9 @@ class StockSignalTriggersPostgresTest {
                     select count(*) from flyway_schema_history
                      where version not in ('1','2','3','4','5','6','7','8','9','10','11','12','13',
                                            '14','15','16','17','18','19','20','21','22','23','24',
-                                           '25','26','27','28','29','30','31','32','33','34','35','36')
+                                           '25','26','27','28','29','30','31','32','33','34','35','36','37')
                        and success
-                    """)).as("V36 remains the highest migration").isZero();
+                    """)).as("V37 remains the highest migration").isZero();
             assertThat(count(connection,
                     "select count(*) from pg_namespace where nspname = 'realtime'"))
                     .as("Flyway does not create the Supabase realtime schema")
@@ -96,7 +96,7 @@ class StockSignalTriggersPostgresTest {
                     "select count(*) from pg_namespace where nspname = 'realtime'"))
                     .as("The operator script must not require or create the realtime schema")
                     .isZero();
-            System.out.println("StockSignalTriggers PostgreSQL evidence: Flyway V34/V35/V36 successful, "
+            System.out.println("StockSignalTriggers PostgreSQL evidence: Flyway V34/V35/V36/V37 successful, "
                     + "realtime schema absent before and after installation, triggers="
                     + operatorTriggerCount(connection));
         }

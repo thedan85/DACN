@@ -12,5 +12,9 @@ public record NotificationResponse(
         NotificationType type,
         NotificationStatus status,
         Instant createdAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        String orderId,
+        String eventType,
+        Long orderSequence,
+        Instant occurredAt) {
 }
