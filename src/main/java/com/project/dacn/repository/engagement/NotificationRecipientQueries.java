@@ -33,6 +33,19 @@ public class NotificationRecipientQueries {
             WHERE u.user_id = :businessUserId AND u.user_status = 'ACTIVE'
             """;
 
+    /**
+     * Server-owned customer lookup by the event's numeric internal user ID.
+     * {@link #customerRecipient(String)} filters the business user_id column and
+     * must NOT be used for an OrderEvent, whose customerUserId carries this
+     * internal numeric id serialized as a string.
+     */
+    private static final String CUSTOMER_BY_INTERNAL_ID_SQL = """
+            SELECT u.id, u.user_id, u.user_email, lower(r.role_code) AS role_code
+            FROM users u
+            JOIN roles r ON r.id = u.role_id AND r.is_deleted = false
+            WHERE u.id = :userId AND u.user_status = 'ACTIVE'
+            """;
+
     private static final String COMPANY_SQL = """
             SELECT DISTINCT u.id, u.user_id, lower(r.role_code) AS role_code
             FROM users u
@@ -70,6 +83,12 @@ public class NotificationRecipientQueries {
     public Optional<CustomerRecipient> customerRecipient(String customerBusinessUserId) {
         return jdbcTemplate.query(CUSTOMER_SQL,
                 new MapSqlParameterSource("businessUserId", customerBusinessUserId),
+                CUSTOMER_MAPPER).stream().findFirst();
+    }
+
+    public Optional<CustomerRecipient> customerRecipientByInternalId(long internalUserId) {
+        return jdbcTemplate.query(CUSTOMER_BY_INTERNAL_ID_SQL,
+                new MapSqlParameterSource("userId", internalUserId),
                 CUSTOMER_MAPPER).stream().findFirst();
     }
 
