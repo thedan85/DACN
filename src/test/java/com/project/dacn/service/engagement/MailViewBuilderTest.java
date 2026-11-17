@@ -116,6 +116,9 @@ class MailViewBuilderTest {
         assertThat(first.getRecipients(Message.RecipientType.TO)).hasSize(1);
         assertThat(((InternetAddress) first.getRecipients(Message.RecipientType.TO)[0]).getAddress())
                 .isEqualTo("victim@example.invalid");
+        System.out.println("TASK10_EVIDENCE messageId=" + first.getMessageID()
+                + " deterministic=" + first.getMessageID().equals(second.getMessageID())
+                + " recipientInId=" + first.getMessageID().contains("victim"));
     }
 
     private static OrderEvent event(OrderEventType type, PaymentMethod method,

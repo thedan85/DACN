@@ -161,6 +161,9 @@ class OrderEmailServicePostgresTest {
         assertThat(row.completedAt()).isNotNull();
         assertThat(capture.messageReceived()).isTrue();
         assertThat(capture.connectionCount()).isEqualTo(1);
+        System.out.println("TASK10_EVIDENCE accepted state=" + row(currentEventId()).state()
+                + " connectionCount=" + capture.connectionCount()
+                + " messageReceived=" + capture.messageReceived());
     }
 
     @Test
@@ -262,6 +265,9 @@ class OrderEmailServicePostgresTest {
         assertThat(row(currentEventId()).attemptCount()).isZero();
         assertThat(capture.connectionCount()).isZero();
         assertThat(stateSnapshot()).isEqualTo(before);
+        System.out.println("TASK10_EVIDENCE deadline state=" + row(currentEventId()).state()
+                + " connectionCount=" + capture.connectionCount()
+                + " orderUnchanged=" + stateSnapshot().equals(before));
     }
 
     @Test
