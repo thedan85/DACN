@@ -45,6 +45,18 @@ class NotificationRevisionHintPostgresTest {
 
     private static final String CUSTOMER_BUSINESS_ID = "USR_t3_cust";
 
+    /** Local scratch PG has no Supabase cluster roles; create the prerequisites the operator script checks. */
+    private static final String ROLE_PRECONDITION = """
+            do $$ begin
+              if not exists (select 1 from pg_roles where rolname = 'anon') then
+                create role anon nologin;
+              end if;
+              if not exists (select 1 from pg_roles where rolname = 'authenticated') then
+                create role authenticated nologin;
+              end if;
+            end $$;
+            """;
+
     private static final String STUBS = """
             create schema if not exists realtime;
             create table if not exists realtime.messages (
@@ -85,6 +97,7 @@ class NotificationRevisionHintPostgresTest {
             statement.execute(triggerScript);
             statement.execute(triggerScript);
             statement.execute(STUBS);
+            statement.execute(ROLE_PRECONDITION);
             statement.execute(foundationScript);
         }
         System.out.println("NotificationRevisionHint scratch identity: " + h.scratchDatabaseName);
