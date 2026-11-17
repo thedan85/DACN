@@ -1,0 +1,7 @@
+[((${subject}))]
+
+[((${message}))]
+
+View your order: [((${orderLink}))]
+
+[((${footer}))]

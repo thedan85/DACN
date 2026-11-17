@@ -161,6 +161,11 @@ app:
   notifications:
     delivery-enabled: ${NOTIFICATIONS_DELIVERY_ENABLED:false}
     relay-interval-ms: 500
+    mail:
+      # Trusted, server-owned. No event, browser or recipient value is used here.
+      storefront-base-url: ${STOREFRONT_BASE_URL:http://localhost:3000}
+      from-address: ${MAIL_FROM_ADDRESS:no-reply@notifications.local}
+      message-id-domain: ${MAIL_MESSAGE_ID_DOMAIN:notifications.local}
     rabbit:
       management-url: ${RABBITMQ_MANAGEMENT_URL:http://localhost:15672}
       management-username: ${RABBITMQ_MANAGEMENT_USERNAME:guest}
