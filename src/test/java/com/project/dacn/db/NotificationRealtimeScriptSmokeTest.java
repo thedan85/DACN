@@ -394,7 +394,8 @@ class NotificationRealtimeScriptSmokeTest {
                 assertThat(count(connection, """
                         select count(*) from information_schema.columns
                         where table_schema = 'public' and table_name = 'users' and column_name = 'inbox_revision'
-                        """)).isZero();
+                        and data_type = 'bigint' and is_nullable = 'NO' and column_default = '0'
+                        """)).isEqualTo(1);
             } finally {
                 connection.rollback();
             }
