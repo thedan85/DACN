@@ -22,6 +22,7 @@ import org.junit.jupiter.api.parallel.ExecutionMode;
 import org.junit.jupiter.api.parallel.ResourceLock;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -333,11 +334,32 @@ class Task16JourneyPostgresRabbitTest {
         h.publishToQueue(RabbitTopology.EMAIL_QUEUE, eventA, 0, null);
         assertThat(h.deliverInapp()).isTrue();
         assertThat(h.deliverEmail()).isTrue();
-        // (3) A retry message: the real retry topology dead-letters TTL-expired
-        // retries back to the main queue, so a retry arrives there carrying the
-        // x-retry-attempt header. Deliver that real broker message.
-        h.publishToQueue(RabbitTopology.INAPP_QUEUE, eventA, 1, null);
-        assertThat(h.deliverInapp()).as("retry message delivered through real broker").isTrue();
+        // (3) Publish a retry (x-retry-attempt=1) directly to the REAL 10s retry
+        // queue. Its x-message-ttl=10000 dead-letters the message back to the
+        // main in-app queue via the retry exchange. Exercise that broker TTL/DLX
+        // path instead of short-circuiting straight to the main queue.
+        String retryQueue = NotificationChannel.INAPP.retryQueue(Duration.ofSeconds(10));
+        h.publishToQueue(retryQueue, eventA, 1, null);
+        long retryDeadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        boolean retryQueued = false;
+        while (System.nanoTime() < retryDeadline) {
+            if (h.count(retryQueue) == 1) {
+                retryQueued = true;
+                break;
+            }
+            Thread.sleep(100);
+        }
+        assertThat(retryQueued).as("retry queue received the message").isTrue();
+        boolean ttlMoved = false;
+        while (System.nanoTime() < retryDeadline) {
+            if (h.count(retryQueue) == 0 && h.count(RabbitTopology.INAPP_QUEUE) == 1) {
+                ttlMoved = true;
+                break;
+            }
+            Thread.sleep(100);
+        }
+        assertThat(ttlMoved).as("TTL dead-letter moved the retry from the retry queue to main").isTrue();
+        assertThat(h.deliverInapp()).as("retry message delivered through real broker TTL path").isTrue();
         // (4) Manual DLQ replay of the ACTUAL quarantined in-app message.
         // Read the real quarantined message (body, headers, message id, timestamp
         // and embedded occurredAt preserved), then republish those exact bytes and
@@ -399,7 +421,8 @@ class Task16JourneyPostgresRabbitTest {
 
         System.out.println("TASK16_EVIDENCE_SCENARIO5 replayPaths noRows/noRedelivery/noRetry/actualDlqReplay"
                 + " notifications=0 revisions=0 smtp=0 quarantineIdentityAndTimePreserved=true"
-                + " exact30=TOO_OLD 29d23h=OK nearDuplicateDedup=true");
+                + " exact30=TOO_OLD 29d23h=OK nearDuplicateDedup=true"
+                + " retryTtl=10s retryQueueToMain=true");
     }
 
     @Test

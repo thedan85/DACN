@@ -87,6 +87,9 @@ public final class Task16JourneyHarness implements AutoCloseable {
     public static final String ADMIN = "USR_t16_admin";
     public static final String EMPLOYEE = "USR_t16_emp";
 
+    /** Set at constructor entry; cleared on success. Lets create() clean a partial instance. */
+    private static Task16JourneyHarness constructing;
+
     public final ExternalPostgresDatabase database;
     public final String scratchDatabaseName;
     public final HikariDataSource dataSource;
@@ -138,6 +141,7 @@ public final class Task16JourneyHarness implements AutoCloseable {
     public final Instant dbNow;
 
     private Task16JourneyHarness() throws Exception {
+        constructing = this;
         database = ExternalPostgresDatabase.create();
         scratchDatabaseName = URI.create(database.jdbcUrl().substring("jdbc:".length()))
                 .getPath().substring(1);
@@ -211,10 +215,32 @@ public final class Task16JourneyHarness implements AutoCloseable {
         resetCapture();
         System.out.println("TASK16_HARNESS_READY scratch=" + scratchDatabaseName
                 + " migratedThrough=V38 rabbitTopologyOwned=true");
+        constructing = null;
     }
 
     public static Task16JourneyHarness create() throws Exception {
-        return new Task16JourneyHarness();
+        try {
+            Task16JourneyHarness created = new Task16JourneyHarness();
+            constructing = null;
+            return created;
+        } catch (Throwable failure) {
+            Task16JourneyHarness partial = constructing;
+            constructing = null;
+            if (partial != null) {
+                try {
+                    partial.close();
+                } catch (Throwable cleanupFailure) {
+                    failure.addSuppressed(cleanupFailure);
+                }
+            }
+            if (failure instanceof Exception e) {
+                throw e;
+            }
+            if (failure instanceof Error e) {
+                throw e;
+            }
+            throw new IllegalStateException(failure);
+        }
     }
 
     /** Rebuild the loopback SMTP peer and the real email components that depend on it. */
@@ -508,20 +534,24 @@ public final class Task16JourneyHarness implements AutoCloseable {
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
         }
-        database.drop();
-        try (Connection admin = DriverManager.getConnection(
-                System.getenv("TEST_POSTGRES_URL"),
-                System.getenv("TEST_POSTGRES_USERNAME"),
-                System.getenv("TEST_POSTGRES_PASSWORD"));
-             PreparedStatement statement = admin.prepareStatement(
-                     "select 1 from pg_database where datname = ?")) {
-            statement.setString(1, scratchDatabaseName);
-            try (ResultSet rows = statement.executeQuery()) {
-                assertThat(rows.next()).as("exact invocation-owned database must be gone").isFalse();
+        // A partial create() may fail before the scratch DB exists. Only drop
+        // this invocation's own database and only report cleanup if one was made.
+        if (database != null) {
+            database.drop();
+            try (Connection admin = DriverManager.getConnection(
+                    System.getenv("TEST_POSTGRES_URL"),
+                    System.getenv("TEST_POSTGRES_USERNAME"),
+                    System.getenv("TEST_POSTGRES_PASSWORD"));
+                 PreparedStatement statement = admin.prepareStatement(
+                         "select 1 from pg_database where datname = ?")) {
+                statement.setString(1, scratchDatabaseName);
+                try (ResultSet rows = statement.executeQuery()) {
+                    assertThat(rows.next()).as("exact invocation-owned database must be gone").isFalse();
+                }
             }
+            System.out.println("TASK16_CLEANUP scratch=" + scratchDatabaseName + " remaining=0"
+                    + " brokerTopologyRemoved=true");
         }
-        System.out.println("TASK16_CLEANUP scratch=" + scratchDatabaseName + " remaining=0"
-                + " brokerTopologyRemoved=true");
     }
 
     /** Controllable real clock; null override means live database time. */
