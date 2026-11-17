@@ -8,6 +8,7 @@ import com.project.dacn.messaging.rabbit.RabbitTopology;
 import com.project.dacn.messaging.rabbit.consumer.NotificationChannel;
 import com.project.dacn.messaging.rabbit.consumer.OrderEventAgeGuard;
 import com.project.dacn.messaging.rabbit.consumer.RabbitRetryPublisher;
+import org.springframework.amqp.core.Message;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
@@ -337,22 +338,34 @@ class Task16JourneyPostgresRabbitTest {
         // x-retry-attempt header. Deliver that real broker message.
         h.publishToQueue(RabbitTopology.INAPP_QUEUE, eventA, 1, null);
         assertThat(h.deliverInapp()).as("retry message delivered through real broker").isTrue();
-        // (4) Manual DLQ replay of the quarantined in-app message.
-        var dlq = h.peek(NotificationChannel.INAPP.dlq());
-        assertThat(dlq).as("quarantine evidence retained in DLQ").isNotNull();
-        assertThat(dlq.getMessageProperties().getMessageId()).isEqualTo(eventA.eventId().toString());
-        h.publishToQueue(RabbitTopology.INAPP_QUEUE, eventA, 1, "EVENT_TOO_OLD");
-        assertThat(h.deliverInapp()).isTrue();
+        // (4) Manual DLQ replay of the ACTUAL quarantined in-app message.
+        // Read the real quarantined message (body, headers, message id, timestamp
+        // and embedded occurredAt preserved), then republish those exact bytes and
+        // properties to the main queue. No event is rebuilt or re-encoded.
+        Message quarantined = h.peek(NotificationChannel.INAPP.dlq());
+        assertThat(quarantined).as("quarantine evidence retained in DLQ").isNotNull();
+        assertThat(quarantined.getMessageProperties().getMessageId())
+                .isEqualTo(eventA.eventId().toString());
+        // Rabbit returns short-string headers as LongString; compare by text.
+        assertThat(String.valueOf(quarantined.getMessageProperties().getHeaders()
+                .get(RabbitRetryPublisher.QUARANTINE_REASON_HEADER))).isEqualTo("EVENT_TOO_OLD");
+        assertThat(new String(quarantined.getBody())).contains(eventA.occurredAt().toString());
+        h.publishMessage(RabbitTopology.INAPP_QUEUE, quarantined);
+        assertThat(h.deliverInapp()).as("actual DLQ message replayed through real consumer").isTrue();
 
         assertThat(count("select count(*) from notifications where source_event_id = '"
                 + eventA.eventId() + "'")).as("no notification recreated by any replay path").isZero();
         assertThat(revisions()).as("no revision change after any replay path").isEqualTo(revisionSnapshot);
         assertThat(h.capture.connectionCount()).as("no SMTP connection after any replay path")
                 .isEqualTo(smtpBefore);
-        var finalDlq = h.peek(NotificationChannel.INAPP.dlq());
-        assertThat(finalDlq).isNotNull();
-        assertThat(finalDlq.getMessageProperties().getMessageId()).isEqualTo(eventA.eventId().toString());
-        assertThat(new String(finalDlq.getBody())).contains(eventA.occurredAt().toString());
+        Message finalDlq = h.peek(NotificationChannel.INAPP.dlq());
+        assertThat(finalDlq).as("quarantine retained after actual DLQ replay").isNotNull();
+        assertThat(finalDlq.getMessageProperties().getMessageId())
+                .as("event identity unchanged by DLQ replay").isEqualTo(eventA.eventId().toString());
+        assertThat(new String(finalDlq.getBody()))
+                .as("occurredAt unchanged by DLQ replay").contains(eventA.occurredAt().toString());
+        assertThat(String.valueOf(finalDlq.getMessageProperties().getHeaders()
+                .get(RabbitRetryPublisher.QUARANTINE_REASON_HEADER))).isEqualTo("EVENT_TOO_OLD");
 
         // Exact 30-day boundary and just-before-boundary with retained evidence.
         OrderEventAgeGuard guard = new OrderEventAgeGuard(h.clock);
@@ -384,7 +397,7 @@ class Task16JourneyPostgresRabbitTest {
                 + nearBoundary.eventId() + "'")).as("in-window duplicate creates no new row").isEqualTo(1);
         assertThat(revisions()).isEqualTo(revBeforeDup);
 
-        System.out.println("TASK16_EVIDENCE_SCENARIO5 replayPaths noRows/noRedelivery/noRetry/noDlq"
+        System.out.println("TASK16_EVIDENCE_SCENARIO5 replayPaths noRows/noRedelivery/noRetry/actualDlqReplay"
                 + " notifications=0 revisions=0 smtp=0 quarantineIdentityAndTimePreserved=true"
                 + " exact30=TOO_OLD 29d23h=OK nearDuplicateDedup=true");
     }

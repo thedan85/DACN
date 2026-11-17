@@ -301,6 +301,30 @@ public final class Task16JourneyHarness implements AutoCloseable {
         return null;
     }
 
+    /**
+     * Manual DLQ replay: republish the exact bytes and properties of an existing
+     * message (typically read with {@link #peek(String)}) to a target queue.
+     * No event is rebuilt or re-encoded, so body, headers, message id, timestamp
+     * and the embedded occurredAt are preserved byte-for-byte.
+     */
+    public final void publishMessage(String queue, Message message) throws Exception {
+        MessageProperties source = message.getMessageProperties();
+        Map<String, Object> headers = source.getHeaders() == null
+                ? new HashMap<>() : new HashMap<>(source.getHeaders());
+        int deliveryMode = source.getDeliveryMode() == MessageDeliveryMode.NON_PERSISTENT ? 1 : 2;
+        com.rabbitmq.client.AMQP.BasicProperties props =
+                new com.rabbitmq.client.AMQP.BasicProperties.Builder()
+                        .messageId(source.getMessageId())
+                        .correlationId(source.getCorrelationId())
+                        .timestamp(source.getTimestamp())
+                        .contentType(source.getContentType())
+                        .contentEncoding(source.getContentEncoding())
+                        .deliveryMode(deliveryMode)
+                        .headers(headers)
+                        .build();
+        publishChannel.basicPublish("", queue, false, props, message.getBody());
+    }
+
     public final long count(String queue) throws Exception {
         return consumeChannel.queueDeclarePassive(queue).getMessageCount();
     }
