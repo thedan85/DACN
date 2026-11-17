@@ -11,6 +11,8 @@ import jakarta.mail.internet.MimeMessage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -43,6 +45,19 @@ class SmtpAttemptDeadlineTest {
         executor = deadline == null
                 ? new SmtpAttemptExecutor(target, watchdog, slot)
                 : new SmtpAttemptExecutor(target, watchdog, slot, deadline);
+    }
+
+    private void setUpWithResolver(Duration deadline, SmtpHostResolver resolver, String host) throws Exception {
+        server = new FakeSmtpServer();
+        watchdog = new ScheduledThreadPoolExecutor(1, r -> {
+            Thread t = new Thread(r, "test-watchdog");
+            t.setDaemon(true);
+            return t;
+        });
+        slot = new Semaphore(1);
+        executor = new SmtpAttemptExecutor(
+                new Target(host, server.port(), null, null, false),
+                watchdog, slot, deadline, resolver, ignored -> { });
     }
 
     @AfterEach
@@ -240,6 +255,68 @@ class SmtpAttemptDeadlineTest {
         assertThat(server.connectionCount()).isZero();
         assertThat(elapsed).isLessThan(4_000);
         assertThat(slot.availablePermits()).isEqualTo(1);
+    }
+
+    @Test
+    void dnsTimeout_boundedUnknown_noSocketNoLeak() throws Exception {
+        CountDownLatch release = new CountDownLatch(1);
+        SmtpHostResolver.Lookup stalled = host -> {
+            release.await();
+            return new InetAddress[]{InetAddress.getLoopbackAddress()};
+        };
+        try (SmtpHostResolver resolver = new SmtpHostResolver(
+                stalled, Duration.ofMillis(400), Duration.ofSeconds(60))) {
+            setUpWithResolver(Duration.ofSeconds(25), resolver, "smtp.stalled.test");
+
+            long began = System.currentTimeMillis();
+            SmtpAttemptResult result = executor.execute(freshClaim(), message("subject", "body"));
+            long elapsed = System.currentTimeMillis() - began;
+
+            assertThat(result.outcome()).isEqualTo(Outcome.UNKNOWN);
+            assertThat(result.failureCode()).isEqualTo("SMTP_DNS_TIMEOUT");
+            assertThat(elapsed).as("5s resolver cap, far below the 25s attempt deadline")
+                    .isGreaterThanOrEqualTo(400).isLessThan(8_000);
+            assertThat(server.connectionCount()).isZero();
+            assertThat(slot.availablePermits()).isEqualTo(1);
+            assertThat(watchdog.getQueue()).isEmpty();
+            System.out.println("TASK_EMAIL_EVIDENCE dnsTimeout elapsedMs=" + elapsed
+                    + " code=" + result.failureCode() + " sockets=" + server.connectionCount());
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void dnsFailure_preAcceptance_noSocket() throws Exception {
+        SmtpHostResolver.Lookup failing = host -> {
+            throw new UnknownHostException("blocked");
+        };
+        try (SmtpHostResolver resolver = new SmtpHostResolver(
+                failing, Duration.ofMillis(500), Duration.ofSeconds(60))) {
+            setUpWithResolver(Duration.ofSeconds(25), resolver, "bad.host.test");
+
+            SmtpAttemptResult result = executor.execute(freshClaim(), message("subject", "body"));
+
+            assertThat(result.outcome()).isEqualTo(Outcome.PRE_ACCEPTANCE_FAILURE);
+            assertThat(result.failureCode()).isEqualTo("SMTP_DNS_FAILURE");
+            assertThat(server.connectionCount()).isZero();
+            assertThat(slot.availablePermits()).isEqualTo(1);
+            assertThat(watchdog.getQueue()).isEmpty();
+        }
+    }
+
+    @Test
+    void hostnameTarget_resolvesAndReachesCapture_accepted() throws Exception {
+        try (SmtpHostResolver resolver = new SmtpHostResolver()) {
+            setUpWithResolver(Duration.ofSeconds(5), resolver, "localhost");
+
+            SmtpAttemptResult result = executor.execute(freshClaim(), message("subject", "body"));
+
+            assertThat(result.outcome()).isEqualTo(Outcome.ACCEPTED);
+            assertThat(server.messageReceived()).isTrue();
+            assertThat(server.connectionCount()).isEqualTo(1);
+            assertThat(slot.availablePermits()).isEqualTo(1);
+        }
     }
 
     private static EmailDeliveryService.Claim freshClaim() {

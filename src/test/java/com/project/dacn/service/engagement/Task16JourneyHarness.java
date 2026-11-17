@@ -7,7 +7,9 @@ import com.project.dacn.common.time.DatabaseClock;
 import com.project.dacn.event.OrderEvent;
 import com.project.dacn.event.OrderEventType;
 import com.project.dacn.integration.mail.MailContentProperties;
+import com.project.dacn.integration.mail.SmtpAttempt;
 import com.project.dacn.integration.mail.SmtpAttemptExecutor;
+import com.project.dacn.integration.mail.SmtpHostResolver;
 import com.project.dacn.messaging.OrderEventPublisher;
 import com.project.dacn.messaging.rabbit.NotificationRabbitProperties;
 import com.project.dacn.messaging.rabbit.RabbitDeliveryStartup;
@@ -137,6 +139,13 @@ public final class Task16JourneyHarness implements AutoCloseable {
     public OrderEmailService emailService;
     public EmailNotificationConsumer emailConsumer;
 
+    /** Gated, test-only real-provider seam. Never enabled by committed config. */
+    public final boolean realGmailProof =
+            "true".equalsIgnoreCase(System.getenv("DACN_EMAIL_PROOF_GMAIL"));
+
+    /** Epoch millis of the observed final DATA 250, set only in real-provider mode. */
+    public volatile long acceptanceEpochMillis;
+
     public final EmailTransportPause pause = new EmailTransportPause();
     public final Instant dbNow;
 
@@ -243,7 +252,11 @@ public final class Task16JourneyHarness implements AutoCloseable {
         }
     }
 
-    /** Rebuild the loopback SMTP peer and the real email components that depend on it. */
+    /**
+     * Rebuild the loopback SMTP peer and the real email components that depend on it.
+     * When the test-only gate is set, the target is the real provider instead: the
+     * real resolver, STARTTLS and credentials from process env, never committed config.
+     */
     public final void resetCapture() throws java.io.IOException {
         if (capture != null) {
             capture.close();
@@ -251,16 +264,42 @@ public final class Task16JourneyHarness implements AutoCloseable {
         capture = new CaptureSmtpServer();
         delivery = new EmailDeliveryService(new EmailDeliveryRepository(named),
                 new OrderNotificationPolicy(), new DataSourceTransactionManager(dataSource));
-        MailViewBuilder views = new MailViewBuilder(new MailContentProperties(
-                "http://localhost:3000", "no-reply@notifications.local", "mail.example.test"));
+
+        SmtpAttemptExecutor.Target smtpTarget;
+        String from;
+        java.util.function.LongConsumer acceptanceSink = ignored -> { };
+        if (realGmailProof) {
+            String user = System.getenv("MAIL_USERNAME");
+            String password = System.getenv("MAIL_APP_PASSWORD");
+            if (user == null || user.isBlank() || password == null || password.isBlank()) {
+                throw new IllegalStateException(
+                        "real Gmail proof needs MAIL_USERNAME/MAIL_APP_PASSWORD in process env");
+            }
+            from = user;
+            smtpTarget = new SmtpAttemptExecutor.Target(
+                    "smtp.gmail.com", 587, user, password, true);
+            acceptanceSink = millis -> acceptanceEpochMillis = millis;
+        } else {
+            from = "no-reply@notifications.local";
+            smtpTarget = new SmtpAttemptExecutor.Target(
+                    "127.0.0.1", capture.port(), null, null, false);
+        }
+
+        MailViewBuilder views = new MailViewBuilder(
+                new MailContentProperties("http://localhost:3000", from, "mail.example.test"));
         emailService = new OrderEmailService(delivery, new MailEligibilityRepository(named),
                 new OrderNotificationPolicy(),
-                new SmtpAttemptExecutor(new SmtpAttemptExecutor.Target(
-                        "127.0.0.1", capture.port(), null, null, false), watchdog, smtpSlot),
+                new SmtpAttemptExecutor(smtpTarget, watchdog, smtpSlot,
+                        SmtpAttempt.ATTEMPT_DEADLINE, new SmtpHostResolver(), acceptanceSink),
                 views, new MailContentProperties(), new DataSourceTransactionManager(dataSource));
         emailConsumer = new EmailNotificationConsumer(codec,
                 new NotificationConsumerSupport(retryPublisher, ageGuard), emailService,
                 delivery, pause, new RabbitListenerEndpointRegistry());
+    }
+
+    /** Point the scratch customer at the proof recipient. Value never logged by the harness. */
+    public final void setCustomerEmail(String email) {
+        jdbc.update("update users set user_email = ? where user_id = ?", email, CUSTOMER);
     }
 
     /** Make the SMTP peer unavailable without a mock: close its listening socket. */
