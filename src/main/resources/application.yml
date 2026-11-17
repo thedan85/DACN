@@ -161,6 +161,10 @@ app:
   notifications:
     delivery-enabled: ${NOTIFICATIONS_DELIVERY_ENABLED:false}
     relay-interval-ms: 500
+    # Retention is independent of live delivery and runs even while it is off.
+    retention-enabled: ${NOTIFICATIONS_RETENTION_ENABLED:true}
+    retention-interval-ms: 600000
+    retention-batch-size: 1000
     mail:
       # Trusted, server-owned. No event, browser or recipient value is used here.
       storefront-base-url: ${STOREFRONT_BASE_URL:http://localhost:3000}
