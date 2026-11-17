@@ -23,6 +23,8 @@ final class CaptureSmtpServer implements AutoCloseable {
     private final List<Socket> sockets = new CopyOnWriteArrayList<>();
     private final AtomicInteger connections = new AtomicInteger();
     private final AtomicBoolean messageReceived = new AtomicBoolean();
+    private final AtomicInteger messagesReceived = new AtomicInteger();
+    private volatile String lastRawMessage = "";
     private final CountDownLatch firstConnection = new CountDownLatch(1);
     private final AtomicBoolean running = new AtomicBoolean(true);
 
@@ -49,6 +51,16 @@ final class CaptureSmtpServer implements AutoCloseable {
 
     boolean messageReceived() {
         return messageReceived.get();
+    }
+
+    /** Number of completed DATA transfers observed by this capture peer. */
+    int messageCount() {
+        return messagesReceived.get();
+    }
+
+    /** Raw RFC-822 bytes of the most recent completed DATA transfer (CRLF joined). */
+    String lastRawMessage() {
+        return lastRawMessage;
     }
 
     boolean awaitFirstConnection(long millis) throws InterruptedException {
@@ -95,9 +107,15 @@ final class CaptureSmtpServer implements AutoCloseable {
                     write(socket, rejectRecipient ? "550 5.1.1 rejected\r\n" : "250 OK\r\n");
                 } else if (upper.startsWith("DATA")) {
                     write(socket, "354 End data with <CRLF>.<CRLF>\r\n");
+                    StringBuilder raw = new StringBuilder();
                     while ((line = in.readLine()) != null && !".".equals(line)) {
-                        // body lines: captured only as a boolean, never logged or stored
+                        // Captured in memory only (never logged); bounded to avoid unbounded growth.
+                        if (raw.length() < 1_000_000) {
+                            raw.append(line).append("\r\n");
+                        }
                     }
+                    lastRawMessage = raw.toString();
+                    messagesReceived.incrementAndGet();
                     messageReceived.set(true);
                     if (stallFinalReply) {
                         parkUntilClosed(socket);
