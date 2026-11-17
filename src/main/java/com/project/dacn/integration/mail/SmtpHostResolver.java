@@ -105,6 +105,7 @@ public final class SmtpHostResolver implements AutoCloseable {
         return new Resolution(Kind.RESOLVED, request.address, null);
     }
 
+    // shortcut: one resolver thread, so a stuck non-interruptible OS lookup delays later resolutions until it returns while callers stay bounded; upgrade to a bounded worker pool with per-lookup cancellation if provider DNS stalls.
     private void startWorker() {
         if (worker == null) {
             synchronized (this) {
@@ -130,6 +131,7 @@ public final class SmtpHostResolver implements AutoCloseable {
             try {
                 InetAddress[] addresses = lookup.lookup(request.host);
                 if (!closed.get()) {
+                    // shortcut: first A record only, cached 60s, no rotation/failover; upgrade to multi-address rotation if the provider rotates or fails over.
                     request.address = addresses != null && addresses.length > 0 ? addresses[0] : null;
                 }
             } catch (Throwable failure) {

@@ -45,12 +45,15 @@ class RealGmailDeliveryProofTest {
                     "select count(*) from email_deliveries where event_id = '" + event.eventId() + "'"))
                     .as("no duplicate ledger row").isEqualTo(1);
             assertThat(h.count(RabbitTopology.EMAIL_QUEUE)).as("no redelivery").isZero();
-            assertThat(h.acceptanceEpochMillis).as("final DATA 250 was observed").isGreaterThan(0L);
+            assertThat(h.acceptanceEpochMillis)
+                    .as("acceptance inferred from sendMessage return and nonzero timestamp")
+                    .isGreaterThan(0L);
 
             String completedAt = h.strings(
                     "select completed_at::text from email_deliveries where event_id = '"
                             + event.eventId() + "'").getFirst();
-            System.out.println("GMAIL_PROOF smtpAcceptance=250 ledger=SENT attempts=1 duplicates=0"
+            System.out.println("GMAIL_PROOF acceptanceInferred=yes wire250Captured=no"
+                    + " ledger=SENT attempts=1 duplicates=0"
                     + " acceptedAtEpochMillis=" + h.acceptanceEpochMillis
                     + " ledgerCompletedAt=" + completedAt);
         } catch (Exception failure) {

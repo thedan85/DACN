@@ -143,7 +143,10 @@ public final class Task16JourneyHarness implements AutoCloseable {
     public final boolean realGmailProof =
             "true".equalsIgnoreCase(System.getenv("DACN_EMAIL_PROOF_GMAIL"));
 
-    /** Epoch millis of the observed final DATA 250, set only in real-provider mode. */
+    /**
+     * Epoch millis of inferred acceptance: a normal sendMessage return plus this
+     * nonzero timestamp. The wire 250 reply is not captured; real-provider mode only.
+     */
     public volatile long acceptanceEpochMillis;
 
     public final EmailTransportPause pause = new EmailTransportPause();
