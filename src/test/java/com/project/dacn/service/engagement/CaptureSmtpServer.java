@@ -24,6 +24,8 @@ final class CaptureSmtpServer implements AutoCloseable {
     private final AtomicInteger connections = new AtomicInteger();
     private final AtomicBoolean messageReceived = new AtomicBoolean();
     private final AtomicInteger messagesReceived = new AtomicInteger();
+    /** JVM-monotonic time of each final DATA acceptance (250 queued), in message order. */
+    private final java.util.List<Long> acceptanceNanos = new java.util.concurrent.CopyOnWriteArrayList<>();
     private volatile String lastRawMessage = "";
     private final CountDownLatch firstConnection = new CountDownLatch(1);
     private final AtomicBoolean running = new AtomicBoolean(true);
@@ -56,6 +58,12 @@ final class CaptureSmtpServer implements AutoCloseable {
     /** Number of completed DATA transfers observed by this capture peer. */
     int messageCount() {
         return messagesReceived.get();
+    }
+
+    /** NanoTime of the final DATA acceptance for the 1-based message, or Long.MIN_VALUE. */
+    long acceptanceNanosFor(int messageNumber) {
+        return messageNumber >= 1 && messageNumber <= acceptanceNanos.size()
+                ? acceptanceNanos.get(messageNumber - 1) : Long.MIN_VALUE;
     }
 
     /** Raw RFC-822 bytes of the most recent completed DATA transfer (CRLF joined). */
@@ -121,6 +129,7 @@ final class CaptureSmtpServer implements AutoCloseable {
                         parkUntilClosed(socket);
                         return;
                     }
+                    acceptanceNanos.add(System.nanoTime());
                     write(socket, "250 queued\r\n");
                 } else if (upper.startsWith("QUIT")) {
                     if (failQuit) {
