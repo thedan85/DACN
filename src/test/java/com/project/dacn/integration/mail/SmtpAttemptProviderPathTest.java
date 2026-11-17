@@ -1,8 +1,11 @@
 package com.project.dacn.integration.mail;
 
 import com.project.dacn.integration.mail.SmtpAttemptExecutor.Target;
+import com.project.dacn.integration.mail.SmtpAttemptResult.Outcome;
 import com.project.dacn.service.engagement.EmailDeliveryService;
+import jakarta.mail.SendFailedException;
 import jakarta.mail.Session;
+import org.eclipse.angus.mail.smtp.SMTPSendFailedException;
 import org.junit.jupiter.api.Test;
 
 import javax.net.ssl.SSLSocketFactory;
@@ -135,10 +138,35 @@ class SmtpAttemptProviderPathTest {
         assertThat(fresh.isClosed()).isTrue();
     }
 
+    @Test
+    void postConnectFailureIsUnknownUnlessProvenPreAcceptance() {
+        IOException reset = new IOException("reset after body handoff");
+
+        // A reset after connection is ambiguous, never retry-safe.
+        assertThat(SmtpAttemptExecutor.classifyFailure(reset, true, false, false, false).outcome())
+                .isEqualTo(Outcome.UNKNOWN);
+        // Proven pre-acceptance categories stay retryable.
+        assertThat(SmtpAttemptExecutor.classifyFailure(
+                new java.net.ConnectException("refused"), false, false, false, false).outcome())
+                .isEqualTo(Outcome.PRE_ACCEPTANCE_FAILURE);
+        assertThat(SmtpAttemptExecutor.classifyFailure(
+                new SendFailedException("invalid recipient"), true, false, false, false).outcome())
+                .isEqualTo(Outcome.PRE_ACCEPTANCE_FAILURE);
+        assertThat(SmtpAttemptExecutor.classifyFailure(
+                new SMTPSendFailedException("DATA", 550, "rejected", null, null, null, null),
+                true, false, false, false).outcome())
+                .isEqualTo(Outcome.PRE_ACCEPTANCE_FAILURE);
+        // Deadline and observed acceptance still dominate.
+        assertThat(SmtpAttemptExecutor.classifyFailure(reset, true, true, false, false).outcome())
+                .isEqualTo(Outcome.UNKNOWN);
+        assertThat(SmtpAttemptExecutor.classifyFailure(reset, true, false, false, true).outcome())
+                .isEqualTo(Outcome.ACCEPTED);
+    }
+
     private static EmailDeliveryService.Claim freshClaim() {
         Instant commit = Instant.now();
         return new EmailDeliveryService.Claim(
                 9L, UUID.randomUUID(), 42L, UUID.randomUUID(),
-                commit.plus(EmailDeliveryService.LEASE), 2, 9L);
+                commit.plus(EmailDeliveryService.LEASE), 2, 9L, System.nanoTime());
     }
 }

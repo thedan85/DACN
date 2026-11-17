@@ -205,10 +205,11 @@ class SmtpAttemptDeadlineTest {
     @Test
     void elapsedClaimBudget_opensNoConnection() throws Exception {
         setUp(Duration.ofSeconds(5), false);
-        Instant commit = Instant.now().minusSeconds(40); // 25s attempt budget already gone
+        // Monotonic anchor 40s in the past: the 5s test budget is already gone.
+        long staleNanos = System.nanoTime() - Duration.ofSeconds(40).toNanos();
         EmailDeliveryService.Claim stale = new EmailDeliveryService.Claim(
                 1L, UUID.randomUUID(), 42L, UUID.randomUUID(),
-                commit.plus(EmailDeliveryService.LEASE), 1, 1L);
+                Instant.now().plus(EmailDeliveryService.LEASE), 1, 1L, staleNanos);
 
         SmtpAttemptResult result = executor.execute(stale, message("subject", "body"));
 
@@ -245,7 +246,7 @@ class SmtpAttemptDeadlineTest {
         Instant commit = Instant.now();
         return new EmailDeliveryService.Claim(
                 1L, UUID.randomUUID(), 42L, UUID.randomUUID(),
-                commit.plus(EmailDeliveryService.LEASE), 1, 1L);
+                commit.plus(EmailDeliveryService.LEASE), 1, 1L, System.nanoTime());
     }
 
     private static MessageFactory message(String subject, String body) {

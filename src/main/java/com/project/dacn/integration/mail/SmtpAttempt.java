@@ -7,7 +7,6 @@ import javax.net.ssl.SSLSocketFactory;
 import java.io.IOException;
 import java.net.Socket;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -35,8 +34,6 @@ public final class SmtpAttempt {
     private final EmailDeliveryService.Claim claim;
     private final Thread sender;
     private final Duration deadline;
-    private final Instant deadlineWall;
-    private final long startNanos;
     private final long deadlineNanos;
     private final AtomicBoolean aborted = new AtomicBoolean();
     private final SocketRegistry registry;
@@ -49,11 +46,9 @@ public final class SmtpAttempt {
         this.claim = claim;
         this.sender = sender;
         this.deadline = deadline;
-        Instant commitAt = claim.leaseExpiresAt().minus(EmailDeliveryService.LEASE);
-        this.deadlineWall = commitAt.plus(deadline);
-        this.startNanos = System.nanoTime();
-        long remainingMillis = Math.max(0L, deadlineWall.toEpochMilli() - System.currentTimeMillis());
-        this.deadlineNanos = startNanos + TimeUnit.MILLISECONDS.toNanos(remainingMillis);
+        // Single monotonic clock domain. The DB lease timestamp is metadata only;
+        // comparing it with the JVM wall clock would be clock-skew dependent.
+        this.deadlineNanos = claim.claimedAtNanos() + deadline.toNanos();
         this.registry = new SocketRegistry(aborted);
 
         AttemptSocketFactory plain = new AttemptSocketFactory(registry);
@@ -76,8 +71,9 @@ public final class SmtpAttempt {
     /** Starts the single independent watchdog. Scheduling never resets the deadline. */
     public void start(ScheduledExecutorService scheduler) {
         this.watchdogScheduler = scheduler;
-        long remainingMillis = Math.max(0L, deadlineWall.toEpochMilli() - System.currentTimeMillis());
-        this.watchdogTask = scheduler.schedule(this::abort, remainingMillis, TimeUnit.MILLISECONDS);
+        // No wall-clock recomputation and no clamp: a negative delay fires at once.
+        long remainingNanos = deadlineNanos - System.nanoTime();
+        this.watchdogTask = scheduler.schedule(this::abort, remainingNanos, TimeUnit.NANOSECONDS);
     }
 
     /**
@@ -97,10 +93,6 @@ public final class SmtpAttempt {
 
     public boolean pastDeadline() {
         return System.nanoTime() >= deadlineNanos;
-    }
-
-    public Instant deadlineWall() {
-        return deadlineWall;
     }
 
     public EmailDeliveryService.Claim claim() {

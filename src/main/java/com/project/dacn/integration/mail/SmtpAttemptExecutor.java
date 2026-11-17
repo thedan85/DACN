@@ -2,13 +2,13 @@ package com.project.dacn.integration.mail;
 
 import com.project.dacn.service.engagement.EmailDeliveryService;
 import jakarta.mail.MessagingException;
+import jakarta.mail.SendFailedException;
 import jakarta.mail.Transport;
 import jakarta.mail.internet.MimeMessage;
 
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Semaphore;
 
@@ -46,11 +46,10 @@ public final class SmtpAttemptExecutor {
     }
 
     public SmtpAttemptResult execute(EmailDeliveryService.Claim claim, MessageFactory factory) {
-        Instant now = Instant.now();
-        Instant commitAt = claim.leaseExpiresAt().minus(EmailDeliveryService.LEASE);
-        Instant deadlineWall = commitAt.plus(deadline);
-        // Stale ownership or a budget already elapsed: never open a late connection.
-        if (!now.isBefore(deadlineWall) || !now.isBefore(claim.leaseExpiresAt())) {
+        // Only the app-side monotonic anchor defines the budget. No DB/JVM clock
+        // comparison: an elapsed budget returns UNKNOWN before any connection.
+        long deadlineNanos = claim.claimedAtNanos() + deadline.toNanos();
+        if (System.nanoTime() >= deadlineNanos) {
             return SmtpAttemptResult.unknown("CLAIM_BUDGET_ELAPSED");
         }
 
@@ -68,11 +67,17 @@ public final class SmtpAttemptExecutor {
         }
 
         boolean acceptanceObserved = false;
+        boolean connected = false;
         try {
             if (attempt.isAborted() || attempt.pastDeadline()) {
                 return SmtpAttemptResult.unknown("SMTP_DEADLINE");
             }
-            MimeMessage message = factory.create(attempt.session()); // setup inside the budget
+            // Setup/resolution is inside the same monotonic budget. BLOCKER: a
+            // stalled non-interruptible resolver (InetAddress) can delay sender
+            // completion and slot release past 30s; no replacement thread is
+            // spawned. Late registration still prevents a late connection, and
+            // email consumption stays disabled until a bounded resolver is proven.
+            MimeMessage message = factory.create(attempt.session());
             if (message == null || attempt.isAborted()) {
                 return SmtpAttemptResult.unknown("SMTP_DEADLINE");
             }
@@ -80,6 +85,7 @@ public final class SmtpAttemptExecutor {
             Transport transport = attempt.session().getTransport("smtp");
             try {
                 transport.connect(target.host(), target.port(), target.user(), target.password());
+                connected = true;
                 if (attempt.isAborted()) {
                     return SmtpAttemptResult.unknown("SMTP_DEADLINE");
                 }
@@ -96,13 +102,8 @@ public final class SmtpAttemptExecutor {
             }
             return SmtpAttemptResult.accepted();
         } catch (Exception e) {
-            if (acceptanceObserved) {
-                return SmtpAttemptResult.accepted();
-            }
-            if (attempt.isAborted() || attempt.pastDeadline()) {
-                return SmtpAttemptResult.unknown("SMTP_DEADLINE");
-            }
-            return SmtpAttemptResult.preAcceptanceFailure(classify(e));
+            return classifyFailure(e, connected, attempt.isAborted(),
+                    attempt.pastDeadline(), acceptanceObserved);
         } finally {
             attempt.close();
             Thread.interrupted(); // do not leak the watchdog's interrupt to the worker
@@ -110,6 +111,28 @@ public final class SmtpAttemptExecutor {
                 sendingSlot.release();
             }
         }
+    }
+
+    /**
+     * Conservative classification. Only a proven pre-acceptance failure may be
+     * retried. Once connected, an I/O/protocol failure may have followed a
+     * server 250 that we never observed (e.g. reset after DATA), so it is UNKNOWN.
+     */
+    static SmtpAttemptResult classifyFailure(Exception e, boolean connected,
+                                             boolean aborted, boolean deadlinePassed,
+                                             boolean acceptanceObserved) {
+        if (acceptanceObserved) {
+            return SmtpAttemptResult.accepted();
+        }
+        if (aborted || deadlinePassed) {
+            return SmtpAttemptResult.unknown("SMTP_DEADLINE");
+        }
+        if (!connected || e instanceof SendFailedException) {
+            // Connect/DNS failure before a socket existed, invalid recipients,
+            // or an explicit SMTP rejection code on MAIL/RCPT/DATA.
+            return SmtpAttemptResult.preAcceptanceFailure(classify(e));
+        }
+        return SmtpAttemptResult.unknown("SMTP_ACCEPTANCE_AMBIGUOUS");
     }
 
     private static String classify(Exception e) {

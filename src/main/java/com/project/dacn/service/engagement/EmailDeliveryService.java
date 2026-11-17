@@ -36,7 +36,7 @@ public class EmailDeliveryService {
 
     public record Claim(long deliveryId, UUID eventId, long recipientUserId,
                         UUID claimToken, Instant leaseExpiresAt, int attempt,
-                        long commitAnchor) {
+                        long commitAnchor, long claimedAtNanos) {
     }
 
     public sealed interface ClaimResult permits Claimed, Completed, Busy, ReviewRequired {
@@ -188,8 +188,13 @@ public class EmailDeliveryService {
         if (claimed == null) {
             throw new IllegalStateException("Eligible email delivery row could not be claimed: " + id);
         }
+        // App-side monotonic anchor, captured just before the Claim escapes the
+        // transaction. It is the only time base for the transport's 25s budget;
+        // leaseExpiresAt stays DB lease metadata and is never compared to it.
+        long claimedAtNanos = System.nanoTime();
         return new Claimed(new Claim(id, event.eventId(), recipientUserId, token,
-                claimed.claimExpiresAt(), claimed.attemptCount(), claimed.commitAnchor()));
+                claimed.claimExpiresAt(), claimed.attemptCount(), claimed.commitAnchor(),
+                claimedAtNanos));
     }
 
     private static String safeCode(String failureCode) {

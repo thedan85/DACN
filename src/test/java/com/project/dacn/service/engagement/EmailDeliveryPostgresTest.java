@@ -185,7 +185,7 @@ class EmailDeliveryPostgresTest {
 
         assertThat(service.completeSent(new Claim(first.deliveryId(), eventId, userId,
                 UUID.randomUUID(), first.leaseExpiresAt(), first.attempt(),
-                first.commitAnchor()))).isFalse();
+                first.commitAnchor(), first.claimedAtNanos()))).isFalse();
 
         assertThat(service.completeSent(first)).isTrue();
         forceRetryDue(eventId);
