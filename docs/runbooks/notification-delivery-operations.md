@@ -18,6 +18,35 @@ The exact broker topology is documented in
 signing-key gate, Data API lockdown, and budget activation procedure remain in
 `docs/runbooks/supabase-realtime-setup.md`.
 
+## SMTP host resolution (bounded)
+
+The SMTP sender never resolves the host itself. `SmtpHostResolver` runs
+`InetAddress.getAllByName` on one daemon thread; the sender waits on an
+interruptible latch under a **5s cap** that fits inside the 25s attempt
+deadline. Concurrent attempts for the same host share one in-progress lookup
+(single-flight), and a successful address is cached for **60s** before another
+lookup is made. The watchdog interrupt ends the wait: no replacement thread and
+no extra sending slot is created per attempt.
+
+- A resolver timeout returns `UNKNOWN` with the distinct code
+  `SMTP_DNS_TIMEOUT`. No socket exists yet, but acceptance cannot be proven, so
+  the row is quarantined and the email listener pauses — never an automatic
+  resend.
+- A genuine DNS failure returns a pre-acceptance failure
+  (`SMTP_DNS_FAILURE`) and enters the bounded retry schedule (three attempts
+  maximum).
+- A late or post-abort/post-close result is discarded. After abort or close no
+  socket is opened and no connect is attempted. The resolved IP is used for the
+  TCP connect, while the **original hostname is retained for STARTTLS SNI and
+  certificate identity**, so hostname verification is not weakened.
+
+The former Task 9 delivery blocker — "email disabled until a bounded resolver
+is proven" — is **removed for this path**; the bounded resolver is implemented
+and proven by focused tests and a gated real-provider proof. Delivery remains
+disabled by default through `app.notifications.delivery-enabled=false`; enabling
+it is still a separate operator decision. SMTP stays at-least-once and
+UNKNOWN-aware, and a single broker node is still not highly available.
+
 ## 1. Control surface
 
 | Setting | Environment variable | Default | Effect |
@@ -637,6 +666,7 @@ Never collect a full payload, a DLQ body, a token, or a password as evidence.
 - `src/main/java/com/project/dacn/messaging/rabbit/RabbitTopologyHealthIndicator.java`
 - `src/main/java/com/project/dacn/security/TrustedClientIpResolver.java`
 - `src/main/java/com/project/dacn/integration/realtime/RealtimeAdmissionService.java`
+- `src/main/java/com/project/dacn/integration/mail/SmtpHostResolver.java`
 - `src/main/resources/application.yml`
 - `src/main/resources/db/migration/V34__event_foundation.sql`
 - `docs/runbooks/rabbitmq-notification-topology.md`

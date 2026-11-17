@@ -53,7 +53,7 @@ public final class SmtpAttempt {
 
         AttemptSocketFactory plain = new AttemptSocketFactory(registry);
         AttemptSocketFactory.Tls tls = new AttemptSocketFactory.Tls(
-                (SSLSocketFactory) SSLSocketFactory.getDefault(), registry);
+                (SSLSocketFactory) SSLSocketFactory.getDefault(), registry, target.host());
         Properties props = new Properties();
         props.put("mail.smtp.socketFactory", plain);
         props.put("mail.smtp.socketFactory.fallback", "false");
@@ -65,6 +65,10 @@ public final class SmtpAttempt {
         props.put("mail.smtp.localhost", "localhost");
         props.put("mail.smtp.starttls.enable", Boolean.toString(target.startTls()));
         props.put("mail.smtp.starttls.required", Boolean.toString(target.startTls()));
+        // Credentials are only present for a real authenticated provider. The
+        // loopback capture targets pass null and keep authentication disabled.
+        props.put("mail.smtp.auth",
+                Boolean.toString(target.user() != null && !target.user().isBlank()));
         this.session = Session.getInstance(props);
     }
 

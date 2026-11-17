@@ -82,10 +82,21 @@ public final class AttemptSocketFactory extends SocketFactory {
     public static final class Tls extends SSLSocketFactory {
         private final SSLSocketFactory delegate;
         private final SmtpAttempt.SocketRegistry registry;
+        private final String sniHost;
 
         public Tls(SSLSocketFactory delegate, SmtpAttempt.SocketRegistry registry) {
+            this(delegate, registry, null);
+        }
+
+        /**
+         * The connection uses a pre-resolved IP, but TLS SNI and certificate
+         * identity must keep the original hostname. A null sniHost falls back
+         * to the host passed by the provider.
+         */
+        public Tls(SSLSocketFactory delegate, SmtpAttempt.SocketRegistry registry, String sniHost) {
             this.delegate = delegate;
             this.registry = registry;
+            this.sniHost = sniHost;
         }
 
         @Override public String[] getDefaultCipherSuites() { return delegate.getDefaultCipherSuites(); }
@@ -93,7 +104,8 @@ public final class AttemptSocketFactory extends SocketFactory {
 
         @Override
         public Socket createSocket(Socket socket, String host, int port, boolean autoClose) throws IOException {
-            return owned(delegate.createSocket(socket, host, port, autoClose));
+            String identity = sniHost != null ? sniHost : host;
+            return owned(delegate.createSocket(socket, identity, port, autoClose));
         }
 
         @Override public Socket createSocket(String host, int port) throws IOException {

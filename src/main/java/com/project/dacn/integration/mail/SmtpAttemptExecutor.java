@@ -11,6 +11,7 @@ import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Semaphore;
+import java.util.function.LongConsumer;
 
 /**
  * Executes one attempt inside a single absolute deadline. The watchdog is
@@ -31,6 +32,8 @@ public final class SmtpAttemptExecutor {
     private final ScheduledExecutorService watchdogScheduler;
     private final Semaphore sendingSlot;
     private final Duration deadline;
+    private final SmtpHostResolver resolver;
+    private final LongConsumer acceptanceSink;
 
     public SmtpAttemptExecutor(Target target, ScheduledExecutorService watchdogScheduler,
                                Semaphore sendingSlot) {
@@ -39,10 +42,19 @@ public final class SmtpAttemptExecutor {
 
     SmtpAttemptExecutor(Target target, ScheduledExecutorService watchdogScheduler,
                         Semaphore sendingSlot, Duration deadline) {
+        this(target, watchdogScheduler, sendingSlot, deadline,
+                new SmtpHostResolver(), ignored -> { });
+    }
+
+    public SmtpAttemptExecutor(Target target, ScheduledExecutorService watchdogScheduler,
+                               Semaphore sendingSlot, Duration deadline,
+                               SmtpHostResolver resolver, LongConsumer acceptanceSink) {
         this.target = target;
         this.watchdogScheduler = watchdogScheduler;
         this.sendingSlot = sendingSlot;
         this.deadline = deadline;
+        this.resolver = resolver;
+        this.acceptanceSink = acceptanceSink;
     }
 
     public SmtpAttemptResult execute(EmailDeliveryService.Claim claim, MessageFactory factory) {
@@ -72,11 +84,29 @@ public final class SmtpAttemptExecutor {
             if (attempt.isAborted() || attempt.pastDeadline()) {
                 return SmtpAttemptResult.unknown("SMTP_DEADLINE");
             }
-            // Setup/resolution is inside the same monotonic budget. BLOCKER: a
-            // stalled non-interruptible resolver (InetAddress) can delay sender
-            // completion and slot release past 30s; no replacement thread is
-            // spawned. Late registration still prevents a late connection, and
-            // email consumption stays disabled until a bounded resolver is proven.
+            // Resolution runs on one daemon thread under a 5s cap inside the
+            // remaining monotonic budget. The sender never calls JavaMail/Angus
+            // with an unresolved host, so no non-interruptible lookup can hold
+            // the slot. No socket exists until a resolved address is in hand.
+            long remainingNanos = deadlineNanos - System.nanoTime();
+            Duration resolverWait = remainingNanos <= 0 ? Duration.ZERO
+                    : Duration.ofNanos(Math.min(SmtpHostResolver.LOOKUP_TIMEOUT.toNanos(), remainingNanos));
+            SmtpHostResolver.Resolution resolution =
+                    resolver.resolve(target.host(), resolverWait, attempt::isAborted);
+            if (resolution.kind() == SmtpHostResolver.Kind.ABORTED) {
+                return SmtpAttemptResult.unknown("SMTP_DEADLINE");
+            }
+            if (attempt.isAborted() || attempt.pastDeadline()) {
+                return SmtpAttemptResult.unknown("SMTP_DEADLINE");
+            }
+            if (resolution.kind() == SmtpHostResolver.Kind.TIMEOUT) {
+                // Bounded and distinct: no socket was ever created.
+                return SmtpAttemptResult.unknown("SMTP_DNS_TIMEOUT");
+            }
+            if (resolution.kind() == SmtpHostResolver.Kind.FAILURE) {
+                return SmtpAttemptResult.preAcceptanceFailure(resolution.failureCode());
+            }
+
             MimeMessage message = factory.create(attempt.session());
             if (message == null || attempt.isAborted()) {
                 return SmtpAttemptResult.unknown("SMTP_DEADLINE");
@@ -84,13 +114,16 @@ public final class SmtpAttemptExecutor {
 
             Transport transport = attempt.session().getTransport("smtp");
             try {
-                transport.connect(target.host(), target.port(), target.user(), target.password());
+                // Connect by resolved IP; TLS identity/SNI keeps the original host.
+                transport.connect(resolution.address().getHostAddress(),
+                        target.port(), target.user(), target.password());
                 connected = true;
                 if (attempt.isAborted()) {
                     return SmtpAttemptResult.unknown("SMTP_DEADLINE");
                 }
                 transport.sendMessage(message, message.getAllRecipients());
                 acceptanceObserved = true;
+                acceptanceSink.accept(System.currentTimeMillis());
             } finally {
                 try {
                     if (transport.isConnected()) {
