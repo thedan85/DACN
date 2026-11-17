@@ -67,6 +67,21 @@ class MailViewBuilderTest {
     }
 
     @Test
+    void confirmationCopyFollowsPaymentMethodNotAnomalousPaymentStatus() {
+        // COD confirmation must never claim payment received, even if an
+        // upstream producer attaches a CONFIRMED payment status to it.
+        MailView codConfirmed = builder.view(
+                event(ORDER_CONFIRMED, COD, PaymentStatus.CONFIRMED, "ORD_cod_ anomaly"), 1L, 1);
+        assertThat(codConfirmed.htmlBody()).contains("Payment is due on delivery")
+                .doesNotContain("Payment received");
+
+        MailView onlinePaid = builder.view(
+                event(ORDER_CONFIRMED, VIETQR, PaymentStatus.CONFIRMED, "ORD_online"), 1L, 1);
+        assertThat(onlinePaid.htmlBody()).contains("Payment received")
+                .doesNotContain("Payment is due on delivery");
+    }
+
+    @Test
     void noFalseRefundedOrShippedClaims() {
         assertThat(builder.view(event(REFUND_REQUIRED, VIETQR, PaymentStatus.REFUND_REQUIRED, "ORD_5"), 1L, 1)
                 .htmlBody()).contains("refund is under review").doesNotContain("refund confirmed");

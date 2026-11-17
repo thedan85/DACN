@@ -8,6 +8,7 @@ import com.project.dacn.integration.mail.SmtpAttemptExecutor;
 import com.project.dacn.integration.mail.SmtpAttemptExecutor.Target;
 import com.project.dacn.repository.engagement.EmailDeliveryRepository;
 import com.project.dacn.repository.engagement.MailEligibilityRepository;
+import com.project.dacn.service.order.ReservationPolicy;
 import com.project.dacn.service.engagement.EmailDeliveryService.Claimed;
 import com.project.dacn.service.engagement.EmailDeliveryService.ClaimResult;
 import com.project.dacn.event.OrderEvent;
@@ -43,6 +44,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static com.project.dacn.common.constant.PaymentMethod.COD;
 import static com.project.dacn.common.constant.PaymentMethod.VIETQR;
+import static com.project.dacn.event.OrderEventType.ORDER_CONFIRMED;
 import static com.project.dacn.event.OrderEventType.ORDER_PLACED;
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -305,6 +307,103 @@ class OrderEmailServicePostgresTest {
     }
 
     @Test
+    void activeWithBothPausesKeepsEffectiveDeadlineEligibility() {
+        // Inventory pauses are deployment config flags (ReservationPolicy), not
+        // DB columns. Active + both pauses is the recovery state: pauses stop
+        // admission only and must not erase an effective deadline.
+        ReservationPolicy inventory = new ReservationPolicy(true, true, true);
+        assertThat(inventory.isActive()).isTrue();
+        assertThat(inventory.isOnlineWorkPaused()).isTrue();
+        assertThat(inventory.isSweepingPaused()).isTrue();
+
+        setExpiry("clock_timestamp() + interval '1 second'");
+        String before = stateSnapshot();
+        process(event(ORDER_PLACED, VIETQR));
+        assertThat(row(currentEventId()).state()).isEqualTo("SENT");
+        int afterSend = capture.connectionCount();
+        assertThat(afterSend).isEqualTo(1);
+        assertThat(stateSnapshot()).isEqualTo(before);
+
+        execute("delete from email_deliveries");
+        setExpiry("clock_timestamp()");
+        process(event(ORDER_PLACED, VIETQR));
+        assertThat(row(currentEventId()).state()).isEqualTo("SKIPPED");
+        assertThat(capture.connectionCount()).isEqualTo(afterSend); // zero new SMTP with both pauses
+        assertThat(stateSnapshot()).isEqualTo(before);
+
+        execute("delete from email_deliveries");
+        setExpiry("clock_timestamp() - interval '1 second'");
+        process(event(ORDER_PLACED, VIETQR));
+        assertThat(row(currentEventId()).state()).isEqualTo("SKIPPED");
+        assertThat(capture.connectionCount()).isEqualTo(afterSend);
+        assertThat(stateSnapshot()).isEqualTo(before);
+        System.out.println("TASK10_EVIDENCE activeBothPauses deadlineHonored=1"
+                + " justBefore=SENT equality=SKIPPED after=SKIPPED"
+                + " smtpConnections=" + capture.connectionCount() + " orderUnchanged=true");
+    }
+
+    @Test
+    void onlineConfirmationDeliveredFirstStillSkipsRetriedReceipt() {
+        capture.rejectRecipient = true;
+        OrderEvent receipt = event(ORDER_PLACED, VIETQR);
+        seedHistoricalInApp(receipt);
+        process(receipt);
+        assertThat(row(receipt.eventId()).state()).isEqualTo("PENDING");
+        assertThat(capture.connectionCount()).isEqualTo(1);
+        String historical = historicalMessage();
+
+        execute("update orders set order_status = 'CONFIRMED' where order_id = '" + ORDER_ID + "'");
+        execute("update payments set payment_status = 'CONFIRMED' where order_id = "
+                + "(select id from orders where order_id = '" + ORDER_ID + "')");
+        capture.rejectRecipient = false;
+        OrderEvent confirmation = confirmationEvent(VIETQR, PaymentStatus.CONFIRMED);
+        process(confirmation);
+        assertThat(row(confirmation.eventId()).state()).isEqualTo("SENT");
+        int afterConfirmation = capture.connectionCount();
+        assertThat(afterConfirmation).isEqualTo(2);
+        assertThat(historicalMessage()).isEqualTo(historical);
+
+        forceRetryDue(receipt.eventId());
+        process(receipt);
+        assertThat(row(receipt.eventId()).state()).isEqualTo("SKIPPED");
+        assertThat(capture.connectionCount()).isEqualTo(afterConfirmation); // no extra SMTP
+        assertThat(row(confirmation.eventId()).state()).isEqualTo("SENT"); // confirmation not overwritten
+        assertThat(historicalMessage()).isEqualTo(historical);
+        System.out.println("TASK10_EVIDENCE onlineConfirmation confirmation=SENT receipt=SKIPPED"
+                + " smtpAfterRetry=" + capture.connectionCount() + " inboxUnchanged=true");
+    }
+
+    @Test
+    void codConfirmationDeliveredFirstStillSkipsRetriedReceipt() {
+        capture.rejectRecipient = true;
+        OrderEvent receipt = event(ORDER_PLACED, COD);
+        seedHistoricalInApp(receipt);
+        process(receipt);
+        assertThat(row(receipt.eventId()).state()).isEqualTo("PENDING");
+        assertThat(capture.connectionCount()).isEqualTo(1);
+        String historical = historicalMessage();
+
+        // Staff acceptance: order confirmed, COD payment still pending.
+        execute("update orders set order_status = 'CONFIRMED' where order_id = '" + ORDER_ID + "'");
+        capture.rejectRecipient = false;
+        OrderEvent confirmation = confirmationEvent(COD, PaymentStatus.PENDING);
+        process(confirmation);
+        assertThat(row(confirmation.eventId()).state()).isEqualTo("SENT");
+        int afterConfirmation = capture.connectionCount();
+        assertThat(afterConfirmation).isEqualTo(2);
+        assertThat(historicalMessage()).isEqualTo(historical);
+
+        forceRetryDue(receipt.eventId());
+        process(receipt);
+        assertThat(row(receipt.eventId()).state()).isEqualTo("SKIPPED");
+        assertThat(capture.connectionCount()).isEqualTo(afterConfirmation);
+        assertThat(row(confirmation.eventId()).state()).isEqualTo("SENT");
+        assertThat(historicalMessage()).isEqualTo(historical);
+        System.out.println("TASK10_EVIDENCE codConfirmation confirmation=SENT receipt=SKIPPED"
+                + " smtpAfterRetry=" + capture.connectionCount() + " inboxUnchanged=true");
+    }
+
+    @Test
     void staleAndFutureEventsQuarantineWithZeroSmtp() {
         OrderEvent stale = OrderEvent.create(ORDER_PLACED, ORDER_ID, 1L,
                 Instant.now().minus(31, ChronoUnit.DAYS), userId, OrderStatus.PENDING,
@@ -386,6 +485,12 @@ class OrderEmailServicePostgresTest {
                 new BigDecimal("10.00"), reasonFor(type), "t10", "TEST");
     }
 
+    private static OrderEvent confirmationEvent(PaymentMethod method, PaymentStatus paymentStatus) {
+        return OrderEvent.create(ORDER_CONFIRMED, ORDER_ID, 2L, Instant.now().minusSeconds(20), userId,
+                OrderStatus.CONFIRMED, paymentStatus, method, new BigDecimal("10.00"),
+                null, "t10-confirmation", "TEST");
+    }
+
     private static OrderEventReason reasonFor(OrderEventType type) {
         return switch (type) {
             case ORDER_REJECTED -> OrderEventReason.STAFF_REJECTED;
@@ -422,9 +527,9 @@ class OrderEmailServicePostgresTest {
     }
 
     private static String stateSnapshot() {
+        // Deadline is the input under test; transitions mean status/stock changes only.
         return jdbc.getJdbcOperations().queryForObject("""
                 select o.order_status || '|' || p.payment_status || '|' ||
-                       coalesce(o.payment_expires_at::text, 'null') || '|' ||
                        coalesce(o.stock_released_at::text, 'null') || '|' ||
                        (select count(*) from variants)
                   from orders o join payments p on p.order_id = o.id

@@ -103,10 +103,11 @@ public class MailViewBuilder {
                     ? "Order " + order + " received. Your order is pending approval; "
                             + "payment is due on delivery. Total: " + total + "."
                     : "Order " + order + " received. Payment is pending. Total: " + total + ".";
-            case ORDER_CONFIRMED -> event.paymentStatus()
-                    == com.project.dacn.common.constant.PaymentStatus.CONFIRMED
-                    ? "Order " + order + " confirmed. Payment received. Total: " + total + "."
-                    : "Order " + order + " confirmed. Payment is due on delivery. Total: " + total + ".";
+            // Copy follows payment method, not a possibly anomalous payment
+            // status: a COD confirmation never claims payment was received.
+            case ORDER_CONFIRMED -> event.paymentMethod() == com.project.dacn.common.constant.PaymentMethod.COD
+                    ? "Order " + order + " confirmed. Payment is due on delivery. Total: " + total + "."
+                    : "Order " + order + " confirmed. Payment received. Total: " + total + ".";
             case ORDER_REJECTED -> "Order " + order + " was rejected" + reasonSuffix(event.reason()) + ".";
             case ORDER_EXPIRED -> "Order " + order + " was cancelled because the payment window expired.";
             case PAYMENT_FAILED -> "Order " + order + " was cancelled because payment failed.";

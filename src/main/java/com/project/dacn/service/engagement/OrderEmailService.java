@@ -166,6 +166,8 @@ public class OrderEmailService {
                 log.info("email outcome eventId={} deliveryId={} outcome=UNKNOWN code={}",
                         event.eventId(), claim.deliveryId(), result.failureCode());
             }
+            // A future outcome must quarantine, never leave the claim IN_FLIGHT.
+            default -> delivery.recordUnknown(claim, "UNKNOWN_OUTCOME");
         }
     }
 }
