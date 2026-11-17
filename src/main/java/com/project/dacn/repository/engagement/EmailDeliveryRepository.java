@@ -28,6 +28,14 @@ public class EmailDeliveryRepository {
               for update
             """;
 
+    /** Consumer-side outcome read. No row lock; the ledger state is the authority. */
+    private static final String FIND_READ_ONLY_SQL = """
+            select id, state, attempt_count, claim_token, claim_expires_at,
+                   next_eligible_at, completed_at, failure_code
+              from email_deliveries
+             where event_id = :eventId and recipient_user_id = :userId
+            """;
+
     private static final String INSERT_PENDING_SQL = """
             insert into email_deliveries (event_id, recipient_user_id, state, attempt_count)
             values (:eventId, :userId, 'PENDING', 0)
@@ -157,6 +165,18 @@ public class EmailDeliveryRepository {
     /** Locks an existing row so competing claims serialize; absent row means no lock. */
     public DeliveryRow findForUpdate(UUID eventId, long userId) {
         List<DeliveryRow> rows = jdbc.query(FIND_SQL, new MapSqlParameterSource()
+                        .addValue("eventId", eventId).addValue("userId", userId),
+                (result, index) -> new DeliveryRow(
+                        result.getLong("id"), result.getString("state"),
+                        result.getInt("attempt_count"), uuid(result.getString("claim_token")),
+                        instant(result, "claim_expires_at"), instant(result, "next_eligible_at"),
+                        instant(result, "completed_at"), result.getString("failure_code")));
+        return rows.isEmpty() ? null : rows.getFirst();
+    }
+
+    /** Non-locking consumer read; null means no ledger row for this event/recipient. */
+    public DeliveryRow findReadOnly(UUID eventId, long userId) {
+        List<DeliveryRow> rows = jdbc.query(FIND_READ_ONLY_SQL, new MapSqlParameterSource()
                         .addValue("eventId", eventId).addValue("userId", userId),
                 (result, index) -> new DeliveryRow(
                         result.getLong("id"), result.getString("state"),

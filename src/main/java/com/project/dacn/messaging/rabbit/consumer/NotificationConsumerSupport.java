@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
@@ -52,8 +53,15 @@ public class NotificationConsumerSupport {
             NotificationChannel channel, Message message,
             com.rabbitmq.client.Channel amqpChannel, OrderEvent event, String reasonCode)
             throws IOException {
+        handlePermanentFailure(channel, message, amqpChannel, event, reasonCode, Map.of());
+    }
+
+    public void handlePermanentFailure(
+            NotificationChannel channel, Message message,
+            com.rabbitmq.client.Channel amqpChannel, OrderEvent event, String reasonCode,
+            Map<String, Object> extraHeaders) throws IOException {
         // The event is null when decoding failed; only the original message is forwarded.
-        retryPublisher.publishDeadLetter(channel, message, reasonCode);
+        retryPublisher.publishDeadLetter(channel, message, reasonCode, extraHeaders);
         amqpChannel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
     }
 

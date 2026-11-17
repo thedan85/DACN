@@ -39,6 +39,11 @@ public class EmailDeliveryService {
                         long commitAnchor, long claimedAtNanos) {
     }
 
+    /** Consumer-facing, non-locking view of the durable ledger outcome. */
+    public record Outcome(EmailDeliveryState state, long deliveryId, String failureCode,
+                          Instant nextEligibleAt) {
+    }
+
     public sealed interface ClaimResult permits Claimed, Completed, Busy, ReviewRequired {
     }
 
@@ -70,6 +75,15 @@ public class EmailDeliveryService {
         this.repository = repository;
         this.policy = policy;
         this.transaction = new TransactionTemplate(transactionManager);
+    }
+
+    /** Read-only ledger lookup for consumer acknowledgement decisions. */
+    public Outcome outcome(UUID eventId, long recipientUserId) {
+        return transaction.execute(status -> {
+            DeliveryRow row = repository.findReadOnly(eventId, recipientUserId);
+            return row == null ? null : new Outcome(EmailDeliveryState.valueOf(row.state()),
+                    row.id(), row.failureCode(), row.nextEligibleAt());
+        });
     }
 
     /** Claims an eligible row or reports why no network work may start. */

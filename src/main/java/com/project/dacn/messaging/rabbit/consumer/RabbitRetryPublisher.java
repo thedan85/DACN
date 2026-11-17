@@ -13,6 +13,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -40,6 +41,12 @@ public class RabbitRetryPublisher {
     }
 
     public void publishDeadLetter(NotificationChannel channel, Message original, String reasonCode) {
+        publishDeadLetter(channel, original, reasonCode, Map.of());
+    }
+
+    /** Additional bounded identity headers (delivery ID, safe code) for email quarantine. */
+    public void publishDeadLetter(NotificationChannel channel, Message original, String reasonCode,
+                                  Map<String, Object> extraHeaders) {
         Object attempt = original.getMessageProperties().getHeader(RETRY_ATTEMPT_HEADER);
         Message forwarded = forward(original, copy -> {
             if (attempt instanceof Number) {
@@ -48,6 +55,7 @@ public class RabbitRetryPublisher {
                 copy.getHeaders().remove(RETRY_ATTEMPT_HEADER);
             }
             copy.setHeader(QUARANTINE_REASON_HEADER, reasonCode);
+            extraHeaders.forEach(copy::setHeader);
         });
         publish(RabbitTopology.DLX, channel.dlq(), forwarded);
     }
