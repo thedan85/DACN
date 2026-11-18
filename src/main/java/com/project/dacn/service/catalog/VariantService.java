@@ -22,12 +22,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.type.TypeReference;
 
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @Transactional
@@ -38,6 +41,19 @@ public class VariantService {
     };
     private static final TypeReference<PageResponse<VariantResponse>> VARIANT_PAGE = new TypeReference<>() {
     };
+
+    /**
+     * A cached variant payload has no stock, but re-reading it from the remote
+     * DB on every hit dominated latency. A short-lived process-local snapshot
+     * collapses concurrent reads into one query per variant. Checkout still
+     * re-checks stock with a conditional UPDATE, so no oversell is possible.
+     */
+    private static final Duration STOCK_SNAPSHOT_TTL = Duration.ofSeconds(2);
+    private final ConcurrentHashMap<String, StockSnapshot> stockSnapshots =
+            new ConcurrentHashMap<>();
+
+    private record StockSnapshot(int stock, Long stockRevision, long expiresAtNanos) {
+    }
 
     private final VariantRepository repo;
     private final ProductRepository productRepo;
@@ -218,6 +234,41 @@ public class VariantService {
                 .orElseThrow(() -> new ResourceNotFoundException("product not found: " + slug));
     }
 
+    private Integer variantStock(String variantId) {
+        String key = "variant:" + variantId;
+        StockSnapshot snapshot = stockSnapshotEntry(key);
+        if (snapshot != null) {
+            return snapshot.stock();
+        }
+        Optional<VariantRepository.VariantStockView> view = repo.findStockByVariantId(variantId);
+        if (view.isEmpty() || view.get().getStock() == null) {
+            // A missing row means the variant is gone; do not cache that, so the
+            // next call re-reads and lets the DB decide.
+            return null;
+        }
+        rememberStock(key, view.get().getStock(), view.get().getStockRevision());
+        return view.get().getStock();
+    }
+
+    /** Returns a live snapshot, or null when absent or expired. */
+    private StockSnapshot stockSnapshotEntry(String key) {
+        StockSnapshot snapshot = stockSnapshots.get(key);
+        if (snapshot == null) {
+            return null;
+        }
+        if (System.nanoTime() - snapshot.expiresAtNanos() >= 0) {
+            stockSnapshots.remove(key, snapshot);
+            return null;
+        }
+        return snapshot;
+    }
+
+    private StockSnapshot rememberStock(String key, int stock, Long stockRevision) {
+        StockSnapshot snapshot = new StockSnapshot(
+                stock, stockRevision, System.nanoTime() + STOCK_SNAPSHOT_TTL.toNanos());
+        stockSnapshots.put(key, snapshot);
+        return snapshot;
+    }
     private PageResponse<VariantResponse> scrubVariantStock(PageResponse<VariantResponse> page) {
         return newPageResponse(page, page.getContent().stream()
                 .map(response -> withStock(response, null, null))
@@ -229,17 +280,35 @@ public class VariantService {
                 .map(VariantResponse::variantId)
                 .filter(Objects::nonNull)
                 .toList();
-        Map<String, VariantRepository.VariantStockView> stockByVariant = new HashMap<>();
-        if (!variantIds.isEmpty()) {
-            for (VariantRepository.VariantStockView view : repo.findStockByVariantIdIn(variantIds)) {
-                stockByVariant.put(view.getVariantId(), view);
+        Map<String, StockSnapshot> stockByVariant = new HashMap<>();
+        List<String> missing = new ArrayList<>();
+        for (String variantId : variantIds) {
+            String key = "variant:" + variantId;
+            StockSnapshot snapshot = stockSnapshotEntry(key);
+            if (snapshot == null) {
+                missing.add(variantId);
+            } else {
+                stockByVariant.put(variantId, snapshot);
+            }
+        }
+        if (!missing.isEmpty()) {
+            for (VariantRepository.VariantStockView view : repo.findStockByVariantIdIn(missing)) {
+                int stock = view.getStock() == null ? 0 : view.getStock();
+                stockByVariant.put(view.getVariantId(),
+                        rememberStock("variant:" + view.getVariantId(), stock,
+                                view.getStockRevision()));
+            }
+            for (String variantId : missing) {
+                stockByVariant.putIfAbsent(variantId,
+                        rememberStock("variant:" + variantId, 0, null));
             }
         }
         return newPageResponse(page, page.getContent().stream()
                 .map(response -> {
-                    var stock = stockByVariant.get(response.variantId());
-                    return withStock(response, stock == null ? null : stock.getStock(),
-                            stock == null ? null : stock.getStockRevision());
+                    StockSnapshot live = stockByVariant.get(response.variantId());
+                    return withStock(response,
+                            live == null ? null : live.stock(),
+                            live == null ? null : live.stockRevision());
                 })
                 .toList());
     }

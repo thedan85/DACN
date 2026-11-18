@@ -37,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.type.TypeReference;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -51,6 +52,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -64,6 +66,21 @@ public class ProductService {
             Pattern.compile("^[a-z0-9]+(?:-[a-z0-9]+)*$");
 
     private static final int MAX_SLUG_LENGTH = 255;
+
+    /**
+     * The remote database costs ~220ms per round trip. Cached product payloads
+     * deliberately carry no stock (it changes on checkout), but re-reading it
+     * from the DB on every hit dominated response time. A short-lived,
+     * process-local snapshot collapses concurrent reads into one query per key
+     * while bounding staleness to two seconds. Checkout re-checks stock inside
+     * a conditional UPDATE, so a stale display value cannot oversell.
+     */
+    private static final Duration STOCK_SNAPSHOT_TTL = Duration.ofSeconds(2);
+    private final ConcurrentHashMap<String, StockSnapshot> stockSnapshots =
+            new ConcurrentHashMap<>();
+
+    private record StockSnapshot(int stock, Long stockRevision, long expiresAtNanos) {
+    }
 
     /**
      * Literal paths under /api/v1/products that would shadow a product detail
@@ -451,11 +468,47 @@ public class ProductService {
     }
 
     private int productStock(String productId) {
-        return variantRepo.findStockByProductId(productId)
+        String key = "product:" + productId;
+        Integer snapshot = stockSnapshot(key);
+        if (snapshot != null) {
+            return snapshot;
+        }
+        int stock = variantRepo.findStockByProductId(productId)
                 .map(VariantRepository.ProductStockView::getTotalStock)
                 .filter(Objects::nonNull)
                 .map(Long::intValue)
                 .orElse(0);
+        rememberStock(key, stock);
+        return stock;
+    }
+
+    /** Returns a live snapshot, or null when absent or expired. */
+    private StockSnapshot stockSnapshotEntry(String key) {
+        StockSnapshot snapshot = stockSnapshots.get(key);
+        if (snapshot == null) {
+            return null;
+        }
+        if (System.nanoTime() - snapshot.expiresAtNanos() >= 0) {
+            stockSnapshots.remove(key, snapshot);
+            return null;
+        }
+        return snapshot;
+    }
+
+    private Integer stockSnapshot(String key) {
+        StockSnapshot snapshot = stockSnapshotEntry(key);
+        return snapshot == null ? null : snapshot.stock();
+    }
+
+    private StockSnapshot rememberStock(String key, int stock) {
+        return rememberStock(key, stock, null);
+    }
+
+    private StockSnapshot rememberStock(String key, int stock, Long stockRevision) {
+        StockSnapshot snapshot = new StockSnapshot(
+                stock, stockRevision, System.nanoTime() + STOCK_SNAPSHOT_TTL.toNanos());
+        stockSnapshots.put(key, snapshot);
+        return snapshot;
     }
 
     private PageResponse<ProductResponse> scrubProductStock(PageResponse<ProductResponse> page) {
@@ -470,11 +523,27 @@ public class ProductService {
                 .filter(Objects::nonNull)
                 .toList();
         Map<String, Integer> stockByProduct = new HashMap<>();
-        if (!productIds.isEmpty()) {
+        List<String> missing = new ArrayList<>();
+        for (String productId : productIds) {
+            String key = "product:" + productId;
+            Integer snapshot = stockSnapshot(key);
+            if (snapshot == null) {
+                missing.add(productId);
+            } else {
+                stockByProduct.put(productId, snapshot);
+            }
+        }
+        if (!missing.isEmpty()) {
             for (VariantRepository.ProductStockView view
-                    : variantRepo.findStockByProductIdIn(productIds)) {
-                stockByProduct.put(view.getProductId(),
-                        view.getTotalStock() == null ? 0 : view.getTotalStock().intValue());
+                    : variantRepo.findStockByProductIdIn(missing)) {
+                int stock = view.getTotalStock() == null ? 0 : view.getTotalStock().intValue();
+                stockByProduct.put(view.getProductId(), stock);
+                rememberStock("product:" + view.getProductId(), stock);
+            }
+            // Products without variants are absent from the aggregate and have zero stock.
+            for (String productId : missing) {
+                stockByProduct.putIfAbsent(productId, 0);
+                rememberStock("product:" + productId, stockByProduct.get(productId));
             }
         }
         return newPageResponse(page, page.getContent().stream()
@@ -518,19 +587,38 @@ public class ProductService {
             return new ProductDetailResponse(withStock(detail.product(), 0),
                     detail.attributes(), detail.variants(), detail.reviews());
         }
-        Map<String, VariantRepository.VariantStockView> stockByVariant = new HashMap<>();
-        for (VariantRepository.VariantStockView view
-                : variantRepo.findStockByVariantIdIn(variantIds)) {
-            stockByVariant.put(view.getVariantId(), view);
+        Map<String, StockSnapshot> stockByVariant = new HashMap<>();
+        List<String> missing = new ArrayList<>();
+        for (String variantId : variantIds) {
+            String key = "variant:" + variantId;
+            StockSnapshot snapshot = stockSnapshotEntry(key);
+            if (snapshot == null) {
+                missing.add(variantId);
+            } else {
+                stockByVariant.put(variantId, snapshot);
+            }
+        }
+        if (!missing.isEmpty()) {
+            for (VariantRepository.VariantStockView view
+                    : variantRepo.findStockByVariantIdIn(missing)) {
+                int stock = view.getStock() == null ? 0 : view.getStock();
+                stockByVariant.put(view.getVariantId(),
+                        rememberStock("variant:" + view.getVariantId(), stock,
+                                view.getStockRevision()));
+            }
+            for (String variantId : missing) {
+                stockByVariant.putIfAbsent(variantId,
+                        rememberStock("variant:" + variantId, 0, null));
+            }
         }
         int totalStock = 0;
         List<VariantDetailResponse> variants = new ArrayList<>(detail.variants().size());
         for (VariantDetailResponse variant : detail.variants()) {
-            var live = stockByVariant.get(variant.variantId());
-            int stock = live == null || live.getStock() == null ? 0 : live.getStock();
+            StockSnapshot live = stockByVariant.get(variant.variantId());
+            int stock = live == null ? 0 : live.stock();
             totalStock += stock;
             variants.add(new VariantDetailResponse(variant.variantId(), variant.sku(),
-                    variant.price(), stock, live == null ? null : live.getStockRevision(),
+                    variant.price(), stock, live == null ? null : live.stockRevision(),
                     variant.attributes(), variant.media()));
         }
         return new ProductDetailResponse(withStock(detail.product(), totalStock),
