@@ -7,6 +7,9 @@ spring:
     show-sql: false
   flyway:
     enabled: true
+    # The shared database history can contain dev-only repeatables (for example
+    # the swagger seed). Ignore missing repeatables instead of failing startup.
+    ignore-migration-patterns: "repeatable:missing"
 
 app:
   auth:
