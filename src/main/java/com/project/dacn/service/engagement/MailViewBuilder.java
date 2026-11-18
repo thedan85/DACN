@@ -16,6 +16,8 @@ import org.thymeleaf.context.Context;
 import org.thymeleaf.templatemode.TemplateMode;
 import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
@@ -48,20 +50,46 @@ public class MailViewBuilder {
         String subject = "DACN: " + subjectLabel(event);
         String message = message(event);
         String base = properties.storefrontBaseUrl();
-        String orderLink = base + "/account/orders/"
-                + URLEncoder.encode(event.orderId(), StandardCharsets.UTF_8);
+        // A loopback storefront is unreachable for recipients; omit the link rather
+        // than ship a dead URL that hurts deliverability.
+        String orderLink = isLocalBaseUrl(base) ? ""
+                : base + "/account/orders/" + URLEncoder.encode(event.orderId(), StandardCharsets.UTF_8);
         String footer = "DACN storefront";
+
+        // TEXT mode has no element processors, so the whole link block (label,
+        // URL and trailing blank line) is passed ready to render or empty.
+        String orderLinkBlock = orderLink.isEmpty() ? ""
+                : "View your order: " + orderLink + "\n\n";
 
         Context context = new Context();
         context.setVariable("subject", subject);
         context.setVariable("message", message);
         context.setVariable("orderLink", orderLink);
+        context.setVariable("orderLinkBlock", orderLinkBlock);
         context.setVariable("footer", footer);
 
         String messageId = "<order-notif-" + event.eventId() + "-" + deliveryId + "-" + attempt
                 + "@" + properties.messageIdDomain() + ">";
         return new MailView(subject, textEngine.process(TEMPLATE, context),
                 htmlEngine.process(TEMPLATE, context), messageId);
+    }
+
+    /** True for a loopback/local storefront host, whose links no recipient can open. */
+    private static boolean isLocalBaseUrl(String base) {
+        try {
+            String host = new URI(base).getHost();
+            if (host == null) {
+                return false;
+            }
+            if (host.startsWith("[") && host.endsWith("]")) {
+                host = host.substring(1, host.length() - 1);
+            }
+            return "localhost".equalsIgnoreCase(host)
+                    || "127.0.0.1".equals(host)
+                    || "::1".equals(host);
+        } catch (URISyntaxException e) {
+            return false;
+        }
     }
 
     public MimeMessage createMessage(Session session, MailView view, String recipientEmail)

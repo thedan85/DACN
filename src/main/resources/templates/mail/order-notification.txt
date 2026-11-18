@@ -2,6 +2,4 @@
 
 [((${message}))]
 
-View your order: [((${orderLink}))]
-
-[((${footer}))]
+[((${orderLinkBlock}))][((${footer}))]

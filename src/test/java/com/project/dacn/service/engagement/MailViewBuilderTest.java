@@ -102,6 +102,32 @@ class MailViewBuilderTest {
     }
 
     @Test
+    void loopbackBaseUrlsOmitOrderLink() {
+        for (String base : new String[]{"http://localhost:3000", "http://127.0.0.1:3000",
+                "http://[::1]:3000"}) {
+            MailViewBuilder local = new MailViewBuilder(new MailContentProperties(
+                    base, "no-reply@notifications.local", "mail.example.test"));
+            MailView view = local.view(event(ORDER_PLACED, VIETQR, PaymentStatus.PENDING, "ORD_LOCAL"), 1L, 1);
+            assertThat(view.textBody()).doesNotContain("View your order")
+                    .doesNotContain("account/orders").doesNotContain("localhost");
+            assertThat(view.htmlBody()).doesNotContain("account/orders")
+                    .doesNotContain("<a ");
+        }
+    }
+
+    @Test
+    void publicHttpsBaseUrlKeepsOrderLink() {
+        MailViewBuilder publicBuilder = new MailViewBuilder(new MailContentProperties(
+                "https://shop.example.test", "no-reply@notifications.local", "mail.example.test"));
+        MailView view = publicBuilder.view(
+                event(ORDER_PLACED, VIETQR, PaymentStatus.PENDING, "ORD_PUBLIC"), 1L, 1);
+        assertThat(view.textBody())
+                .contains("View your order: https://shop.example.test/account/orders/ORD_PUBLIC");
+        assertThat(view.htmlBody())
+                .contains("<a href=\"https://shop.example.test/account/orders/ORD_PUBLIC\"");
+    }
+
+    @Test
     void escapesUserControlledOrderIdInHtml() {
         MailView view = builder.view(
                 event(ORDER_PLACED, VIETQR, PaymentStatus.PENDING, "ORD_<b onclick='x'>bad</b>"), 1L, 1);
