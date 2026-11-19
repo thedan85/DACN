@@ -3,6 +3,7 @@ package com.project.dacn.integration.shipping.ghn;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 
@@ -32,5 +33,16 @@ public class GhnConfig {
             configured.baseUrl(properties.getBaseUrl());
         }
         return configured.build();
+    }
+
+    /** Isolates slow GHN calls from the shared scheduler used by other workers. */
+    @Bean
+    public ThreadPoolTaskScheduler ghnReconciliationScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("ghn-reconcile-");
+        scheduler.setWaitForTasksToCompleteOnShutdown(true);
+        scheduler.setAwaitTerminationSeconds(30);
+        return scheduler;
     }
 }

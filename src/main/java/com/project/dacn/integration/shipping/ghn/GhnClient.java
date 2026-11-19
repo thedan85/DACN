@@ -5,6 +5,7 @@ import com.project.dacn.integration.shipping.ShippingProvider;
 import com.project.dacn.integration.shipping.ghn.dto.GhnCreateOrderRequest;
 import com.project.dacn.integration.shipping.ghn.dto.GhnCreateOrderResponse;
 import com.project.dacn.integration.shipping.ghn.dto.GhnMasterDataResponse;
+import com.project.dacn.integration.shipping.ghn.dto.GhnOrderDetailResponse;
 import com.project.dacn.integration.shipping.ghn.dto.GhnProvince;
 import com.project.dacn.integration.shipping.ghn.dto.GhnWard;
 import lombok.extern.slf4j.Slf4j;
@@ -19,6 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
@@ -126,6 +128,38 @@ public class GhnClient implements ShippingProvider {
         }
     }
 
+    /** Current GHN status code for an order. Never call inside a DB transaction. */
+    public String getOrderStatus(String orderCode) {
+        if (!StringUtils.hasText(orderCode)) {
+            throw new ShippingException("GHN order code is required");
+        }
+        requireConfigured();
+        try {
+            GhnOrderDetailResponse response = ghnRestClient.post()
+                    .uri("/v2/shipping-order/detail")
+                    .header("Token", properties.getToken())
+                    .header("ShopId", properties.getShopId())
+                    .body(Map.of("order_code", orderCode))
+                    .retrieve()
+                    .body(GhnOrderDetailResponse.class);
+            if (response == null || response.code() == null || response.code() != 200
+                    || response.data() == null || !StringUtils.hasText(response.data().status())) {
+                throw new ShippingException("GHN: " + (response == null ? "empty response" : response.message()));
+            }
+            return response.data().status();
+        } catch (RestClientResponseException ex) {
+            throw new ShippingException(ghnErrorMessage(ex), ex);
+        } catch (RestClientException ex) {
+            throw new ShippingException("GHN request failed", ex);
+        }
+    }
+
+    public boolean isConfigured() {
+        return StringUtils.hasText(properties.getBaseUrl())
+                && StringUtils.hasText(properties.getToken())
+                && StringUtils.hasText(properties.getShopId());
+    }
+
     private String ghnErrorMessage(RestClientResponseException ex) {
         try {
             JsonNode node = ERROR_MAPPER.readTree(ex.getResponseBodyAsString());
@@ -140,9 +174,7 @@ public class GhnClient implements ShippingProvider {
     }
 
     private void requireConfigured() {
-        if (!StringUtils.hasText(properties.getBaseUrl())
-                || !StringUtils.hasText(properties.getToken())
-                || !StringUtils.hasText(properties.getShopId())) {
+        if (!isConfigured()) {
             throw new ShippingException("GHN is not configured");
         }
     }

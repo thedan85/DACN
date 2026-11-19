@@ -14,6 +14,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -80,6 +81,19 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     Page<Order> searchForStaff(@Param("q") String q,
                                @Param("status") OrderStatus status,
                                Pageable pageable);
+
+    /** Keyset over non-terminal orders with a usable GHN code; caller caps the batch. */
+    @Query("""
+            select o from Order o
+            where o.id > :afterId
+              and o.ghnOrderCode is not null
+              and o.ghnOrderCode <> ''
+              and o.status in :statuses
+            order by o.id asc
+            """)
+    List<Order> findGhnReconciliationCandidates(@Param("statuses") Collection<OrderStatus> statuses,
+                                                 @Param("afterId") long afterId,
+                                                 Pageable pageable);
 
     /**
      * Serializes staff decisions with payment settlement: both lock the same
