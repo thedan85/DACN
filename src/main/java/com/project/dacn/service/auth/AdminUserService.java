@@ -4,6 +4,7 @@ import com.project.dacn.common.constant.UserStatus;
 import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.common.exception.UserRuleViolationException;
 import com.project.dacn.common.response.PageResponse;
+import com.project.dacn.dto.request.auth.AdminCustomerProfileUpdateRequest;
 import com.project.dacn.dto.request.auth.AdminUserCreateRequest;
 import com.project.dacn.dto.request.auth.AdminUserRoleRequest;
 import com.project.dacn.dto.request.auth.AdminUserStatusRequest;
@@ -14,6 +15,7 @@ import com.project.dacn.entity.auth.Role;
 import com.project.dacn.entity.auth.RolePermission;
 import com.project.dacn.entity.auth.User;
 import com.project.dacn.entity.identity.Admin;
+import com.project.dacn.entity.identity.Customer;
 import com.project.dacn.entity.identity.Employee;
 import com.project.dacn.repository.auth.AdminUserQueryRepository;
 import com.project.dacn.repository.auth.RefreshTokenRepository;
@@ -250,6 +252,33 @@ public class AdminUserService {
 
         log.info("admin user action: actor={}, target={}, action=ROLE_{}",
                 actor, userId, requestedRole.toUpperCase(Locale.ROOT));
+        return get(userId);
+    }
+
+    @Transactional
+    public AdminUserDetailResponse updateCustomerProfile(
+            String userId, AdminCustomerProfileUpdateRequest request) {
+        User target = requireUser(userId);
+        if (!"customer".equals(roleCodeOf(target))) {
+            throw new ResourceNotFoundException("user not found: " + userId);
+        }
+        Customer customer = customerRepository.findByUser_UserId(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "customer profile not found: " + userId));
+
+        if (request.name() != null) {
+            customer.setName(request.name());
+        }
+        if (request.phone() != null) {
+            customer.setPhone(request.phone());
+        }
+        if (request.addressProvided()) {
+            customer.setAddress(request.address());
+        }
+        customerRepository.save(customer);
+
+        log.info("admin user action: actor={}, target={}, action=PROFILE_UPDATE",
+                currentActorId(), userId);
         return get(userId);
     }
 

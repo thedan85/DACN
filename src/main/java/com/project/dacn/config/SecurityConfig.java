@@ -134,7 +134,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/users")
                         .hasAuthority(Permissions.USER_CREATE)
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/admin/users/*/status",
-                                "/api/v1/admin/users/*/role")
+                                "/api/v1/admin/users/*/role",
+                                "/api/v1/admin/users/*/profile")
                         .hasAuthority(Permissions.USER_UPDATE)
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/admin/users/*")
                         .hasAuthority(Permissions.USER_DELETE)
