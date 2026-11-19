@@ -58,6 +58,21 @@ class NotificationMessageRendererTest {
     }
 
     @Test
+    void companyPlacedCopyNamesPaymentRoute() {
+        MessageFacts cod = factsOf(ORDER_PLACED, COD, PENDING,
+                PaymentStatus.PENDING, "ORD_cod", null);
+        assertThat(renderer.companyMessage(cod))
+                .contains("COD").containsIgnoringCase("approval")
+                .doesNotContainIgnoringCase("online");
+
+        MessageFacts online = factsOf(ORDER_PLACED, VIETQR, PENDING,
+                PaymentStatus.PENDING, "ORD_online", null);
+        assertThat(renderer.companyMessage(online))
+                .contains("online").containsIgnoringCase("payment")
+                .doesNotContain("COD");
+    }
+
+    @Test
     void onlinePaidConfirmationIsTruthful() {
         MessageFacts facts = factsOf(ORDER_CONFIRMED, VIETQR, CONFIRMED,
                 PaymentStatus.CONFIRMED, "ORD_online", null);

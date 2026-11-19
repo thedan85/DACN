@@ -14,9 +14,10 @@ topology declarations, and startup verifier are absent.
 provide queue semantics and at-least-once dead-lettering, not broker failover.
 
 The exact broker topology is documented in
-`docs/runbooks/rabbitmq-notification-topology.md`. The hosted Realtime setup,
-signing-key gate, Data API lockdown, and budget activation procedure remain in
-`docs/runbooks/supabase-realtime-setup.md`.
+`docs/runbooks/rabbitmq-notification-topology.md`. Local broker setup, native
+Windows or Docker, is in `docs/runbooks/rabbitmq-local-setup.md`. The hosted
+Realtime setup, signing-key gate, Data API lockdown, and budget activation
+procedure remain in `docs/runbooks/supabase-realtime-setup.md`.
 
 ## SMTP host resolution (bounded)
 

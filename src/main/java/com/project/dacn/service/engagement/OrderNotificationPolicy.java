@@ -42,11 +42,8 @@ public final class OrderNotificationPolicy {
             case REFUND_REQUIRED, ORDER_COMPLETED -> false;
             default -> true;
         };
-        boolean companyInApp = switch (type) {
-            // Company learns of a new order only when approval/payment is pending.
-            case ORDER_PLACED -> event.paymentMethod() == PaymentMethod.COD;
-            default -> true;
-        };
+        // Company learns of every new order and every later status change.
+        boolean companyInApp = true;
         // Company email is never sent, for any event.
         return new ChannelDecisions(true, customerEmail, companyInApp, false);
     }

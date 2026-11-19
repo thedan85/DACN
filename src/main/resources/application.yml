@@ -195,3 +195,7 @@ shipping:
     token: ${GHN_TOKEN:}
     shop-id: ${GHN_SHOP_ID:}
     webhook-secret: ${GHN_WEBHOOK_SECRET:}
+    reconcile-enabled: ${GHN_RECONCILE_ENABLED:true}
+    reconcile-interval-ms: ${GHN_RECONCILE_INTERVAL_MS:300000}
+    reconcile-initial-delay-ms: ${GHN_RECONCILE_INITIAL_DELAY_MS:30000}
+    reconcile-batch-size: ${GHN_RECONCILE_BATCH_SIZE:50}

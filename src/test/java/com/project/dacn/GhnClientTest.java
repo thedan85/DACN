@@ -67,6 +67,65 @@ class GhnClientTest {
     }
 
     @Test
+    void getOrderStatusSendsDetailRequestAndReturnsStatus() {
+        server.expect(requestTo("https://ghn.test/shiip/public-api/v2/shipping-order/detail"))
+                .andExpect(method(POST))
+                .andExpect(header("Token", "token"))
+                .andExpect(header("ShopId", "237833"))
+                .andExpect(jsonPath("$.order_code").value("GHN-1"))
+                .andRespond(withSuccess("""
+                        {"code":200,"message":"Success",
+                         "data":{"order_code":"GHN-1","status":"picked"}}
+                        """, MediaType.APPLICATION_JSON));
+
+        assertThat(client.getOrderStatus("GHN-1")).isEqualTo("picked");
+    }
+
+    @Test
+    void getOrderStatusRejectsBlankAndNullCodesBeforeAnyRequest() {
+        assertThatThrownBy(() -> client.getOrderStatus(" "))
+                .isInstanceOf(ShippingException.class)
+                .hasMessage("GHN order code is required");
+        assertThatThrownBy(() -> client.getOrderStatus(null))
+                .isInstanceOf(ShippingException.class)
+                .hasMessage("GHN order code is required");
+        server.verify();
+    }
+
+    @Test
+    void getOrderStatusMapsGhnErrorEnvelope() {
+        server.expect(anything())
+                .andRespond(withSuccess("{\"code\":400,\"message\":\"order not found\"}",
+                        MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.getOrderStatus("GHN-X"))
+                .isInstanceOf(ShippingException.class)
+                .hasMessageContaining("order not found");
+    }
+
+    @Test
+    void getOrderStatusRejectsMissingData() {
+        server.expect(anything())
+                .andRespond(withSuccess("{\"code\":200,\"message\":\"Success\",\"data\":null}",
+                        MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> client.getOrderStatus("GHN-X"))
+                .isInstanceOf(ShippingException.class);
+    }
+
+    @Test
+    void getOrderStatusMapsHttpErrorToShippingException() {
+        server.expect(anything())
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"code\":400,\"message\":\"bad code\"}"));
+
+        assertThatThrownBy(() -> client.getOrderStatus("GHN-X"))
+                .isInstanceOf(ShippingException.class)
+                .hasMessageContaining("bad code");
+    }
+
+    @Test
     void provincesFilterInactiveUnitsAndAreCached() {
         server.expect(requestTo("https://ghn.test/shiip/public-api/v3/master-data/province/all?offset=0&limit=200"))
                 .andExpect(method(GET))
