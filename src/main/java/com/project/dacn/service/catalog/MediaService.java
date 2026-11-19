@@ -59,7 +59,7 @@ public class MediaService {
 
     private PageResponse<MediaResponse> listFromDb(Pageable pageable, boolean includeHidden) {
         Page<Media> page = includeHidden
-                ? repo.findByDeletedFalse(pageable)
+                ? repo.findStaffVisible(pageable)
                 : repo.findVisible(ProductStatus.ACTIVE, pageable);
         return PageResponse.from(page, page.map(mapper::toMediaResponse).getContent());
     }

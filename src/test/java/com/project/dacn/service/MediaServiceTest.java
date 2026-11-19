@@ -171,17 +171,17 @@ class MediaServiceTest {
         service.list(page, false);
 
         verify(repo).findVisible(ProductStatus.ACTIVE, page);
-        verify(repo, never()).findByDeletedFalse(any());
+        verify(repo, never()).findStaffVisible(any());
     }
 
     @Test
-    void adminListQueriesAllMedia() {
+    void adminListQueriesStaffVisibleMedia() {
         PageRequest page = PageRequest.of(0, 20);
-        when(repo.findByDeletedFalse(page)).thenReturn(Page.empty());
+        when(repo.findStaffVisible(page)).thenReturn(Page.empty());
 
         service.list(page, true);
 
-        verify(repo).findByDeletedFalse(page);
+        verify(repo).findStaffVisible(page);
         verify(repo, never()).findVisible(any(), any());
     }
 

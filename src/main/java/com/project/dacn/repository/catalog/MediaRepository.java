@@ -69,7 +69,21 @@ public interface MediaRepository extends JpaRepository<Media, Long> {
 
     Page<Media> findByVariant_VariantId(String variantId, Pageable pageable);
 
-    Page<Media> findByDeletedFalse(Pageable pageable);
+    /**
+     * Staff global list: every non-deleted media row whose owner the entity
+     * layer can load (product not DELETED, variant not soft-deleted). Hidden
+     * but valid owners (DRAFT/INACTIVE product, variant of such a product) are
+     * included. Rows whose owner is missing or entity-invisible are excluded
+     * in SQL so count and page content stay consistent.
+     */
+    @Query("""
+            select m from Media m
+            left join m.product p
+            left join m.variant v
+            left join v.product vp
+            where p is not null or (v is not null and vp is not null)
+            """)
+    Page<Media> findStaffVisible(Pageable pageable);
 
     /**
      * Media attached to an active product, directly or through its variant.
