@@ -70,8 +70,11 @@ public final class NotificationMessageRenderer {
     public String companyMessage(MessageFacts facts) {
         String order = escape(facts.orderId());
         return switch (facts.eventType()) {
-            case ORDER_PLACED -> "New COD order " + order + " awaiting approval. Total: "
-                    + escape(facts.total()) + ".";
+            case ORDER_PLACED -> facts.paymentMethod() == PaymentMethod.COD
+                    ? "New COD order " + order + " awaiting approval. Total: "
+                            + escape(facts.total()) + "."
+                    : "New online order " + order + " awaiting payment. Total: "
+                            + escape(facts.total()) + ".";
             case ORDER_CONFIRMED -> "Order " + order + " is ready for processing.";
             case REFUND_REQUIRED -> "Order " + order + " requires action: refund review requested.";
             case ORDER_REJECTED -> "Order " + order + " status update: rejected.";

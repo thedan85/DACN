@@ -18,11 +18,7 @@ import java.util.List;
 import static com.project.dacn.common.constant.OrderStatus.CANCELLED;
 import static com.project.dacn.common.constant.OrderStatus.CONFIRMED;
 import static com.project.dacn.common.constant.OrderStatus.PENDING;
-import static com.project.dacn.common.constant.PaymentMethod.BANK_TRANSFER;
 import static com.project.dacn.common.constant.PaymentMethod.COD;
-import static com.project.dacn.common.constant.PaymentMethod.CREDIT_CARD;
-import static com.project.dacn.common.constant.PaymentMethod.DEBIT_CARD;
-import static com.project.dacn.common.constant.PaymentMethod.E_WALLET;
 import static com.project.dacn.common.constant.PaymentMethod.VIETQR;
 import static com.project.dacn.common.constant.PaymentStatus.FAILED;
 import static com.project.dacn.event.OrderEventType.ORDER_COMPLETED;
@@ -42,8 +38,6 @@ class OrderNotificationPolicyTest {
 
     private static final Instant OCCURRED = Instant.parse("2026-03-01T00:00:00Z");
     private static final Instant DEADLINE = Instant.parse("2026-03-01T00:10:00Z");
-    private static final List<PaymentMethod> ONLINE_METHODS =
-            List.of(CREDIT_CARD, DEBIT_CARD, BANK_TRANSFER, E_WALLET, VIETQR);
 
     private final OrderNotificationPolicy policy = new OrderNotificationPolicy();
 
@@ -59,12 +53,11 @@ class OrderNotificationPolicyTest {
     }
 
     @Test
-    void companyNewOrderOnlyForCod() {
-        assertThat(policy.channels(event(ORDER_PLACED, COD)).companyInApp()).isTrue();
-        for (PaymentMethod method : ONLINE_METHODS) {
+    void companyNewOrderForEveryPaymentMethod() {
+        for (PaymentMethod method : PaymentMethod.values()) {
             assertThat(policy.channels(event(ORDER_PLACED, method)).companyInApp())
-                    .as("no company new-order notice for online %s", method)
-                    .isFalse();
+                    .as("company new-order notice for %s", method)
+                    .isTrue();
         }
     }
 
