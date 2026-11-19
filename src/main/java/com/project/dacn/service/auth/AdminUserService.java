@@ -30,8 +30,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,6 +56,7 @@ public class AdminUserService {
     private final RolePermissionRepository rolePermissionRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AdminAuthorityPolicy authorityPolicy;
 
     @Transactional(readOnly = true)
     public PageResponse<AdminUserResponse> list(
@@ -140,6 +139,9 @@ public class AdminUserService {
         String name = request.name().trim();
         String address = trimToNull(request.address());
 
+        AdminAuthorityPolicy.Actor actor = authorityPolicy.requireActiveActor();
+        authorityPolicy.requireRoleAssignable(actor, role);
+
         User created = User.builder()
                 .email(email)
                 .passwordHash(passwordEncoder.encode(request.password()))
@@ -170,7 +172,7 @@ public class AdminUserService {
         }
 
         log.info("admin user action: actor={}, target={}, action=CREATE",
-                currentActorId(), created.getUserId());
+                actor.userId(), created.getUserId());
         return get(created.getUserId());
     }
 
@@ -178,13 +180,16 @@ public class AdminUserService {
     public AdminUserDetailResponse updateStatus(String userId, AdminUserStatusRequest request) {
         User target = requireUser(userId);
         UserStatus targetStatus = parseStatus(request.status());
-        String actor = currentActorId();
+        AdminAuthorityPolicy.Actor actor = authorityPolicy.requireActiveActor();
 
-        if (targetStatus == UserStatus.LOCKED && Objects.equals(actor, userId)) {
+        if (targetStatus == UserStatus.LOCKED && Objects.equals(actor.userId(), userId)) {
             throw new UserRuleViolationException("error.user.self.lock");
         }
         if (targetStatus == UserStatus.LOCKED) {
             ensureNotLastActiveAdmin(target);
+            if (authorityPolicy.isAdminRole(target.getRole())) {
+                authorityPolicy.requireAdmin(actor);
+            }
         }
 
         target.setStatus(targetStatus);
@@ -194,7 +199,7 @@ public class AdminUserService {
         }
 
         log.info("admin user action: actor={}, target={}, action=STATUS_{}",
-                actor, userId, targetStatus);
+                actor.userId(), userId, targetStatus);
         return get(userId);
     }
 
@@ -215,8 +220,8 @@ public class AdminUserService {
         }
 
         boolean demote = currentRole.equals("admin") && !requestedRole.equals("admin");
-        String actor = currentActorId();
-        if (demote && Objects.equals(actor, userId)) {
+        AdminAuthorityPolicy.Actor actor = authorityPolicy.requireActiveActor();
+        if (demote && Objects.equals(actor.userId(), userId)) {
             throw new UserRuleViolationException("error.user.self.demote");
         }
         if (demote) {
@@ -225,6 +230,9 @@ public class AdminUserService {
 
         Role targetRole = roleRepository.findByCodeIgnoreCase(requestedRole)
                 .orElseThrow(() -> new UserRuleViolationException("error.user.role.invalid"));
+
+        authorityPolicy.requireRoleChange(actor, target, requestedRole);
+        authorityPolicy.requireRoleAssignable(actor, targetRole);
 
         Profile currentProfile = profileFor(target, currentRole);
         if (requestedRole.equals("admin")) {
@@ -251,7 +259,7 @@ public class AdminUserService {
         userRepository.save(target);
 
         log.info("admin user action: actor={}, target={}, action=ROLE_{}",
-                actor, userId, requestedRole.toUpperCase(Locale.ROOT));
+                actor.userId(), userId, requestedRole.toUpperCase(Locale.ROOT));
         return get(userId);
     }
 
@@ -259,6 +267,8 @@ public class AdminUserService {
     public AdminUserDetailResponse updateCustomerProfile(
             String userId, AdminCustomerProfileUpdateRequest request) {
         User target = requireUser(userId);
+        AdminAuthorityPolicy.Actor actor = authorityPolicy.requireActiveActor();
+
         if (!"customer".equals(roleCodeOf(target))) {
             throw new ResourceNotFoundException("user not found: " + userId);
         }
@@ -278,25 +288,28 @@ public class AdminUserService {
         customerRepository.save(customer);
 
         log.info("admin user action: actor={}, target={}, action=PROFILE_UPDATE",
-                currentActorId(), userId);
+                actor.userId(), userId);
         return get(userId);
     }
 
     @Transactional
     public void delete(String userId) {
         User target = requireUser(userId);
-        String actor = currentActorId();
+        AdminAuthorityPolicy.Actor actor = authorityPolicy.requireActiveActor();
 
-        if (Objects.equals(actor, userId)) {
+        if (Objects.equals(actor.userId(), userId)) {
             throw new UserRuleViolationException("error.user.self.delete");
         }
         ensureNotLastActiveAdmin(target);
+        if (authorityPolicy.isAdminRole(target.getRole())) {
+            authorityPolicy.requireAdmin(actor);
+        }
 
         target.setStatus(UserStatus.DELETED);
         userRepository.save(target);
         revokeAllRefreshTokens(userId);
 
-        log.info("admin user action: actor={}, target={}, action=DELETE", actor, userId);
+        log.info("admin user action: actor={}, target={}, action=DELETE", actor.userId(), userId);
     }
 
     private User requireUser(String userId) {
@@ -360,11 +373,6 @@ public class AdminUserService {
         return profile.name() == null || profile.name().isBlank()
                 ? user.getEmail()
                 : profile.name();
-    }
-
-    private static String currentActorId() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        return authentication == null ? null : authentication.getName();
     }
 
     private static String roleCodeOf(User user) {
