@@ -100,6 +100,14 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(409, message, null));
     }
 
+    @ExceptionHandler(AdminAuthorityException.class)
+    public ResponseEntity<ApiResponse<?>> handleAdminAuthority(AdminAuthorityException ex) {
+        String message = messageSource.getMessage(AdminAuthorityException.MESSAGE_KEY, null,
+                "You don't have permission to assign this role", LocaleContextHolder.getLocale());
+        return ResponseEntity.status(403)
+                .body(ApiResponse.of(403, message, null));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<?>> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()

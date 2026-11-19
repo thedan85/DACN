@@ -35,6 +35,7 @@ public class AdminRoleService {
     private final PermissionRepository permissionRepository;
     private final RolePermissionRepository rolePermissionRepository;
     private final UserRepository userRepository;
+    private final AdminAuthorityPolicy authorityPolicy;
 
     @Transactional(readOnly = true)
     public List<PermissionResponse> listPermissions() {
@@ -78,6 +79,8 @@ public class AdminRoleService {
         Role role = roleRepository.findByRoleId(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException("role not found: " + roleId));
 
+        authorityPolicy.requireRoleModifiable(authorityPolicy.requireActiveActor(), role);
+
         if (request.name() == null && request.description() == null) {
             throw new IllegalArgumentException("at least one of name or description is required");
         }
@@ -104,6 +107,9 @@ public class AdminRoleService {
             String roleId, AdminRolePermissionsUpdateRequest request) {
         Role role = roleRepository.findByRoleIdForUpdate(roleId)
                 .orElseThrow(() -> new ResourceNotFoundException("role not found: " + roleId));
+
+        AdminAuthorityPolicy.Actor actor = authorityPolicy.requireActiveActor();
+        authorityPolicy.requireRoleModifiable(actor, role);
 
         List<String> requestedIds = request.permissionIds();
         if (requestedIds == null
@@ -136,6 +142,15 @@ public class AdminRoleService {
                 .map(grant -> grant.getPermission().getPermissionId())
                 .collect(Collectors.toSet());
 
+        List<Permission> added = target.stream()
+                .filter(permission -> !currentIds.contains(permission.getPermissionId()))
+                .toList();
+        List<Permission> removed = current.stream()
+                .filter(grant -> !targetIds.contains(grant.getPermission().getPermissionId()))
+                .map(RolePermission::getPermission)
+                .toList();
+        authorityPolicy.requirePermissionChange(actor, role, added, removed);
+
         List<RolePermission> toDelete = current.stream()
                 .filter(grant -> !targetIds.contains(grant.getPermission().getPermissionId()))
                 .toList();
@@ -143,8 +158,7 @@ public class AdminRoleService {
             rolePermissionRepository.deleteAll(toDelete);
         }
 
-        List<RolePermission> toAdd = target.stream()
-                .filter(permission -> !currentIds.contains(permission.getPermissionId()))
+        List<RolePermission> toAdd = added.stream()
                 .map(permission -> RolePermission.builder()
                         .role(role)
                         .permission(permission)
