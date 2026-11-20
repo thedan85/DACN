@@ -31,6 +31,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +40,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
@@ -79,7 +81,7 @@ class AdminUserMutationControllerTest {
     @Autowired
     private UserRepository userRepository;
 
-    @Autowired
+    @MockitoSpyBean
     private CustomerRepository customerRepository;
 
     @Autowired
@@ -785,6 +787,18 @@ class AdminUserMutationControllerTest {
         String targetId = customerUser.getUserId();
         String profileUrl = "/api/v1/admin/users/" + targetId + "/profile";
 
+        // Phone-only first, while the seeded name and address are non-null:
+        // neither may be cleared by an omitted field.
+        mockMvc.perform(patch(profileUrl)
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\" +84900000001 \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.phone").value("+84900000001"))
+                .andExpect(jsonPath("$.data.name").value("Customer User"))
+                .andExpect(jsonPath("$.data.address").value("Customer Home"));
+
         mockMvc.perform(patch(profileUrl)
                         .header("Authorization", bearer(token))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -793,17 +807,8 @@ class AdminUserMutationControllerTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.name").value("Updated Name"))
                 .andExpect(jsonPath("$.data.address").value(nullValue()))
-                .andExpect(jsonPath("$.data.phone").value("0900000004"))
-                .andExpect(jsonPath("$.data.status").value("ACTIVE"));
-
-        mockMvc.perform(patch(profileUrl)
-                        .header("Authorization", bearer(token))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"phone\":\" +84900000001 \"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.phone").value("+84900000001"))
-                .andExpect(jsonPath("$.data.name").value("Updated Name"));
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"));
 
         mockMvc.perform(patch(profileUrl)
                         .header("Authorization", bearer(token))
@@ -867,6 +872,50 @@ class AdminUserMutationControllerTest {
         org.assertj.core.api.Assertions.assertThat(persisted.getPhone()).isNull();
         org.assertj.core.api.Assertions.assertThat(persisted.getAddress()).isEqualTo("Unit 5");
         org.assertj.core.api.Assertions.assertThat(persisted.getName()).isEqualTo("Locked Customer");
+    }
+
+    @Test
+    void patchCustomerProfile_overlappingEditsDoNotEraseEachOther() throws Exception {
+        String token = login("admin@test.com").accessToken();
+        String targetId = customerUser.getUserId();
+
+        // The first admin reads the profile and holds this snapshot.
+        Customer snapshot = customerRepository.findByUser_UserId(targetId).orElseThrow();
+
+        // A second admin changes the name and phone before the first edit is
+        // submitted.
+        customerRepository.updateProfileFields(
+                snapshot.getCustomerId(), "Renamed By Other", "+84900000009", false, null);
+        entityManager.flush();
+        entityManager.clear();
+
+        // The first admin saves only the address, from the stale snapshot. Only
+        // the first read gets the snapshot; the response read must be fresh, so
+        // this also catches a missing clearAutomatically on the update.
+        int[] reads = {0};
+        org.mockito.Mockito.doAnswer(invocation -> reads[0]++ == 0
+                        ? Optional.of(snapshot)
+                        : customerRepository.findByCustomerId(snapshot.getCustomerId()))
+                .when(customerRepository).findByUser_UserId(targetId);
+        mockMvc.perform(patch("/api/v1/admin/users/" + targetId + "/profile")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"address\":\"Unit 9\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.address").value("Unit 9"))
+                .andExpect(jsonPath("$.data.phone").value("+84900000009"))
+                .andExpect(jsonPath("$.data.name").value("Renamed By Other"));
+
+        org.mockito.Mockito.reset(customerRepository);
+        entityManager.flush();
+        entityManager.clear();
+        Customer persisted = customerRepository.findByUser_UserId(targetId).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(persisted.getPhone())
+                .isEqualTo("+84900000009");
+        org.assertj.core.api.Assertions.assertThat(persisted.getAddress())
+                .isEqualTo("Unit 9");
+        org.assertj.core.api.Assertions.assertThat(persisted.getName())
+                .isEqualTo("Renamed By Other");
     }
 
     @Test

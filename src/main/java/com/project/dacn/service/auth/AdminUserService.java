@@ -276,16 +276,12 @@ public class AdminUserService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "customer profile not found: " + userId));
 
-        if (request.name() != null) {
-            customer.setName(request.name());
-        }
-        if (request.phone() != null) {
-            customer.setPhone(request.phone());
-        }
-        if (request.addressProvided()) {
-            customer.setAddress(request.address());
-        }
-        customerRepository.save(customer);
+        customerRepository.updateProfileFields(
+                customer.getCustomerId(),
+                request.name(),
+                request.phone(),
+                request.addressProvided(),
+                request.address());
 
         log.info("admin user action: actor={}, target={}, action=PROFILE_UPDATE",
                 actor.userId(), userId);
