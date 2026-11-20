@@ -12,7 +12,6 @@ import com.project.dacn.dto.request.auth.RegisterRequest;
 import com.project.dacn.dto.response.auth.LoginResponse;
 import com.project.dacn.dto.response.auth.MeResponse;
 import com.project.dacn.dto.response.auth.RefreshResponse;
-import com.project.dacn.dto.response.auth.UserResponse;
 import com.project.dacn.security.GoogleTokenVerifier;
 import com.project.dacn.security.RateLimiter;
 import com.project.dacn.security.RefreshTokenCookie;
@@ -46,12 +45,14 @@ public class AuthController {
     private final GoogleTokenVerifier googleTokenVerifier;
 
     @PostMapping("/register")
-    public ResponseEntity<ApiResponse<UserResponse>> register(
+    public ResponseEntity<ApiResponse<LoginResponse>> register(
             @Valid @RequestBody RegisterRequest request,
             HttpServletRequest httpRequest) {
         rateLimiter.check("rl:register:" + clientIp(httpRequest), 20, Duration.ofHours(1));
-        UserResponse response = authService.register(request);
+        LoginResponse response = authService.register(
+                request, httpRequest.getHeader("User-Agent"), clientIp(httpRequest));
         return ResponseEntity.status(201)
+                .header(HttpHeaders.SET_COOKIE, refreshTokenCookie.create(response.refreshToken()))
                 .body(ApiResponse.of(201, "registered successfully", response));
     }
 
