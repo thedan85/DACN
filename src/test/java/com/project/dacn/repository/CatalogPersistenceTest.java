@@ -252,6 +252,58 @@ class CatalogPersistenceTest {
     }
 
     @Test
+    void staffMediaListIncludesHiddenOwnersAndSkipsInvisibleOnes() {
+        Product active = productRepository.save(Product.builder().name("Staff Active")
+                .description("d").build());
+        Product draft = productRepository.save(Product.builder().name("Staff Draft")
+                .description("d").status(ProductStatus.DRAFT).build());
+        Product inactive = productRepository.save(Product.builder().name("Staff Inactive")
+                .description("d").status(ProductStatus.INACTIVE).build());
+        Product toDelete = productRepository.save(Product.builder().name("Staff Delete")
+                .description("d").build());
+        Variant deletedVariant = variantRepository.save(Variant.builder().product(active)
+                .sku("STAFF-DEL").price(BigDecimal.ONE).stock(1).build());
+        Variant draftVariant = variantRepository.save(Variant.builder().product(draft)
+                .sku("STAFF-DV").price(BigDecimal.ONE).stock(1).build());
+        Media directActive = mediaRepository.save(Media.builder().url("staff-active").product(active).build());
+        Media directDraft = mediaRepository.save(Media.builder().url("staff-draft").product(draft).build());
+        Media directInactive = mediaRepository.save(Media.builder().url("staff-inactive").product(inactive).build());
+        Media variantOfDraft = mediaRepository.save(Media.builder().url("staff-draft-variant").variant(draftVariant).build());
+        mediaRepository.save(Media.builder().url("staff-deleted-product").product(toDelete).build());
+        mediaRepository.save(Media.builder().url("staff-deleted-variant").variant(deletedVariant).build());
+        mediaRepository.save(Media.builder().url("staff-orphan").build());
+        deletedVariant.setDeleted(true);
+        variantRepository.save(deletedVariant);
+        toDelete.setStatus(ProductStatus.DELETED);
+        productRepository.save(toDelete);
+        entityManager.flush();
+        entityManager.clear();
+
+        org.springframework.data.domain.Page<Media> page = mediaRepository
+                .findStaffVisible(org.springframework.data.domain.Pageable.unpaged());
+        // Mapping must not throw: owners of kept rows are entity-loadable.
+        java.util.List<String> ids = page.map(mapper::toMediaResponse).getContent().stream()
+                .map(com.project.dacn.dto.response.catalog.MediaResponse::mediaId)
+                .toList();
+
+        assertThat(ids).containsExactlyInAnyOrder(
+                directActive.getMediaId(),
+                directDraft.getMediaId(),
+                directInactive.getMediaId(),
+                variantOfDraft.getMediaId());
+        assertThat(page.getTotalElements()).isEqualTo(4);
+
+        org.springframework.data.domain.Page<Media> first = mediaRepository.findStaffVisible(
+                org.springframework.data.domain.PageRequest.of(0, 3));
+        org.springframework.data.domain.Page<Media> second = mediaRepository.findStaffVisible(
+                org.springframework.data.domain.PageRequest.of(1, 3));
+        assertThat(first.getTotalElements()).isEqualTo(4);
+        assertThat(first.getTotalPages()).isEqualTo(2);
+        assertThat(first.getContent()).hasSize(3);
+        assertThat(second.getContent()).hasSize(1);
+    }
+
+    @Test
     void stockProjectionsMatchPriceRangeFilterIncludingDeletedVariants() {
         Product product = productRepository.save(Product.builder()
                 .name("Stock Parity").description("d").build());

@@ -1,5 +1,6 @@
 package com.project.dacn;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.project.dacn.common.constant.UserStatus;
 import com.project.dacn.dto.request.auth.LoginRequest;
@@ -30,12 +31,16 @@ import org.springframework.http.MediaType;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
@@ -76,7 +81,7 @@ class AdminUserMutationControllerTest {
     @Autowired
     private UserRepository userRepository;
 
-    @Autowired
+    @MockitoSpyBean
     private CustomerRepository customerRepository;
 
     @Autowired
@@ -774,6 +779,269 @@ class AdminUserMutationControllerTest {
                         .header("Authorization", bearer(token)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value(404));
+    }
+
+    @Test
+    void patchCustomerProfile_updatesOnlySuppliedFields() throws Exception {
+        String token = login("admin@test.com").accessToken();
+        String targetId = customerUser.getUserId();
+        String profileUrl = "/api/v1/admin/users/" + targetId + "/profile";
+
+        // Phone-only first, while the seeded name and address are non-null:
+        // neither may be cleared by an omitted field.
+        mockMvc.perform(patch(profileUrl)
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"phone\":\" +84900000001 \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.phone").value("+84900000001"))
+                .andExpect(jsonPath("$.data.name").value("Customer User"))
+                .andExpect(jsonPath("$.data.address").value("Customer Home"));
+
+        mockMvc.perform(patch(profileUrl)
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\" Updated Name \",\"address\":null}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.name").value("Updated Name"))
+                .andExpect(jsonPath("$.data.address").value(nullValue()))
+                .andExpect(jsonPath("$.data.phone").value("+84900000001"))
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+
+        mockMvc.perform(patch(profileUrl)
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"address\":\"   \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.address").value(nullValue()));
+
+        entityManager.flush();
+        entityManager.clear();
+        Customer persisted = customerRepository.findByUser_UserId(targetId).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(persisted.getName()).isEqualTo("Updated Name");
+        org.assertj.core.api.Assertions.assertThat(persisted.getPhone()).isEqualTo("+84900000001");
+        org.assertj.core.api.Assertions.assertThat(persisted.getAddress()).isNull();
+
+        mockMvc.perform(get("/api/v1/admin/users/" + targetId)
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("Updated Name"))
+                .andExpect(jsonPath("$.data.phone").value("+84900000001"))
+                .andExpect(jsonPath("$.data.address").value(nullValue()));
+
+        mockMvc.perform(get("/api/v1/admin/users")
+                        .param("keyword", "customer@test.com")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content[0].name").value("Updated Name"))
+                .andExpect(jsonPath("$.data.content[0].phone").value("+84900000001"));
+    }
+
+    @Test
+    void patchCustomerProfile_preservesNullPhoneOnAddressEdit() throws Exception {
+        User lockedCustomer = user("locked-customer@test.com", customerRole, UserStatus.LOCKED);
+        customerRepository.save(Customer.builder()
+                .user(lockedCustomer)
+                .name("Locked Customer")
+                .phone(null)
+                .address("Old Address")
+                .build());
+        entityManager.flush();
+        entityManager.clear();
+
+        String token = login("admin@test.com").accessToken();
+        String targetId = lockedCustomer.getUserId();
+
+        mockMvc.perform(patch("/api/v1/admin/users/" + targetId + "/profile")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"address\":\" Unit 5 \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.status").value("LOCKED"))
+                .andExpect(jsonPath("$.data.phone").value(nullValue()))
+                .andExpect(jsonPath("$.data.address").value("Unit 5"))
+                .andExpect(jsonPath("$.data.name").value("Locked Customer"));
+
+        entityManager.flush();
+        entityManager.clear();
+        Customer persisted = customerRepository.findByUser_UserId(targetId).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(persisted.getPhone()).isNull();
+        org.assertj.core.api.Assertions.assertThat(persisted.getAddress()).isEqualTo("Unit 5");
+        org.assertj.core.api.Assertions.assertThat(persisted.getName()).isEqualTo("Locked Customer");
+    }
+
+    @Test
+    void patchCustomerProfile_overlappingEditsDoNotEraseEachOther() throws Exception {
+        String token = login("admin@test.com").accessToken();
+        String targetId = customerUser.getUserId();
+
+        // The first admin reads the profile and holds this snapshot.
+        Customer snapshot = customerRepository.findByUser_UserId(targetId).orElseThrow();
+
+        // A second admin changes the name and phone before the first edit is
+        // submitted.
+        customerRepository.updateProfileFields(
+                snapshot.getCustomerId(), "Renamed By Other", "+84900000009", false, null);
+        entityManager.flush();
+        entityManager.clear();
+
+        // The first admin saves only the address, from the stale snapshot. Only
+        // the first read gets the snapshot; the response read must be fresh, so
+        // this also catches a missing clearAutomatically on the update.
+        int[] reads = {0};
+        org.mockito.Mockito.doAnswer(invocation -> reads[0]++ == 0
+                        ? Optional.of(snapshot)
+                        : customerRepository.findByCustomerId(snapshot.getCustomerId()))
+                .when(customerRepository).findByUser_UserId(targetId);
+        mockMvc.perform(patch("/api/v1/admin/users/" + targetId + "/profile")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"address\":\"Unit 9\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.address").value("Unit 9"))
+                .andExpect(jsonPath("$.data.phone").value("+84900000009"))
+                .andExpect(jsonPath("$.data.name").value("Renamed By Other"));
+
+        org.mockito.Mockito.reset(customerRepository);
+        entityManager.flush();
+        entityManager.clear();
+        Customer persisted = customerRepository.findByUser_UserId(targetId).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(persisted.getPhone())
+                .isEqualTo("+84900000009");
+        org.assertj.core.api.Assertions.assertThat(persisted.getAddress())
+                .isEqualTo("Unit 9");
+        org.assertj.core.api.Assertions.assertThat(persisted.getName())
+                .isEqualTo("Renamed By Other");
+    }
+
+    @Test
+    void patchCustomerProfile_rejectsInvalidBodyAndUnauthorizedTargets() throws Exception {
+        String token = login("admin@test.com").accessToken();
+        String profileUrl = "/api/v1/admin/users/" + customerUser.getUserId() + "/profile";
+
+        // Invalid bodies -> 400 and no persistence.
+        String[] invalidBodies = {
+            "{}",
+            "[]",
+            "{\"name\":123}",
+            "{\"phone\":123}",
+            "{\"address\":123}",
+            "{\"phone\":\"12345\"}",
+            "{\"name\":\"\"}",
+            "{\"name\":\"   \"}",
+            "{\"name\":null}",
+            "{\"phone\":null}",
+            "{\"name\":\"" + "a".repeat(256) + "\"}",
+            "{\"address\":\"" + "a".repeat(256) + "\"}",
+            "{\"email\":\"someone@test.com\"}",
+            "{\"roleCode\":\"admin\"}",
+            "{\"status\":\"ACTIVE\"}",
+            "{\"name\":\"New Name\",\"status\":\"ACTIVE\"}",
+        };
+        for (String body : invalidBodies) {
+            mockMvc.perform(patch(profileUrl)
+                            .header("Authorization", bearer(token))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value(400));
+        }
+        entityManager.flush();
+        entityManager.clear();
+        Customer unchanged = customerRepository.findByUser_UserId(customerUser.getUserId()).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(unchanged.getName()).isEqualTo("Customer User");
+        org.assertj.core.api.Assertions.assertThat(unchanged.getPhone()).isEqualTo("0900000004");
+        org.assertj.core.api.Assertions.assertThat(unchanged.getAddress()).isEqualTo("Customer Home");
+
+        // Unauthenticated actor -> 401.
+        mockMvc.perform(patch(profileUrl)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"No Token\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
+
+        // Authenticated actor without user:update -> 403.
+        String permissionlessToken = permissionlessEmployeeToken();
+        mockMvc.perform(patch(profileUrl)
+                        .header("Authorization", bearer(permissionlessToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"No Permission\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
+
+        // Absent, soft-deleted, non-customer and profile-less targets -> 404.
+        String[] notFoundTargets = {
+            "USR_does-not-exist",
+            deletedUser.getUserId(),
+            employeeUser.getUserId(),
+        };
+        for (String targetId : notFoundTargets) {
+            mockMvc.perform(patch("/api/v1/admin/users/" + targetId + "/profile")
+                            .header("Authorization", bearer(token))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"name\":\"No Target\"}"))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value(404));
+        }
+        User orphanCustomer = user("orphan-customer@test.com", customerRole, UserStatus.ACTIVE);
+        entityManager.flush();
+        mockMvc.perform(patch("/api/v1/admin/users/" + orphanCustomer.getUserId() + "/profile")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"No Profile\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(404));
+
+        // No failure wrote anything.
+        entityManager.flush();
+        entityManager.clear();
+        Customer stillUnchanged = customerRepository
+                .findByUser_UserId(customerUser.getUserId()).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(stillUnchanged.getName()).isEqualTo("Customer User");
+        org.assertj.core.api.Assertions.assertThat(stillUnchanged.getPhone()).isEqualTo("0900000004");
+        org.assertj.core.api.Assertions.assertThat(stillUnchanged.getAddress()).isEqualTo("Customer Home");
+
+        // OpenAPI operation exposes exactly name, phone and address.
+        MvcResult docs = mockMvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode root = objectMapper.readTree(docs.getResponse().getContentAsString());
+        JsonNode schema = root.path("paths")
+                .path("/api/v1/admin/users/{userId}/profile")
+                .path("patch")
+                .path("requestBody")
+                .path("content")
+                .path("application/json")
+                .path("schema");
+        if (schema.has("$ref")) {
+            String ref = schema.path("$ref").asText();
+            schema = root.path("components").path("schemas")
+                    .path(ref.substring(ref.lastIndexOf('/') + 1));
+        }
+        JsonNode properties = schema.path("properties");
+        List<String> propertyNames = new ArrayList<>();
+        properties.fieldNames().forEachRemaining(propertyNames::add);
+        org.assertj.core.api.Assertions.assertThat(propertyNames)
+                .containsExactlyInAnyOrder("name", "phone", "address");
+
+        // Locked actor -> 401.
+        Session lockedSession = login("admin@test.com");
+        String secondToken = login("second-admin@test.com").accessToken();
+        mockMvc.perform(patch("/api/v1/admin/users/" + adminActor.getUserId() + "/status")
+                        .header("Authorization", bearer(secondToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"LOCKED\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch(profileUrl)
+                        .header("Authorization", bearer(lockedSession.accessToken()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Locked Actor\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
     }
 
     private String createBody(String email, String roleCode) throws Exception {
