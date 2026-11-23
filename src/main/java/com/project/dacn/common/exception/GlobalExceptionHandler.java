@@ -225,6 +225,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(503, ex.getMessage(), null));
     }
 
+    @ExceptionHandler(ForecastNotAvailableException.class)
+    public ResponseEntity<ApiResponse<?>> handleForecastNotAvailable(
+            ForecastNotAvailableException ex) {
+        return ResponseEntity.status(503)
+                .body(ApiResponse.of(503, ex.getMessage(), null));
+    }
+
 
     @ExceptionHandler(InvalidPasswordException.class)
     public ResponseEntity<ApiResponse<?>> handleInvalidPassword(InvalidPasswordException ex) {

@@ -390,6 +390,21 @@ class SecurityRulesIntegrationTest {
                 .andExpect(jsonPath("$.code").value(403));
     }
 
+    @Test
+    void forecastRequiresToken() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/dashboard/forecast"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
+    }
+
+    @Test
+    @WithMockUser
+    void forecastRequiresOrderReadAuthority() throws Exception {
+        mockMvc.perform(get("/api/v1/admin/dashboard/forecast"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
+    }
+
     static Stream<Arguments> anonymousWrites() {
         return Stream.of(
                 Arguments.of(HttpMethod.POST, "/api/v1/products"),

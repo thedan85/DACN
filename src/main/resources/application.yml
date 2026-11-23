@@ -149,6 +149,8 @@ app:
     reservation-policy-enabled: ${INVENTORY_RESERVATION_POLICY_ENABLED:false}
     online-work-paused: ${INVENTORY_ONLINE_WORK_PAUSED:false}
     expiry-sweeping-paused: ${INVENTORY_EXPIRY_SWEEPING_PAUSED:false}
+  forecast:
+    file: ${FORECAST_FILE:ml/revenue-forecast/output/forecast.json}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   auth:
