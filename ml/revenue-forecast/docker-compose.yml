@@ -1,0 +1,19 @@
+services:
+  forecast:
+    build: .
+    image: dacn-revenue-forecast:local
+    init: true
+    restart: "no"
+    user: "${UID:-1000}:${GID:-1000}"
+    working_dir: /app
+    volumes:
+      - ../../.env:/app/.env:ro
+      - ./output:/app/output
+      - ./test_forecast.py:/app/test_forecast.py:ro
+    command:
+      - python
+      - forecast_revenue.py
+      - --env-file
+      - /app/.env
+      - --output-dir
+      - /app/output

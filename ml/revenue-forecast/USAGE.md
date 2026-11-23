@@ -231,3 +231,30 @@ team that deploys owns that step.
 - The current incomplete month is always excluded.
 - Prophet has no official Java port, so the model runs in Python and Java only
   serves the precomputed result.
+
+## 11. Run with Docker (no local Python)
+
+If Python is not installed, use Docker. From the repository root:
+
+```bash
+mkdir -p DACN/ml/revenue-forecast/output
+cd DACN/ml/revenue-forecast
+docker compose -f docker-compose.yml run --rm forecast
+```
+
+Run the unit tests in the container:
+
+```bash
+docker compose -f docker-compose.yml run --rm forecast python -m unittest -v
+```
+
+Requirements:
+
+- Docker and Compose installed.
+- `DACN/.env` exists; Compose mounts it read-only at `/app/.env`. It is never
+  copied into the image.
+- The container runs as `${UID:-1000}:${GID:-1000}` so it can write the mounted
+  `output/` directory. Export `UID` and `GID` if your host user is not 1000.
+
+All artifacts land in `DACN/ml/revenue-forecast/output/`, so the Spring API
+keeps serving the same files whether the forecast was run locally or in Docker.
