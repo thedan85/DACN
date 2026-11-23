@@ -1,7 +1,10 @@
 # Revenue forecast (Prophet)
 
-Offline monthly revenue forecast for the DACN store. No Java, server, or
-dashboard changes: the script reads orders from PostgreSQL and writes files.
+Offline monthly revenue forecast for the DACN store. The script reads orders
+from PostgreSQL and writes artifacts; Spring serves `forecast.json` and the
+admin dashboard displays it.
+
+**For step-by-step usage, see [USAGE.md](USAGE.md).**
 
 ## Setup
 
