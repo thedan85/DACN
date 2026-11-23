@@ -39,8 +39,14 @@ public class RevenueForecastService {
 
     private static void validate(RevenueForecastResponse response) {
         if (response == null || response.months() == null || response.months().isEmpty()
-                || response.annual() == null) {
+                || response.annual() == null || response.annual().isEmpty()) {
             throw new IllegalArgumentException("empty forecast");
+        }
+        if (response.model() == null || response.model().isBlank()
+                || response.mae() == null || !Double.isFinite(response.mae())
+                || response.mape() != null && !Double.isFinite(response.mape())
+                || response.trainingMonths() < 0 || response.holdoutMonths() < 0) {
+            throw new IllegalArgumentException("invalid forecast metrics");
         }
         Instant.parse(response.generatedAt());
         for (RevenueForecastResponse.MonthPoint point : response.months()) {
@@ -50,7 +56,7 @@ public class RevenueForecastService {
             }
         }
         for (RevenueForecastResponse.AnnualTotal total : response.annual()) {
-            if (total.months() <= 0) {
+            if (total.months() < 1 || total.months() > 12) {
                 throw new IllegalArgumentException("invalid annual month count");
             }
         }

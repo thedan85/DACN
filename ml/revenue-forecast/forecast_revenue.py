@@ -39,6 +39,11 @@ ORDER BY 1
 """
 
 
+def store_timestamp() -> str:
+    """ISO timestamp with seconds precision, safe for browser Date parsing."""
+    return datetime.now(STORE_ZONE).replace(microsecond=0).isoformat()
+
+
 def read_env(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     for raw in path.read_text(encoding="utf-8").splitlines():
@@ -232,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
     forecast = make_forecast(history, args.months)
     annual = annual_totals(forecast)
     metrics = {
-        "generatedAt": datetime.now(STORE_ZONE).isoformat(),
+        "generatedAt": store_timestamp(),
         "trainingMonths": int(len(history)),
         "holdoutMonths": BACKTEST_MONTHS,
         "mae": mae,

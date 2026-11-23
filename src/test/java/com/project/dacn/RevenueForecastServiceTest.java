@@ -84,6 +84,27 @@ class RevenueForecastServiceTest {
     }
 
     @Test
+    void rejectsInvalidContractValues() throws Exception {
+        String[] invalidPayloads = {
+                VALID_JSON.replace("\"model\": \"Prophet\"", "\"model\": \"\""),
+                VALID_JSON.replace("\"mae\": 167965.57", "\"mae\": null"),
+                VALID_JSON.replace("\"trainingMonths\": 36", "\"trainingMonths\": -1"),
+                VALID_JSON.replace("\"months\": 2,", "\"months\": 13,")
+        };
+
+        for (String payload : invalidPayloads) {
+            Path file = tempDir.resolve("forecast.json");
+            Files.writeString(file, payload);
+            RevenueForecastService service =
+                    new RevenueForecastService(file.toString(), mapper);
+
+            assertThatThrownBy(service::getForecast)
+                    .isInstanceOf(ForecastNotAvailableException.class)
+                    .hasMessage(MESSAGE);
+        }
+    }
+
+    @Test
     void rejectsInvertedInterval() throws Exception {
         Path file = tempDir.resolve("forecast.json");
         Files.writeString(file, VALID_JSON.replace("\"lower\": 10189870.20", "\"lower\": 99999999.00"));

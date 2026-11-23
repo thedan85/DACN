@@ -10,6 +10,7 @@ from forecast_revenue import (
     connection_kwargs,
     forecast_payload,
     read_env,
+    store_timestamp,
     trim_incomplete_month,
     validate_history,
 )
@@ -97,6 +98,12 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(row["yhat_upper"], 36.0)
 
 
+    def test_store_timestamp_has_no_microseconds(self):
+        self.assertRegex(
+            store_timestamp(),
+            r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+07:00$",
+        )
+
     def test_forecast_payload_rounds_metrics_and_normalizes_nan_mape(self):
         forecast = pd.DataFrame(
             {
@@ -150,7 +157,16 @@ class TestHelpers(unittest.TestCase):
                 "upper": 10510301.47,
             },
         )
-        self.assertEqual(payload["annual"][0]["months"], 2)
+        self.assertEqual(
+            payload["annual"][0],
+            {
+                "year": 2027,
+                "months": 2,
+                "predicted": 20634185.43,
+                "lower": 20310480.8,
+                "upper": 20942274.99,
+            },
+        )
 
 
 if __name__ == "__main__":

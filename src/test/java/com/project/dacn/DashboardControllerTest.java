@@ -106,10 +106,21 @@ class DashboardControllerTest {
 
         mockMvc.perform(get("/api/v1/admin/dashboard/forecast"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.generatedAt").value("2026-11-23T10:00:00+07:00"))
                 .andExpect(jsonPath("$.data.model").value("Prophet"))
+                .andExpect(jsonPath("$.data.trainingMonths").value(36))
+                .andExpect(jsonPath("$.data.holdoutMonths").value(6))
+                .andExpect(jsonPath("$.data.mae").value(167965.57))
+                .andExpect(jsonPath("$.data.mape").value(nullValue()))
                 .andExpect(jsonPath("$.data.months[0].date").value("2026-11-01"))
+                .andExpect(jsonPath("$.data.months[0].predicted").value(10356310.87))
+                .andExpect(jsonPath("$.data.months[0].lower").value(10189870.20))
+                .andExpect(jsonPath("$.data.months[0].upper").value(10510301.47))
+                .andExpect(jsonPath("$.data.annual[0].year").value(2026))
                 .andExpect(jsonPath("$.data.annual[0].months").value(2))
-                .andExpect(jsonPath("$.data.mape").value(nullValue()));
+                .andExpect(jsonPath("$.data.annual[0].predicted").value(20634185.43))
+                .andExpect(jsonPath("$.data.annual[0].lower").value(20310480.80))
+                .andExpect(jsonPath("$.data.annual[0].upper").value(20942274.99));
     }
 
     @Test
