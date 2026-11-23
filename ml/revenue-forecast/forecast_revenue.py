@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -98,6 +99,39 @@ def annual_totals(forecast: pd.DataFrame) -> pd.DataFrame:
         yhat_upper=("yhat_upper", "sum"),
     )
     return grouped[["year", "months", "yhat", "yhat_lower", "yhat_upper"]]
+
+
+def forecast_payload(
+    forecast: pd.DataFrame, annual: pd.DataFrame, metrics: dict[str, object]
+) -> dict[str, object]:
+    mape = metrics["mape"]
+    return {
+        "generatedAt": metrics["generatedAt"],
+        "model": "Prophet",
+        "trainingMonths": metrics["trainingMonths"],
+        "holdoutMonths": metrics["holdoutMonths"],
+        "mae": round(float(metrics["mae"]), 2),
+        "mape": None if mape is None or math.isnan(float(mape)) else round(float(mape), 2),
+        "months": [
+            {
+                "date": row.ds.date().isoformat(),
+                "predicted": round(float(row.yhat), 2),
+                "lower": round(float(row.yhat_lower), 2),
+                "upper": round(float(row.yhat_upper), 2),
+            }
+            for row in forecast.itertuples(index=False)
+        ],
+        "annual": [
+            {
+                "year": int(row.year),
+                "months": int(row.months),
+                "predicted": round(float(row.yhat), 2),
+                "lower": round(float(row.yhat_lower), 2),
+                "upper": round(float(row.yhat_upper), 2),
+            }
+            for row in annual.itertuples(index=False)
+        ],
+    }
 
 
 def new_model() -> Prophet:
@@ -209,6 +243,11 @@ def main(argv: list[str] | None = None) -> int:
         "forecastMonths": int(len(forecast)),
     }
     write_outputs(args.output_dir, history, forecast, annual, metrics)
+    payload = forecast_payload(forecast, annual, metrics)
+    (args.output_dir / "forecast.json").write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
     print(
         f"Forecast {metrics['forecastMonths']} months "
         f"({metrics['forecastStart']} to {metrics['forecastEnd']}) "

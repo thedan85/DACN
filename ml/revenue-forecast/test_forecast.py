@@ -8,6 +8,7 @@ import pandas as pd
 from forecast_revenue import (
     annual_totals,
     connection_kwargs,
+    forecast_payload,
     read_env,
     trim_incomplete_month,
     validate_history,
@@ -94,6 +95,62 @@ class TestHelpers(unittest.TestCase):
         self.assertEqual(row["yhat"], 30.0)
         self.assertEqual(row["yhat_lower"], 24.0)
         self.assertEqual(row["yhat_upper"], 36.0)
+
+
+    def test_forecast_payload_rounds_metrics_and_normalizes_nan_mape(self):
+        forecast = pd.DataFrame(
+            {
+                "ds": pd.to_datetime(["2027-01-01", "2027-02-01"]),
+                "yhat": [10356310.867, 10277874.561],
+                "yhat_lower": [10189870.201, 10120610.601],
+                "yhat_upper": [10510301.471, 10431973.521],
+            }
+        )
+        annual = pd.DataFrame(
+            {
+                "year": [2027],
+                "months": [2],
+                "yhat": [20634185.428],
+                "yhat_lower": [20310480.802],
+                "yhat_upper": [20942274.992],
+            }
+        )
+        metrics = {
+            "generatedAt": "2026-11-23T10:00:00+07:00",
+            "trainingMonths": 36,
+            "holdoutMonths": 6,
+            "mae": 167965.5655,
+            "mape": float("nan"),
+        }
+
+        payload = forecast_payload(forecast, annual, metrics)
+
+        self.assertEqual(
+            list(payload),
+            [
+                "generatedAt",
+                "model",
+                "trainingMonths",
+                "holdoutMonths",
+                "mae",
+                "mape",
+                "months",
+                "annual",
+            ],
+        )
+        self.assertEqual(payload["model"], "Prophet")
+        self.assertEqual(payload["mae"], 167965.57)
+        self.assertIsNone(payload["mape"])
+        self.assertEqual(
+            payload["months"][0],
+            {
+                "date": "2027-01-01",
+                "predicted": 10356310.87,
+                "lower": 10189870.2,
+                "upper": 10510301.47,
+            },
+        )
+        self.assertEqual(payload["annual"][0]["months"], 2)
 
 
 if __name__ == "__main__":

@@ -38,6 +38,7 @@ Written to `output/` by default:
 - `annual_forecast.csv` — calendar-year sums and the number of forecast months
   in each year. A year with fewer than 12 months is partial.
 - `metrics.json` — training months, holdout MAE/MAPE, forecast range.
+- `forecast.json` — API-ready payload served by `GET /api/v1/admin/dashboard/forecast`.
 - `forecast.png` — actual revenue, forecast line, and 80% interval.
 
 ## Tests
