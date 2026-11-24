@@ -2,6 +2,7 @@ package com.project.dacn.dto.response.order;
 
 import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.dto.response.payment.PaymentResponse;
+import com.project.dacn.event.OrderEventReason;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.math.BigDecimal;
@@ -18,6 +19,9 @@ import java.util.List;
           "address": "123 Demo St, HCMC",
           "recipientName": "Swagger Customer",
           "phone": "0901234567",
+          "shippingProvince": "Hồ Chí Minh",
+          "shippingWard": "Phường Chợ Quán",
+          "ghnOrderCode": null,
           "items": [
             {
               "orderId": "ORD_SWAGGER_DEMO",
@@ -43,7 +47,9 @@ import java.util.List;
             "paidAt": null,
             "createdAt": "2026-10-27T02:57:14.486697Z",
             "updatedAt": "2026-10-27T02:57:14.486697Z"
-          }
+          },
+          "paymentExpiresAt": null,
+          "cancellationReason": null
         }
         """)
 public record OrderResponse(
@@ -55,8 +61,13 @@ public record OrderResponse(
         String address,
         String recipientName,
         String phone,
+        String shippingProvince,
+        String shippingWard,
+        String ghnOrderCode,
         List<OrderItemResponse> items,
         Instant createdAt,
         Instant updatedAt,
-        PaymentResponse payment) {
+        PaymentResponse payment,
+        Instant paymentExpiresAt,
+        OrderEventReason cancellationReason) {
 }

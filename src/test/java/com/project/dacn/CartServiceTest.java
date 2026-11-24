@@ -3,6 +3,7 @@ package com.project.dacn;
 import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.common.exception.OutOfStockException;
 import com.project.dacn.common.exception.ResourceNotFoundException;
+import com.project.dacn.common.time.DatabaseClock;
 import com.project.dacn.dto.request.cart.CartItemAddRequest;
 import com.project.dacn.dto.request.cart.CartItemUpdateRequest;
 import com.project.dacn.dto.response.cart.CartDetailResponse;
@@ -30,6 +31,8 @@ import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
 import com.project.dacn.service.cart.CartService;
 import com.project.dacn.service.cart.CompatibilityService;
+import com.project.dacn.service.order.OrderLifecycleService;
+import com.project.dacn.service.order.ReservationPolicy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -43,8 +46,11 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import javax.sql.DataSource;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -52,8 +58,9 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -75,6 +82,21 @@ class CartServiceTest {
         @Bean
         PaymentMapper paymentMapper() {
             return Mappers.getMapper(PaymentMapper.class);
+        }
+
+        @Bean
+        ReservationPolicy reservationPolicy() {
+            return new ReservationPolicy(false, false, false);
+        }
+
+        @Bean
+        DatabaseClock databaseClock(DataSource source) {
+            return new DatabaseClock(new JdbcTemplate(source));
+        }
+
+        @Bean
+        OrderLifecycleService orderLifecycleService() {
+            return mock(OrderLifecycleService.class);
         }
     }
 
@@ -104,6 +126,12 @@ class CartServiceTest {
         PaymentRepository paymentRepository;
 
         @Mock
+        OrderLifecycleService orderLifecycleService;
+
+        @Mock
+        DatabaseClock databaseClock;
+
+        @Mock
         CompatibilityService compatibilityService;
 
         CartMapper mapper = Mappers.getMapper(CartMapper.class);
@@ -119,7 +147,9 @@ class CartServiceTest {
             service = new CartService(customerRepository, variantRepository,
                     cartRepository, cartItemRepository, mapper,
                     orderRepository, orderItemRepository, paymentRepository, orderMapper,
-                    paymentMapper, compatibilityService);
+                    paymentMapper, new ReservationPolicy(false, false, false),
+                    orderLifecycleService, databaseClock, compatibilityService);
+            ReflectionTestUtils.setField(service, "transactionLockBounds", Boolean.FALSE);
         }
 
         @Test
@@ -170,7 +200,9 @@ class CartServiceTest {
 
         @Test
         void detailSumsTotals() {
-            givenCart();
+            Customer c = customer();
+            when(cartRepository.findByCustomer_IdForUpdate(1L))
+                    .thenReturn(Optional.of(cart(c)));
             Variant v = variant(10);
             CartItem existing = item(cart(customer()), v, 2);
             when(cartItemRepository.findWithDetailsByCart_Id(10L))
@@ -185,7 +217,7 @@ class CartServiceTest {
 
         @Test
         void detailDoesNotReloadCustomerWhenCartExists() {
-            givenCart();
+            givenLockedCart();
             when(cartItemRepository.findWithDetailsByCart_Id(10L)).thenReturn(List.of());
 
             service.getDetail(1L);
@@ -195,7 +227,7 @@ class CartServiceTest {
 
         @Test
         void detailIncludesCompatibility() {
-            givenCart();
+            givenLockedCart();
             Variant v = variant(10);
             CartItem existing = item(cart(customer()), v, 2);
             when(cartItemRepository.findWithDetailsByCart_Id(10L)).thenReturn(List.of(existing));
@@ -232,22 +264,20 @@ class CartServiceTest {
         }
 
         @Test
-        void concurrentInsertRaceMergesAsBump() {
+        void uniquenessFailureIsNotRetried() {
             givenCart();
             when(customerRepository.findById(1L)).thenReturn(Optional.of(customer()));
             Variant v = variant(10);
             when(variantRepository.findWithProductByVariantId("VAR_20")).thenReturn(Optional.of(v));
-            CartItem raced = item(cart(customer()), v, 2);
             when(cartItemRepository.findByCart_IdAndVariant_Id(10L, 20L))
-                    .thenReturn(Optional.empty())
-                    .thenReturn(Optional.of(raced));
+                    .thenReturn(Optional.empty());
             when(cartItemRepository.save(any(CartItem.class)))
-                    .thenThrow(new DataIntegrityViolationException("uq_cart_variant"))
-                    .thenAnswer(inv -> inv.getArgument(0));
+                    .thenThrow(new DataIntegrityViolationException("uq_cart_variant"));
 
-            CartItemResponse result = service.addItem(1L, new CartItemAddRequest("VAR_20", 3));
-
-            assertThat(result.quantity()).isEqualTo(2 + 3);
+            assertThatThrownBy(() -> service.addItem(1L, new CartItemAddRequest("VAR_20", 3)))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+            verify(cartItemRepository).findByCart_IdAndVariant_Id(10L, 20L);
+            verify(cartItemRepository).save(any(CartItem.class));
         }
 
         @Test
@@ -274,8 +304,16 @@ class CartServiceTest {
         }
 
         private void givenCart() {
-            when(cartRepository.findByCustomer_Id(1L))
-                    .thenReturn(Optional.of(cart(customer())));
+            Customer c = customer();
+            when(customerRepository.findById(1L)).thenReturn(Optional.of(c));
+            when(cartRepository.findByCustomer_IdForUpdate(1L))
+                    .thenReturn(Optional.of(cart(c)));
+        }
+
+        private void givenLockedCart() {
+            Customer c = customer();
+            when(cartRepository.findByCustomer_IdForUpdate(1L))
+                    .thenReturn(Optional.of(cart(c)));
         }
 
         private Customer customer() {

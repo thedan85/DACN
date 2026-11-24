@@ -7,5 +7,6 @@ import java.math.BigDecimal;
 public record VariantUpdateRequest(
         String sku,
         @PositiveOrZero BigDecimal price,
-        @PositiveOrZero Integer stock) {
+        @PositiveOrZero Integer stock,
+        @PositiveOrZero Long expectedStockRevision) {
 }

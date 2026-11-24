@@ -8,6 +8,7 @@ public record VariantResponse(
         String sku,
         BigDecimal price,
         Integer stock,
+        Long stockRevision,
         String productId,
         String productName,
         Boolean deleted,

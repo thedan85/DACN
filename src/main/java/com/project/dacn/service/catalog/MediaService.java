@@ -18,11 +18,19 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.type.TypeReference;
+
+import java.util.Optional;
+import java.util.OptionalLong;
 
 @Service
 @Transactional
 @RequiredArgsConstructor
 public class MediaService {
+
+    private static final TypeReference<PageResponse<MediaResponse>> MEDIA_PAGE =
+            new TypeReference<>() {
+            };
 
     private final MediaRepository repo;
     private final ProductRepository productRepo;
@@ -31,8 +39,27 @@ public class MediaService {
     private final CatalogCache cache;
 
     public PageResponse<MediaResponse> list(Pageable pageable, boolean includeHidden) {
+        // Staff reads can contain hidden media, so they stay uncached.
+        if (includeHidden || !CatalogCacheKeys.isCacheablePage(pageable)) {
+            return listFromDb(pageable, includeHidden);
+        }
+        OptionalLong generation = cache.currentGeneration(CatalogCacheKeys.PRODUCT_SCOPE);
+        if (generation.isEmpty()) {
+            return listFromDb(pageable, false);
+        }
+        String key = CatalogCacheKeys.mediaList(generation.getAsLong(), pageable);
+        Optional<PageResponse<MediaResponse>> cached = cache.get(key, MEDIA_PAGE);
+        if (cached.isPresent()) {
+            return cached.get();
+        }
+        PageResponse<MediaResponse> response = listFromDb(pageable, false);
+        cache.put(key, response, CatalogCacheKeys.REFERENCE_PAGE_TTL);
+        return response;
+    }
+
+    private PageResponse<MediaResponse> listFromDb(Pageable pageable, boolean includeHidden) {
         Page<Media> page = includeHidden
-                ? repo.findByDeletedFalse(pageable)
+                ? repo.findStaffVisible(pageable)
                 : repo.findVisible(ProductStatus.ACTIVE, pageable);
         return PageResponse.from(page, page.map(mapper::toMediaResponse).getContent());
     }

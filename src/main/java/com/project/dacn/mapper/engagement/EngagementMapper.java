@@ -56,9 +56,16 @@ public interface EngagementMapper {
     @Mapping(target = "deleted", constant = "false")
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "sourceEventId", ignore = true)
+    @Mapping(target = "order", ignore = true)
+    @Mapping(target = "eventType", ignore = true)
+    @Mapping(target = "orderSequence", ignore = true)
+    @Mapping(target = "occurredAt", ignore = true)
+    @Mapping(target = "recipientScope", ignore = true)
     Notification toNotification(NotificationCreateRequest request);
 
     @Mapping(source = "user.userId", target = "userId")
+    @Mapping(source = "order.orderId", target = "orderId")
     NotificationResponse toNotificationResponse(Notification notification);
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
@@ -69,5 +76,11 @@ public interface EngagementMapper {
     @Mapping(target = "type", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "sourceEventId", ignore = true)
+    @Mapping(target = "order", ignore = true)
+    @Mapping(target = "eventType", ignore = true)
+    @Mapping(target = "orderSequence", ignore = true)
+    @Mapping(target = "occurredAt", ignore = true)
+    @Mapping(target = "recipientScope", ignore = true)
     void updateNotification(NotificationUpdateRequest request, @MappingTarget Notification notification);
 }

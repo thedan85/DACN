@@ -1,6 +1,6 @@
 
 -- =========================================================
--- V31: Dashboard order-window index
+-- V32: Dashboard order-window index
 --
 -- The admin dashboard filters orders by created_at for the
 -- current and previous window. The index keeps those range

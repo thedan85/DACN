@@ -4,7 +4,9 @@ import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.common.constant.PaymentMethod;
 import com.project.dacn.common.constant.PaymentStatus;
 import com.project.dacn.common.constant.ProductStatus;
+import com.project.dacn.common.constant.UserStatus;
 import com.project.dacn.common.exception.OutOfStockException;
+import com.project.dacn.common.time.DatabaseClock;
 import com.project.dacn.dto.request.cart.CartCheckoutRequest;
 import com.project.dacn.dto.response.order.OrderResponse;
 import com.project.dacn.entity.auth.Role;
@@ -32,6 +34,8 @@ import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
 import com.project.dacn.service.cart.CartService;
 import com.project.dacn.service.cart.CompatibilityService;
+import com.project.dacn.service.order.OrderLifecycleService;
+import com.project.dacn.service.order.ReservationPolicy;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -45,8 +49,11 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import javax.sql.DataSource;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -54,6 +61,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -75,6 +84,21 @@ class CartCheckoutTest {
         @Bean
         PaymentMapper paymentMapper() {
             return Mappers.getMapper(PaymentMapper.class);
+        }
+
+        @Bean
+        ReservationPolicy reservationPolicy() {
+            return new ReservationPolicy(false, false, false);
+        }
+
+        @Bean
+        DatabaseClock databaseClock(DataSource source) {
+            return new DatabaseClock(new JdbcTemplate(source));
+        }
+
+        @Bean
+        OrderLifecycleService orderLifecycleService() {
+            return mock(OrderLifecycleService.class);
         }
     }
 
@@ -104,7 +128,15 @@ class CartCheckoutTest {
         PaymentRepository paymentRepository;
 
         @Mock
+        OrderLifecycleService orderLifecycleService;
+
+        @Mock
+        DatabaseClock databaseClock;
+
+        @Mock
         CompatibilityService compatibilityService;
+
+        ReservationPolicy reservationPolicy = new ReservationPolicy(false, false, false);
 
         CartMapper cartMapper = Mappers.getMapper(CartMapper.class);
 
@@ -119,35 +151,43 @@ class CartCheckoutTest {
             service = new CartService(customerRepository, variantRepository,
                     cartRepository, cartItemRepository, cartMapper,
                     orderRepository, orderItemRepository, paymentRepository, orderMapper,
-                    paymentMapper, compatibilityService);
+                    paymentMapper, reservationPolicy, orderLifecycleService, databaseClock,
+                    compatibilityService);
+            ReflectionTestUtils.setField(service, "transactionLockBounds", Boolean.FALSE);
         }
 
         @Test
         void checkoutSnapshotsPriceAndClearsCart() {
             givenCart();
-            when(cartRepository.findByCustomer_Id(1L))
-                    .thenReturn(Optional.of(cart(customer())));
             Variant v = variant(10);
+            givenVariant(v);
             CartItem existing = item(cart(customer()), v, 2);
             when(cartItemRepository.findWithDetailsByCart_Id(10L))
                     .thenReturn(List.of(existing))
                     .thenReturn(List.of());
             when(orderRepository.save(any(Order.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
-            when(variantRepository.decrementStock(20L, 2)).thenReturn(1);
+            when(variantRepository.decrementStockNative(20L, 2)).thenReturn(1);
             when(orderItemRepository.saveAll(any()))
                     .thenAnswer(inv -> inv.getArgument(0));
             when(paymentRepository.save(any(Payment.class)))
                     .thenAnswer(inv -> inv.getArgument(0));
 
             OrderResponse o = service.checkout(1L,
-                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD));
+                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD));
 
             assertThat(o.status()).isEqualTo(OrderStatus.PENDING);
             assertThat(o.total()).isEqualByComparingTo(new BigDecimal("20.00"));
             assertThat(o.items()).hasSize(1);
             assertThat(o.items().get(0).attributes()).isNotNull().isEmpty();
-            verify(cartItemRepository).deleteByCart_Id(10L);
+            assertThat(o.shippingProvince()).isEqualTo("Hồ Chí Minh");
+            assertThat(o.shippingWard()).isEqualTo("Phường Chợ Quán");
+            assertThat(o.ghnOrderCode()).isNull();
+            var order = inOrder(orderLifecycleService, cartItemRepository);
+            order.verify(orderLifecycleService).recordPlaced(
+                    any(Order.class), any(Payment.class),
+                    org.mockito.ArgumentMatchers.eq("CHECKOUT_WEB"));
+            order.verify(cartItemRepository).deleteByCart_Id(10L);
             verify(variantRepository, never()).save(any(Variant.class));
             assertThat(service.getDetail(1L).items()).isEmpty();
         }
@@ -159,7 +199,7 @@ class CartCheckoutTest {
                     .thenReturn(List.of());
 
             assertThatThrownBy(() -> service.checkout(1L,
-                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
+                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD)))
                     .isInstanceOf(IllegalArgumentException.class);
             verify(orderRepository, never()).save(any(Order.class));
         }
@@ -172,7 +212,7 @@ class CartCheckoutTest {
                     .thenReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.checkout(1L,
-                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
+                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD)))
                     .isInstanceOf(IllegalArgumentException.class);
             verify(orderRepository, never()).save(any(Order.class));
             verify(cartRepository, never()).save(any(Cart.class));
@@ -183,12 +223,13 @@ class CartCheckoutTest {
         void checkoutOverStockThrows409() {
             givenCart();
             Variant v = variant(10);
+            givenVariant(v);
             CartItem existing = item(cart(customer()), v, 99);
             when(cartItemRepository.findWithDetailsByCart_Id(10L))
                     .thenReturn(List.of(existing));
 
             assertThatThrownBy(() -> service.checkout(1L,
-                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
+                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD)))
                     .isInstanceOf(OutOfStockException.class);
             verify(orderRepository, never()).save(any(Order.class));
             verify(cartItemRepository, never()).deleteByCart_Id(any());
@@ -198,13 +239,14 @@ class CartCheckoutTest {
         void checkoutStockRaceThrows409() {
             givenCart();
             Variant v = variant(10);
+            givenVariant(v);
             CartItem existing = item(cart(customer()), v, 2);
             when(cartItemRepository.findWithDetailsByCart_Id(10L))
                     .thenReturn(List.of(existing));
-            when(variantRepository.decrementStock(20L, 2)).thenReturn(0);
+            when(variantRepository.decrementStockNative(20L, 2)).thenReturn(0);
 
             assertThatThrownBy(() -> service.checkout(1L,
-                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD)))
+                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD)))
                     .isInstanceOf(OutOfStockException.class);
             verify(orderRepository, never()).save(any(Order.class));
         }
@@ -216,8 +258,41 @@ class CartCheckoutTest {
                     .thenReturn(Optional.of(cart(c)));
         }
 
+        private void givenVariant(Variant v) {
+            when(variantRepository.findByIdForUpdate(v.getId())).thenReturn(Optional.of(v));
+            when(variantRepository.findCheckoutViewsByIdIn(List.of(v.getId())))
+                    .thenReturn(List.of(view(v)));
+        }
+
+        private VariantRepository.CheckoutVariantView view(Variant v) {
+            return new VariantRepository.CheckoutVariantView() {
+                @Override
+                public Long getId() {
+                    return v.getId();
+                }
+
+                @Override
+                public BigDecimal getPrice() {
+                    return v.getPrice();
+                }
+
+                @Override
+                public Integer getStock() {
+                    return v.getStock();
+                }
+
+                @Override
+                public ProductStatus getProductStatus() {
+                    return v.getProduct().getStatus();
+                }
+            };
+        }
+
         private Customer customer() {
-            return Customer.builder().id(1L).customerId("cust").name("C").phone("090").build();
+            User user = User.builder().id(2L).email("cust@x.com")
+                    .status(UserStatus.ACTIVE).build();
+            return Customer.builder().id(1L).customerId("cust").user(user)
+                    .name("C").phone("090").build();
         }
 
         private Cart cart(Customer c) {
@@ -294,11 +369,24 @@ class CartCheckoutTest {
                     .cart(cart).variant(variant).quantity(2).build());
 
             OrderResponse o = service.checkout(customer.getId(),
-                    new CartCheckoutRequest("addr", "N", "090", PaymentMethod.COD));
+                    new CartCheckoutRequest("addr", "N", "090", "Hồ Chí Minh", "Phường Chợ Quán", PaymentMethod.COD));
 
             assertThat(o.status()).isEqualTo(OrderStatus.PENDING);
             assertThat(o.total()).isEqualByComparingTo(new BigDecimal("20.00"));
+            assertThat(o.shippingProvince()).isEqualTo("Hồ Chí Minh");
+            assertThat(o.shippingWard()).isEqualTo("Phường Chợ Quán");
+            assertThat(orderRepository.findByOrderId(o.orderId()).orElseThrow().getShippingProvince())
+                    .isEqualTo("Hồ Chí Minh");
+            assertThat(orderRepository.findByOrderId(o.orderId()).orElseThrow().getShippingWard())
+                    .isEqualTo("Phường Chợ Quán");
             assertThat(orderRepository.findAll()).hasSize(1);
+            var json = new tools.jackson.databind.ObjectMapper().valueToTree(o);
+            assertThat(json.has("paymentExpiresAt")).as("nullable deadline read contract").isTrue();
+            assertThat(json.get("paymentExpiresAt").isNull()).isTrue();
+            assertThat(json.has("cancellationReason")).as("nullable cancellation read contract").isTrue();
+            assertThat(json.get("cancellationReason").isNull()).isTrue();
+            assertThat(json.has("stockReleasedAt")).isFalse();
+            assertThat(json.has("stockRevision")).isFalse();
             assertThat(orderRepository.findAll().get(0).getStatus()).isEqualTo(OrderStatus.PENDING);
             assertThat(orderItemRepository.findByOrder_OrderId(o.orderId())).hasSize(1);
             assertThat(orderItemRepository.findByOrder_OrderId(o.orderId()).get(0).getUnitPrice())

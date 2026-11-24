@@ -13,7 +13,7 @@ import com.project.dacn.dto.request.auth.LoginRequest;
 import com.project.dacn.dto.request.auth.RefreshRequest;
 import com.project.dacn.dto.request.auth.RegisterRequest;
 import com.project.dacn.dto.response.auth.LoginResponse;
-import com.project.dacn.dto.response.auth.UserResponse;
+import com.project.dacn.dto.response.auth.MeResponse;
 import com.project.dacn.security.AuthenticationEntryPoint;
 import com.project.dacn.security.CustomAccessDeniedHandler;
 import com.project.dacn.security.CustomUserDetailsService;
@@ -36,6 +36,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Duration;
+import java.util.List;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
@@ -43,6 +44,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -97,25 +99,24 @@ class AuthControllerTest {
                 "1234567890"
         );
 
-        UserResponse response = new UserResponse(
-                "user-123",
-                "test@example.com",
-                null,
-                "role-123",
-                "Customer",
-                null,
-                null,
-                null
+        LoginResponse response = new LoginResponse(
+                "access-token",
+                "refresh-token",
+                900,
+                "Bearer",
+                me()
         );
 
-        when(authService.register(any(RegisterRequest.class))).thenReturn(response);
+        doReturn(response).when(authService).register(any(RegisterRequest.class), any(), any());
 
         mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.code").value(201))
-                .andExpect(jsonPath("$.data.userId").value("user-123"));
+                .andExpect(jsonPath("$.data.accessToken").value("access-token"))
+                .andExpect(jsonPath("$.data.user.userId").value("USR_1"))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("refresh_token=")));
 
         verify(rateLimiter).check("rl:register:local", 20, Duration.ofHours(1));
     }
@@ -129,7 +130,7 @@ class AuthControllerTest {
                 "1234567890"
         );
 
-        when(authService.register(any(RegisterRequest.class)))
+        when(authService.register(any(RegisterRequest.class), any(), any()))
                 .thenThrow(new com.project.dacn.common.exception.EmailAlreadyExistsException("email already exists"));
 
         mockMvc.perform(post("/api/v1/auth/register")
@@ -146,7 +147,8 @@ class AuthControllerTest {
                 "access-token",
                 "refresh-token",
                 900,
-                "Bearer"
+                "Bearer",
+                me()
         );
 
         // NOTE: userAgent/ip may be null in MockMvc (no User-Agent header),
@@ -160,6 +162,8 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.accessToken").value("access-token"))
+                .andExpect(jsonPath("$.data.user.userId").value("USR_1"))
+                .andExpect(jsonPath("$.data.user.roleCode").value("CUSTOMER"))
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("refresh_token=")));
 
         verify(rateLimiter).check("rl:login:local", 10, Duration.ofMinutes(1));
@@ -217,7 +221,8 @@ class AuthControllerTest {
                         "new-access-token",
                         "new-refresh-token",
                         900,
-                        "Bearer"
+                        "Bearer",
+                        me()
                 )
         );
 
@@ -226,6 +231,8 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.accessToken").value("new-access-token"))
+                .andExpect(jsonPath("$.data.user.userId").value("USR_1"))
+                .andExpect(jsonPath("$.data.user.roleCode").value("CUSTOMER"))
                 .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("refresh_token=")));
 
         verify(rateLimiter).check("rl:refresh:local", 30, Duration.ofMinutes(1));
@@ -284,7 +291,7 @@ class AuthControllerTest {
     @Test
     void login_usesCloudflareIpNotForwardedFor() throws Exception {
         when(authService.login(any(LoginRequest.class), any(), any())).thenReturn(
-                new LoginResponse("access-token", "refresh-token", 900, "Bearer"));
+                new LoginResponse("access-token", "refresh-token", 900, "Bearer", me()));
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .header("CF-Connecting-IP", "203.0.113.7")
@@ -301,7 +308,7 @@ class AuthControllerTest {
     @Test
     void login_ignoresForwardedForWithoutCloudflareIp() throws Exception {
         when(authService.login(any(LoginRequest.class), any(), any())).thenReturn(
-                new LoginResponse("access-token", "refresh-token", 900, "Bearer"));
+                new LoginResponse("access-token", "refresh-token", 900, "Bearer", me()));
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .header("X-Forwarded-For", "198.51.100.9")
@@ -361,7 +368,7 @@ class AuthControllerTest {
         when(authService.loginWithVerifiedGoogleEmail(
                 eq(new GoogleTokenVerifier.GoogleIdentity("sub-user", "user@example.com")),
                 any(), any()))
-                .thenReturn(new LoginResponse("access-token", "refresh-token", 900, "Bearer"));
+                .thenReturn(new LoginResponse("access-token", "refresh-token", 900, "Bearer", me()));
 
         mockMvc.perform(post("/api/v1/auth/google")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -415,7 +422,7 @@ class AuthControllerTest {
                 .thenReturn(new GoogleTokenVerifier.GoogleIdentity("sub-user", "user@example.com"));
         when(authService.loginWithVerifiedGoogleEmail(any(), any(), any()))
                 .thenThrow(new EmailAlreadyExistsException("email already exists"))
-                .thenReturn(new LoginResponse("access-token", "refresh-token", 900, "Bearer"));
+                .thenReturn(new LoginResponse("access-token", "refresh-token", 900, "Bearer", me()));
 
         mockMvc.perform(post("/api/v1/auth/google")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -447,5 +454,10 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"idToken\":\"token\"}"))
                 .andExpect(status().isTooManyRequests());
+    }
+
+    private static MeResponse me() {
+        return new MeResponse("USR_1", "test@example.com", "Test User", null, null,
+                "CUSTOMER", "Customer", List.of(), true);
     }
 }

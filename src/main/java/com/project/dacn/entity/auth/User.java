@@ -18,6 +18,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.NaturalId;
 import org.hibernate.annotations.SQLRestriction;
 
@@ -57,6 +58,11 @@ public class User extends BaseEntity {
 
     @Column(name = "user_last_login")
     private Instant lastLogin;
+
+    /** Database-owned counter; only explicit notification SQL advances it. */
+    @Column(name = "inbox_revision", nullable = false, insertable = false, updatable = false)
+    @ColumnDefault("0")
+    private long inboxRevision;
 
     /** Inverse side of {@link Customer#getUser()}; fetched with the principal. */
     @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)

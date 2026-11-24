@@ -6,9 +6,11 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -27,7 +29,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
      * graph, so the principal reflects committed rows even when the caller's
      * persistence context already holds the same user and role.
      * Columns: userId, email, passwordHash, status, roleCode, roleName,
-     * permission code, customer id, customer name, phone, address.
+     * permission code, customer id, customer name, phone, address, surrogate id.
      */
     @Query("""
             select u.userId, u.email, u.passwordHash, u.status,
@@ -45,7 +47,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("""
             select u.userId, u.email, u.passwordHash, u.status,
                    r.code, r.name, p.code,
-                   c.id, c.name, c.phone, c.address
+                   c.id, c.name, c.phone, c.address, u.id
             from User u
             join u.role r
             left join r.permissions rp
@@ -54,6 +56,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
             where u.email = :email
             """)
     List<Object[]> findPrincipalRowsByEmail(@Param("email") String email);
+
+    @Modifying
+    @Query("update User u set u.lastLogin = :now where u.userId = :userId")
+    void updateLastLogin(@Param("userId") String userId, @Param("now") Instant now);
 
     // Native queries bypass @SQLRestriction so deleted rows can answer with a
     // clear "account deleted" error instead of failing on a unique insert.

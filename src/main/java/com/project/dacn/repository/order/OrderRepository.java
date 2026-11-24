@@ -14,6 +14,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -43,12 +44,12 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     Optional<Order> findByOrderIdAndCustomer_Id(String orderId, Long customerId);
 
-    @EntityGraph(attributePaths = "customer")
+    @EntityGraph(attributePaths = {"customer", "payment"})
     Optional<Order> findWithCustomerByOrderIdAndCustomer_Id(String orderId, Long customerId);
 
     boolean existsByOrderIdAndCustomer_Id(String orderId, Long customerId);
 
-    @EntityGraph(attributePaths = "customer")
+    @EntityGraph(attributePaths = {"customer", "payment"})
     @Query("""
             select o from Order o
             where o.customer.id = :customerId
@@ -64,6 +65,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                                   @Param("createdAfter") Instant createdAfter,
                                   Pageable pageable);
 
+    @EntityGraph(attributePaths = {"customer", "payment"})
     @Query("""
             select o from Order o
             where (:status is null or o.status = :status)
@@ -80,6 +82,19 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                                @Param("status") OrderStatus status,
                                Pageable pageable);
 
+    /** Keyset over non-terminal orders with a usable GHN code; caller caps the batch. */
+    @Query("""
+            select o from Order o
+            where o.id > :afterId
+              and o.ghnOrderCode is not null
+              and o.ghnOrderCode <> ''
+              and o.status in :statuses
+            order by o.id asc
+            """)
+    List<Order> findGhnReconciliationCandidates(@Param("statuses") Collection<OrderStatus> statuses,
+                                                 @Param("afterId") long afterId,
+                                                 Pageable pageable);
+
     /**
      * Serializes staff decisions with payment settlement: both lock the same
      * order row, so an order cannot be cancelled and paid at the same time.
@@ -87,6 +102,10 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select o from Order o where o.orderId = :orderId")
     Optional<Order> findWithLockByOrderId(@Param("orderId") String orderId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select o from Order o where o.ghnOrderCode = :code")
+    Optional<Order> findWithLockByGhnOrderCode(@Param("code") String code);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Order o set o.status = :next where o.orderId = :orderId and o.status = :current")

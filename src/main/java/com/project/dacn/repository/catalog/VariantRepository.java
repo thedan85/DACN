@@ -2,20 +2,27 @@ package com.project.dacn.repository.catalog;
 
 import com.project.dacn.common.constant.ProductStatus;
 import com.project.dacn.entity.catalog.Variant;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
 public interface VariantRepository extends JpaRepository<Variant, Long> {
     Optional<Variant> findByVariantId(String variantId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select v from Variant v where v.variantId = :variantId")
+    Optional<Variant> findByVariantIdForUpdate(@Param("variantId") String variantId);
 
     Optional<Variant> findBySku(String sku);
 
@@ -35,13 +42,59 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
     @EntityGraph(attributePaths = {"product"})
     Optional<Variant> findWithProductById(Long id);
 
+    /** Checkout lock, called one surrogate id at a time in ascending order. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select v from Variant v where v.id = :id")
+    Optional<Variant> findByIdForUpdate(@Param("id") Long id);
+
+    interface CheckoutVariantView {
+        Long getId();
+
+        BigDecimal getPrice();
+
+        Integer getStock();
+
+        ProductStatus getProductStatus();
+    }
+
+    /** Fresh protected values read after the variant row locks are held. */
+    @Query("""
+            SELECT v.id AS id, v.price AS price, v.stock AS stock, p.status AS productStatus
+            FROM Variant v
+            JOIN v.product p
+            WHERE v.id IN :ids
+            """)
+    List<CheckoutVariantView> findCheckoutViewsByIdIn(@Param("ids") Collection<Long> ids);
+
     @Modifying
     @Query("update Variant v set v.stock = v.stock - :quantity where v.id = :id and v.stock >= :quantity")
     int decrementStock(@Param("id") Long id, @Param("quantity") int quantity);
 
+    /**
+     * Native historical stock update: checkout deducts stock without touching
+     * the portable revision semantics added later.
+     */
+    @Modifying
+    @Query(value = """
+            update variants
+               set variant_stock = variant_stock - :quantity
+             where id = :id and variant_stock >= :quantity
+            """, nativeQuery = true)
+    int decrementStockNative(@Param("id") Long id, @Param("quantity") int quantity);
+
     @Modifying
     @Query("update Variant v set v.stock = v.stock + :quantity where v.id = :id")
     int incrementStock(@Param("id") Long id, @Param("quantity") int quantity);
+
+    /** Release increment that still reaches soft-deleted historical rows. */
+    @Modifying
+    @Query(value = """
+            update variants
+               set variant_stock = variant_stock + :quantity
+             where id = :id
+            """, nativeQuery = true)
+    int incrementStockNative(@Param("id") Long id, @Param("quantity") int quantity);
+
     /**
      * One query for a whole product page: min/max price and total stock per
      * product across active variants. Soft-deleted variants are excluded
@@ -61,7 +114,11 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
     interface VariantStockView {
         String getVariantId();
 
+        String getProductId();
+
         Integer getStock();
+
+        long getStockRevision();
     }
 
     interface ProductStockView {
@@ -71,22 +128,28 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
     }
 
     /**
-     * Cache-hit stock overlay. Uses the same {@code deleted = false} filter as
-     * {@link #findPriceRangesByProductIds}, so hit and miss agree.
+     * Cache-hit stock overlay and the live predicate shared with the stock
+     * snapshot projection: non-deleted variant rows of ACTIVE products, on top
+     * of the entities' SQL restrictions, so cache hit and miss agree. Task12
+     * snapshot reads must reuse exactly this filter.
      */
     @Query("""
-            SELECT v.variantId AS variantId, v.stock AS stock
+            SELECT v.variantId AS variantId, v.product.productId AS productId,
+                   v.stock AS stock, v.stockRevision AS stockRevision
             FROM Variant v
             WHERE v.variantId = :variantId
               AND v.deleted = false
+              AND v.product.status = com.project.dacn.common.constant.ProductStatus.ACTIVE
             """)
     Optional<VariantStockView> findStockByVariantId(@Param("variantId") String variantId);
 
     @Query("""
-            SELECT v.variantId AS variantId, v.stock AS stock
+            SELECT v.variantId AS variantId, v.product.productId AS productId,
+                   v.stock AS stock, v.stockRevision AS stockRevision
             FROM Variant v
             WHERE v.variantId IN :variantIds
               AND v.deleted = false
+              AND v.product.status = com.project.dacn.common.constant.ProductStatus.ACTIVE
             """)
     List<VariantStockView> findStockByVariantIdIn(@Param("variantIds") Collection<String> variantIds);
 
@@ -95,6 +158,7 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
             FROM Variant v
             WHERE v.product.productId = :productId
               AND v.deleted = false
+              AND v.product.status = com.project.dacn.common.constant.ProductStatus.ACTIVE
             GROUP BY v.product.productId
             """)
     Optional<ProductStockView> findStockByProductId(@Param("productId") String productId);
@@ -104,7 +168,28 @@ public interface VariantRepository extends JpaRepository<Variant, Long> {
             FROM Variant v
             WHERE v.product.productId IN :productIds
               AND v.deleted = false
+              AND v.product.status = com.project.dacn.common.constant.ProductStatus.ACTIVE
             GROUP BY v.product.productId
             """)
     List<ProductStockView> findStockByProductIdIn(@Param("productIds") Collection<String> productIds);
+
+    /**
+     * Snapshot product aggregate: same visible-variant filter as
+     * {@link #findStockByProductIdIn}, plus ACTIVE products with no visible
+     * variants (stock zero). The left join keeps the product row; the join and
+     * product filters state exactly `v.deleted = false AND
+     * v.product.status = ProductStatus.ACTIVE`.
+     */
+    @Query("""
+            SELECT p.productId AS productId, COALESCE(SUM(v.stock), 0) AS totalStock
+            FROM Product p
+            LEFT JOIN Variant v ON v.product = p
+                AND v.deleted = false
+                AND v.product.status = com.project.dacn.common.constant.ProductStatus.ACTIVE
+            WHERE p.productId IN :productIds
+              AND p.status = com.project.dacn.common.constant.ProductStatus.ACTIVE
+            GROUP BY p.productId
+            """)
+    List<ProductStockView> findSnapshotStockByProductIdIn(
+            @Param("productIds") Collection<String> productIds);
 }

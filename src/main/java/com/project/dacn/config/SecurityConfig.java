@@ -53,6 +53,13 @@ public class SecurityConfig {
                         // Payment providers must call these without a token; they verify signatures.
                         .requestMatchers("/api/v1/webhooks/**").permitAll()
 
+                        // Guests get short-lived Realtime credentials; a supplied invalid
+                        // bearer is rejected by the controller, never downgraded.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/realtime/credentials").permitAll()
+
+                        // Public bounded stock snapshot; only this exact route is widened.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/stock/snapshots").permitAll()
+
                         // Session endpoints.
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login",
                                 "/api/v1/auth/google", "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()
@@ -64,6 +71,9 @@ public class SecurityConfig {
                                 "/api/v1/attributes/**", "/api/v1/attribute-values/**",
                                 "/api/v1/product-attributes/**", "/api/v1/variant-attributes/**",
                                 "/api/v1/media/**").permitAll()
+
+                        // Shipping master data is read-only and comes from GHN.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/shipping/**").permitAll()
 
                         // Writes are checked here as well as with @PreAuthorize so a caller
                         // without the permission is rejected before MVC validates the body.
@@ -114,6 +124,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/admin/dashboard/**")
                         .hasAuthority(Permissions.ORDER_READ)
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/staff/orders/**").hasAuthority(Permissions.ORDER_UPDATE)
+                        .requestMatchers(HttpMethod.POST, "/api/v1/staff/orders/*/payment/confirm",
+                                "/api/v1/staff/orders/*/ship")
+                        .hasAuthority(Permissions.ORDER_UPDATE)
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/orders/*/complete")
                         .hasAuthority(Permissions.ORDER_COMPLETE)
                         .requestMatchers(HttpMethod.GET, "/api/v1/admin/users", "/api/v1/admin/users/**")
@@ -121,7 +134,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/admin/users")
                         .hasAuthority(Permissions.USER_CREATE)
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/admin/users/*/status",
-                                "/api/v1/admin/users/*/role")
+                                "/api/v1/admin/users/*/role",
+                                "/api/v1/admin/users/*/profile")
                         .hasAuthority(Permissions.USER_UPDATE)
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/admin/users/*")
                         .hasAuthority(Permissions.USER_DELETE)

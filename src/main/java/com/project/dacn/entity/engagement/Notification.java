@@ -1,6 +1,7 @@
 package com.project.dacn.entity.engagement;
 
 import com.project.dacn.entity.auth.User;
+import com.project.dacn.entity.order.Order;
 import com.project.dacn.entity.BaseEntity;
 import com.project.dacn.common.constant.NotificationStatus;
 import com.project.dacn.common.constant.NotificationType;
@@ -19,6 +20,9 @@ import lombok.Setter;
 import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.NaturalId;
 import org.hibernate.annotations.SQLRestriction;
+
+import java.time.Instant;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -54,6 +58,28 @@ public class Notification extends BaseEntity {
     @Column(name = "is_deleted", nullable = false)
     @lombok.Builder.Default
     private Boolean deleted = false;
+
+    /** Absent on legacy rows; event-backed rows carry the full source identity. */
+    @Column(name = "source_event_id")
+    private UUID sourceEventId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "order_id", referencedColumnName = "id",
+            foreignKey = @ForeignKey(name = "fk_notifications_order"))
+    private Order order;
+
+    @Column(name = "event_type", length = 40)
+    private String eventType;
+
+    @Column(name = "order_sequence")
+    private Long orderSequence;
+
+    @Column(name = "occurred_at")
+    private Instant occurredAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "recipient_scope", length = 20)
+    private NotificationRecipientScope recipientScope;
 
     @Override
     protected String getBusinessId() {

@@ -1,5 +1,6 @@
 HELP.md
 docs/superpowers/
+graphify-out/
 
 target/
 .mvn/wrapper/maven-wrapper.jar

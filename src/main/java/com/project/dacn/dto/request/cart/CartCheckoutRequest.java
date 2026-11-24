@@ -18,6 +18,12 @@ public record CartCheckoutRequest(
         @Schema(example = "0901234567")
         String phone,
 
+        @Schema(example = "Hồ Chí Minh")
+        String province,
+
+        @Schema(example = "Phường Chợ Quán")
+        String ward,
+
         @NotNull
         @Schema(example = "COD")
         PaymentMethod method) {

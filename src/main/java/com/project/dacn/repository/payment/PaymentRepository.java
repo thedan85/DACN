@@ -2,8 +2,10 @@ package com.project.dacn.repository.payment;
 
 import com.project.dacn.common.constant.PaymentStatus;
 import com.project.dacn.entity.payment.Payment;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -16,10 +18,17 @@ import java.util.Optional;
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
     Optional<Payment> findByPaymentId(String paymentId);
 
+    /** Identity only: do not preload mutable payment/order state before the lifecycle lock. */
+    @Query("select p.order.orderId from Payment p where p.paymentId = :paymentId")
+    Optional<String> findOrderIdByPaymentId(@Param("paymentId") String paymentId);
+
     Optional<Payment> findByOrder_OrderId(String orderId);
 
     @EntityGraph(attributePaths = "order")
     List<Payment> findByOrder_OrderIdIn(Collection<String> orderIds);
+
+    @EntityGraph(attributePaths = "order")
+    Optional<Payment> findWithOrderByOrder_OrderId(String orderId);
 
     /** Payment and its order in one query, scoped to the owning customer. */
     @EntityGraph(attributePaths = "order")
@@ -30,6 +39,11 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             @Param("customerId") Long customerId);
 
     Optional<Payment> findByTransactionId(String transactionId);
+
+    /** Serializes lifecycle transitions with payment settlement on the payment row. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Payment p where p.order.orderId = :orderId")
+    Optional<Payment> findWithLockByOrder_OrderId(@Param("orderId") String orderId);
 
     /**
      * Settles a payment only while it is still in {@code current}. Two IPNs
@@ -44,4 +58,18 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
                @Param("next") PaymentStatus next,
                @Param("transactionId") String transactionId,
                @Param("paidAt") Instant paidAt);
+
+    /**
+     * Refund transition that also matches a concurrent staff cancel: the cancel
+     * may commit PENDING -> FAILED after settlement read the payment but before
+     * settlement acquired the order lock.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update Payment p set p.status = :next, p.transactionId = :transactionId, "
+            + "p.paidAt = :paidAt where p.paymentId = :paymentId and p.status in :current")
+    int settleFrom(@Param("paymentId") String paymentId,
+                   @Param("current") Collection<PaymentStatus> current,
+                   @Param("next") PaymentStatus next,
+                   @Param("transactionId") String transactionId,
+                   @Param("paidAt") Instant paidAt);
 }

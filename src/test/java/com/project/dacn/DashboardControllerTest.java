@@ -1,8 +1,10 @@
 package com.project.dacn;
 
 import com.project.dacn.common.constant.OrderStatus;
+import com.project.dacn.common.exception.ForecastNotAvailableException;
 import com.project.dacn.controller.dashboard.DashboardController;
 import com.project.dacn.dto.response.dashboard.DashboardSummaryResponse;
+import com.project.dacn.dto.response.dashboard.RevenueForecastResponse;
 import com.project.dacn.dto.response.dashboard.DashboardSummaryResponse.CompletionRate;
 import com.project.dacn.dto.response.dashboard.DashboardSummaryResponse.CountKpi;
 import com.project.dacn.dto.response.dashboard.DashboardSummaryResponse.Granularity;
@@ -15,6 +17,7 @@ import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.security.CustomUserDetailsService;
 import com.project.dacn.security.JwtService;
 import com.project.dacn.service.dashboard.DashboardService;
+import com.project.dacn.service.dashboard.RevenueForecastService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -27,6 +30,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -42,6 +46,9 @@ class DashboardControllerTest {
 
     @MockitoBean
     private DashboardService service;
+
+    @MockitoBean
+    private RevenueForecastService forecastService;
 
     // JwtAuthenticationFilter is a Filter, so the slice instantiates it even with
     // addFilters = false; these mocks satisfy its constructor.
@@ -91,6 +98,54 @@ class DashboardControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("days must be 7, 30, or 90"));
+    }
+
+    @Test
+    void forecastReturnsPayload() throws Exception {
+        when(forecastService.getForecast()).thenReturn(forecast());
+
+        mockMvc.perform(get("/api/v1/admin/dashboard/forecast"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.generatedAt").value("2026-11-23T10:00:00+07:00"))
+                .andExpect(jsonPath("$.data.model").value("Prophet"))
+                .andExpect(jsonPath("$.data.trainingMonths").value(36))
+                .andExpect(jsonPath("$.data.holdoutMonths").value(6))
+                .andExpect(jsonPath("$.data.mae").value(167965.57))
+                .andExpect(jsonPath("$.data.mape").value(nullValue()))
+                .andExpect(jsonPath("$.data.months[0].date").value("2026-11-01"))
+                .andExpect(jsonPath("$.data.months[0].predicted").value(10356310.87))
+                .andExpect(jsonPath("$.data.months[0].lower").value(10189870.20))
+                .andExpect(jsonPath("$.data.months[0].upper").value(10510301.47))
+                .andExpect(jsonPath("$.data.annual[0].year").value(2026))
+                .andExpect(jsonPath("$.data.annual[0].months").value(2))
+                .andExpect(jsonPath("$.data.annual[0].predicted").value(20634185.43))
+                .andExpect(jsonPath("$.data.annual[0].lower").value(20310480.80))
+                .andExpect(jsonPath("$.data.annual[0].upper").value(20942274.99));
+    }
+
+    @Test
+    void forecastMissingReturns503() throws Exception {
+        when(forecastService.getForecast()).thenThrow(new ForecastNotAvailableException());
+
+        mockMvc.perform(get("/api/v1/admin/dashboard/forecast"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value(503))
+                .andExpect(jsonPath("$.message").value("Revenue forecast is not available."))
+                .andExpect(jsonPath("$.data").value(nullValue()));
+    }
+
+    private RevenueForecastResponse forecast() {
+        return new RevenueForecastResponse(
+                "2026-11-23T10:00:00+07:00",
+                "Prophet",
+                36,
+                6,
+                167965.57,
+                null,
+                List.of(new RevenueForecastResponse.MonthPoint(
+                        "2026-11-01", 10356310.87, 10189870.20, 10510301.47)),
+                List.of(new RevenueForecastResponse.AnnualTotal(
+                        2026, 2, 20634185.43, 20310480.80, 20942274.99)));
     }
 
     private DashboardSummaryResponse summary() {

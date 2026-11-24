@@ -107,7 +107,7 @@ public interface ProductRepository extends JpaRepository<Product, Long>, JpaSpec
                 c.categoryId, c.name, t.url, t.mediaId, p.createdAt, p.updatedAt,
                 pav.productValueId, pa.attributeId, pa.name,
                 av.attributeValueId, av.value, pav.createdAt,
-                v.variantId, v.sku, v.price, v.stock)
+                v.variantId, v.sku, v.price, v.stock, v.stockRevision)
             from Product p
             left join p.category c
             left join p.thumbnail t

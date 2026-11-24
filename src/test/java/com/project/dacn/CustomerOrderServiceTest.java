@@ -3,18 +3,20 @@ package com.project.dacn;
 import com.project.dacn.common.constant.OrderStatus;
 import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.response.order.OrderResponse;
+import com.project.dacn.integration.shipping.ghn.GhnClient;
 import com.project.dacn.mapper.order.OrderMapper;
 import com.project.dacn.mapper.payment.PaymentMapper;
 import com.project.dacn.repository.catalog.MediaRepository;
-import com.project.dacn.repository.catalog.VariantAttributeValueRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
 import com.project.dacn.repository.payment.PaymentRepository;
+import com.project.dacn.service.order.OrderLifecycleService;
+import com.project.dacn.service.order.OrderResponseAssembler;
 import com.project.dacn.service.order.OrderService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
@@ -29,6 +31,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,10 +42,19 @@ class CustomerOrderServiceTest {
     @Mock OrderMapper orderMapper;
     @Mock PaymentMapper paymentMapper;
     @Mock VariantRepository variantRepository;
-    @Mock VariantAttributeValueRepository variantAttributeValueRepository;
     @Mock MediaRepository mediaRepository;
     @Mock PaymentRepository paymentRepository;
-    @InjectMocks OrderService service;
+    @Mock GhnClient ghnClient;
+    OrderService service;
+
+    @BeforeEach
+    void setUp() {
+        OrderResponseAssembler assembler = new OrderResponseAssembler(
+                orderItemRepository, orderMapper, paymentMapper, mediaRepository);
+        service = new OrderService(orderRepository, assembler,
+                mock(OrderLifecycleService.class), orderItemRepository,
+                variantRepository, paymentRepository, ghnClient);
+    }
 
     @Test
     void trimsOrderIdSearchAndDelegatesFilters() {

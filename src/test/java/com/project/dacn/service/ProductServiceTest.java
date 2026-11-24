@@ -106,6 +106,8 @@ class ProductServiceTest {
                 new ProductFilter(null, ProductStatus.ACTIVE, null), PageRequest.of(0, 20));
 
         assertThat(result.getContent().get(0).stock()).isEqualTo(4);
+        verify(variantRepo, times(1)).findStockByProductIdIn(List.of("PRD_1"));
+        verify(variantRepo, never()).findStockByProductId(any());
         verifyNoInteractions(repo);
     }
 
@@ -138,6 +140,8 @@ class ProductServiceTest {
         ProductResponse result = service.getBySlug("Ember-Tetra");
 
         assertThat(result.stock()).isEqualTo(30);
+        verify(variantRepo, times(1)).findStockByProductId("PRD_1");
+        verify(variantRepo, never()).findStockByProductIdIn(any());
         verify(repo, never()).findBySlugIgnoreCase(any());
     }
 
@@ -495,6 +499,7 @@ class ProductServiceTest {
         assertThat(result.variants().get(0).variantId()).isEqualTo("VAR_1");
         assertThat(result.variants().get(0).price()).isEqualByComparingTo("100");
         assertThat(result.variants().get(0).stock()).isEqualTo(5);
+        assertThat(result.variants().get(0).stockRevision()).isEqualTo(4L);
         assertThat(result.variants().get(0).attributes()).containsExactly(variantAttribute);
         assertThat(result.variants().get(0).media()).containsExactly(media);
         assertThat(result.variants().get(1).attributes()).isEmpty();
@@ -515,6 +520,7 @@ class ProductServiceTest {
         when(cache.get(eq("pim:product:detail:9:ember-tetra:0:20:none"), any()))
                 .thenReturn(Optional.of(cached));
         VariantRepository.VariantStockView stock = stockView("VAR_1", 5);
+        when(stock.getStockRevision()).thenReturn(9L);
         when(variantRepo.findStockByVariantIdIn(List.of("VAR_1", "VAR_2")))
                 .thenReturn(List.of(stock));
 
@@ -523,6 +529,10 @@ class ProductServiceTest {
         assertThat(result.product().stock()).isEqualTo(5);
         assertThat(result.variants()).extracting(VariantDetailResponse::stock)
                 .containsExactly(5, 0);
+        assertThat(result.variants()).extracting(VariantDetailResponse::stockRevision)
+                .containsExactly(9L, null);
+        verify(variantRepo, times(1)).findStockByVariantIdIn(List.of("VAR_1", "VAR_2"));
+        verify(variantRepo, never()).findStockByVariantId(any());
         verifyNoInteractions(repo, mediaRepo, variantAttributeValueRepo, reviewService);
     }
 
@@ -561,6 +571,8 @@ class ProductServiceTest {
         assertThat(stored.getValue().product().stock()).isNull();
         assertThat(stored.getValue().variants())
                 .allSatisfy(variant -> assertThat(variant.stock()).isNull());
+        assertThat(stored.getValue().variants())
+                .allSatisfy(variant -> assertThat(variant.stockRevision()).isNull());
         assertThat(result.product().stock()).isEqualTo(5);
         assertThat(result.variants().get(0).stock()).isEqualTo(5);
     }
@@ -664,19 +676,19 @@ class ProductServiceTest {
                 productValueId == null ? null : "AV_1",
                 productValueId == null ? null : "25C",
                 null,
-                variantId, sku, price == null ? null : new BigDecimal(price), stock);
+                variantId, sku, price == null ? null : new BigDecimal(price), stock, variantId == null ? null : 4L);
     }
 
     private static ProductDetailBaseRow thumbnailDetailRow(String variantId) {
         return new ProductDetailBaseRow("PRD_1", "ember-tetra", "P", "d", null,
                 ProductStatus.ACTIVE, null, null, "https://img", "MED_9", null, null,
                 null, null, null, null, null, null,
-                variantId, "SKU-1", new BigDecimal("100"), 5);
+                variantId, "SKU-1", new BigDecimal("100"), 5, 4L);
     }
 
     private static VariantDetailResponse variantDetail(String variantId, Integer stock) {
         return new VariantDetailResponse(variantId, "SKU-" + variantId,
-                new BigDecimal("100"), stock, List.of(), List.of());
+                new BigDecimal("100"), stock, null, List.of(), List.of());
     }
 
     private static VariantRepository.VariantStockView stockView(String variantId, int stock) {

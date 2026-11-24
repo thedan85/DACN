@@ -32,5 +32,10 @@
 
   V26 then skips both steps. Never edit an applied V26: Flyway validates its
   checksum.
-- `V31__order_created_at_index.sql` — dashboard range index on `orders (created_at)`. Run `CREATE INDEX CONCURRENTLY` by hand on a live database.
+- `V31__ghn_shipping.sql` — shipping address columns and unique GHN order-code index. Keep this applied migration unchanged.
+- `V32__order_created_at_index.sql` — dashboard range index on `orders (created_at)`. Run `CREATE INDEX CONCURRENTLY` by hand on a live database.
+- `V33__vietqr_payment_method.sql` — adds the VIETQR payment method to the payment-method check constraint.
+- `V34__event_foundation.sql` — event outbox, inbox, and Realtime control tables.
+- `V35__inventory_reservation_schema.sql` — reservation columns, indexes, and stock-revision constraint.
+- `V36__variant_stock_revision_trigger.sql` — database-owned stock revision increments.
 - `R__refreshable_reference_data.sql` — repeatable reference data

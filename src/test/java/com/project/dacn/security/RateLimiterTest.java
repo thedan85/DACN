@@ -4,8 +4,12 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.project.dacn.common.exception.RateLimitExceededException;
+import com.project.dacn.common.exception.RateLimitUnavailableException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -61,6 +65,62 @@ class RateLimiterTest {
 
         assertThatCode(() -> limiter.check("rl:login:1.2.3.4", 10, Duration.ofMinutes(1)))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void nullResultPreservesLegacyFailOpenPolicy() {
+        stubScriptResult(null);
+
+        assertThatCode(() -> limiter.check("rl:login:1.2.3.4", 10, Duration.ofMinutes(1)))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void strictConfirmedAdmissionIsAllowed() {
+        stubScriptResult(1L);
+
+        assertThatCode(() -> limiter.checkStrict("realtime:cred:ip:203.0.113.9", 60, Duration.ofMinutes(1)))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void strictConfirmedExhaustionRemains429() {
+        stubScriptResult(0L);
+
+        assertThatThrownBy(() -> limiter.checkStrict("realtime:cred:user:7", 6, Duration.ofMinutes(1)))
+                .isInstanceOf(RateLimitExceededException.class)
+                .hasMessage("too many requests, try again later");
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(longs = {-1, 2})
+    void strictUnconfirmedResultFailsClosed(Long result) {
+        stubScriptResult(result);
+
+        assertThatThrownBy(() -> limiter.checkStrict("realtime:cred:ip:203.0.113.9", 60, Duration.ofMinutes(1)))
+                .isInstanceOf(RateLimitUnavailableException.class)
+                .hasMessage("rate limiter unavailable")
+                .hasNoCause();
+    }
+
+    @Test
+    void strictRedisFailureDoesNotExposeOrLogItsCause() {
+        when(redis.execute(any(RedisScript.class), anyList(), any(Object[].class)))
+                .thenThrow(new RedisConnectionFailureException("private-redis-detail"));
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        Logger logger = (Logger) LoggerFactory.getLogger(RateLimiter.class);
+        logger.addAppender(appender);
+        try {
+            assertThatThrownBy(() -> limiter.checkStrict("realtime:cred:ip:203.0.113.9", 60, Duration.ofMinutes(1)))
+                    .isInstanceOf(RateLimitUnavailableException.class)
+                    .hasMessage("rate limiter unavailable")
+                    .hasNoCause();
+            assertThat(appender.list).isEmpty();
+        } finally {
+            logger.detachAppender(appender);
+        }
     }
 
     @Test

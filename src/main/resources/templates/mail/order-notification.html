@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8" />
+  <title th:text="${subject}">Order update</title>
+</head>
+<body>
+  <h1 th:text="${subject}">Order update</h1>
+  <p th:text="${message}">Your order update.</p>
+  <p th:if="${!#strings.isEmpty(orderLink)}"><a th:href="${orderLink}" th:text="${orderLink}">View order</a></p>
+  <p th:text="${footer}">DACN storefront</p>
+</body>
+</html>

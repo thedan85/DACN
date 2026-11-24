@@ -26,6 +26,7 @@ Error responses use the same envelope with `data: null` and an HTTP status that 
 | `/api/v1/admin/users` | `POST` | `user:create` |
 | `/api/v1/admin/users/{userId}/status` | `PATCH` | `user:update` |
 | `/api/v1/admin/users/{userId}/role` | `PATCH` | `user:update` |
+| `/api/v1/admin/users/{userId}/profile` | `PATCH` | `user:update` |
 | `/api/v1/admin/users/{userId}` | `DELETE` | `user:delete` |
 
 `SecurityConfig` applies the same rules at the filter-chain level, and each controller method also has `@PreAuthorize`.
@@ -392,6 +393,82 @@ Real `409` self-demote example:
 ```json
 {"code":409,"message":"You cannot demote your own administrator account","data":null}
 ```
+
+## `PATCH /api/v1/admin/users/{userId}/profile`
+
+Required permission: `user:update`
+
+Partial update of a **customer** profile. The target must be a live user whose current role is `customer` and whose `Customer` row exists; otherwise the response is `404`. A locked customer can be updated; a soft-deleted, absent, non-customer, or profile-less target cannot. Status, role, credentials, sessions, saved shipping addresses, and order snapshots are never touched.
+
+### Request body
+
+JSON object with **at least one** of the three fields. Unknown fields are rejected with `400`. Wrong types are rejected with `400`. Omitted fields keep their current values. Supplied strings are trimmed.
+
+| Field | Rules |
+|---|---|
+| `name` | Non-null, nonblank, at most 255 characters. Explicit JSON `null` is rejected with `400`. |
+| `phone` | Non-null and matching `^\+?[0-9]{10,15}$` after trimming. Explicit JSON `null` is rejected with `400`. |
+| `address` | At most 255 characters. Explicit JSON `null` or a whitespace-only value clears the stored address; a missing `address` key leaves it unchanged. |
+
+```json
+{
+  "name": " Updated Name ",
+  "address": null
+}
+```
+
+Trimming applies before validation, so `" +84900000001 "` is accepted as `"+84900000001"`.
+
+### Real response — `200 OK`
+
+Response shape equals the detail endpoint. Example captured from the H2 test run; IDs, timestamps and session data are test values, not production data.
+
+```json
+{
+  "code": 200,
+  "message": "OK",
+  "data": {
+    "userId": "USR_customer-test-com-5b27f0c7-078",
+    "email": "customer@test.com",
+    "name": "Updated Name",
+    "phone": "0900000004",
+    "address": null,
+    "roleCode": "customer",
+    "roleName": "Customer",
+    "status": "ACTIVE",
+    "lastLogin": "2026-11-09T09:08:59.710636Z",
+    "createdAt": "2026-11-09T09:08:59.051124Z",
+    "permissions": []
+  }
+}
+```
+
+The whitespace-only address `{"address":"   "}` is stored as `null`. `PATCH {"address":" Unit 5 "}` on a locked customer returns `200` with `"status": "LOCKED"` and leaves a null `phone` untouched.
+
+### Errors
+
+| Status | Condition |
+|---|---|
+| `400` | Body is not a JSON object, contains no known field, an unknown field, a wrong type, a blank/null/too-long `name`, an invalid/null `phone`, or a too-long `address`. Nothing is persisted. |
+| `401` | Missing, invalid, expired, or locked token |
+| `403` | Authenticated but missing `user:update` |
+| `404` | User does not exist or is soft-deleted, target is not a customer, or the `Customer` row is missing. Nothing is persisted. |
+
+Real `400` examples:
+
+```json
+{"code":400,"message":"at least one of name, phone, address must be provided","data":null}
+```
+
+```json
+{"code":400,"message":"unknown field: roleCode","data":null}
+```
+
+```json
+{"code":400,"message":"phone must match ^\\+?[0-9]{10,15}$","data":null}
+```
+
+The OpenAPI operation documents a hand-written schema naming only `name`, `phone`, and `address`.
 
 ## `DELETE /api/v1/admin/users/{userId}`
 

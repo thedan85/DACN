@@ -26,3 +26,11 @@ cloudinary:
 
 jwt:
   secret: test-secret-key-please-change-min-256-bits-hs256-algorithm-requires-this-length
+
+app:
+  notifications:
+    # H2 does not have the PostgreSQL notification retention tables.
+    retention-enabled: false
+  realtime:
+    # H2 does not have the PostgreSQL retention tables or functions.
+    retention-enabled: false

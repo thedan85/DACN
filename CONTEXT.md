@@ -24,8 +24,8 @@ for an aquarium/fish store. It covers:
 - Cart and checkout with stock validation, concurrency protection, and a
   fish-compatibility advisory on the cart.
 - Orders: customer history, staff accept/reject, admin completion.
-- Online payments: VNPay (implemented) and MoMo IPN settlement (implemented);
-  MoMo payment creation and VietQR are not implemented.
+- Online payments: VNPay (implemented), VietQR (implemented), and MoMo IPN
+  settlement (implemented); MoMo payment creation is not implemented.
 - Cloudinary uploads for product/variant images.
 - Redis-backed catalog cache and auth rate limiting.
 
@@ -49,6 +49,7 @@ repository (`/FE-DACN` is gitignored).
 | Catalog | Complete vertical: CRUD, search, filtering, Redis cache, Cloudinary uploads |
 | Cart → checkout → order | Implemented, including stock decrement, concurrency tests, and a fish-compatibility advisory |
 | VNPay | URL creation, IPN and return handling, idempotent settlement |
+| VietQR | QR image URL creation, staff receipt confirmation, idempotent settlement |
 | MoMo | Webhook signature verification + settlement implemented; `MomoClient` (payment creation) still a stub |
 | Shipping (GHTK/GHN) | Stubs only |
 | Notifications | Entity/repository/DTOs exist; no service or controller |
@@ -134,7 +135,9 @@ Application config reads:
 `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET`, `VNPAY_PAY_URL`,
 `VNPAY_RETURN_URL`, `VNPAY_IPN_URL`, `VNPAY_FRONTEND_RETURN_URL`,
 `MOMO_PARTNER_CODE`, `MOMO_ACCESS_KEY`, `MOMO_SECRET_KEY`, `MOMO_ENDPOINT`,
-`MOMO_REDIRECT_URL`, `MOMO_IPN_URL`, `CORS_ALLOWED_ORIGINS`,
+`MOMO_REDIRECT_URL`, `MOMO_IPN_URL`, `VIETQR_BANK_ID`, `VIETQR_ACCOUNT_NO`,
+`VIETQR_ACCOUNT_NAME`, `VIETQR_TEMPLATE`, `VIETQR_IMAGE_BASE_URL`,
+`CORS_ALLOWED_ORIGINS`,
 `AUTH_COOKIE_SECURE`, `AUTH_COOKIE_SAME_SITE`, `GOOGLE_CLIENT_ID`,
 `GHTK_BASE_URL`, `GHTK_TOKEN`, `GHN_BASE_URL`, `GHN_TOKEN`, `GHN_SHOP_ID`.
 
@@ -275,9 +278,9 @@ Pagination uses Spring conventions:
 | Uploads | `/api/v1/uploads/products/{productId}/thumbnail`, `/api/v1/uploads/variants/{variantId}` | multipart field `file`, Cloudinary |
 | Cart | `/api/v1/cart`, `/api/v1/cart/items*`, `/api/v1/cart/checkout` | authenticated customer |
 | Customer orders | `/api/v1/orders`, `/api/v1/orders/{orderId}` | authenticated customer, ownership enforced; list filters `status`, `q`, `createdAfter` |
-| Payments | `/api/v1/payments/vnpay/{orderId}`, `/api/v1/payments/orders/{orderId}` | authenticated owner |
+| Payments | `/api/v1/payments/vnpay/{orderId}`, `/api/v1/payments/vietqr/{orderId}`, `/api/v1/payments/orders/{orderId}` | authenticated owner |
 | Reviews | `/api/v1/variants/{variantId}/reviews`, `/api/v1/reviews/{reviewId}`, `/api/v1/orders/{orderId}/reviews`, `/api/v1/staff/orders/{orderId}/reviews` | verified-purchase rule |
-| Staff orders | `/api/v1/staff/orders`, `/api/v1/staff/orders/{orderId}/status` | `order:read` / `order:update` |
+| Staff orders | `/api/v1/staff/orders`, `/api/v1/staff/orders/{orderId}/status`, `/api/v1/staff/orders/{orderId}/payment/confirm` | `order:read` / `order:update` |
 | Admin orders | `/api/v1/admin/orders/{orderId}/complete` | `order:complete` |
 | Admin users | `/api/v1/admin/users`, `/api/v1/admin/users/{userId}`, `.../{userId}/status`, `.../{userId}/role` | list/detail (`user:read`), create (`user:create`), lock/unlock + change role (`user:update`), soft delete (`user:delete`); role changes accept any existing, non-deleted role except `customer` |
 | Admin roles | `/api/v1/admin/permissions`, `/api/v1/admin/roles`, `/api/v1/admin/roles/{roleId}`, `.../{roleId}/permissions` | read (`role:read`), update (`role:update`), create (`role:create`), delete (`role:delete`); `PUT` replaces the whole permission set |
@@ -455,7 +458,8 @@ matters because reviews require a completed purchase.
 `REFUND_REQUIRED` used by settlement when money arrives for a cancelled/failed
 order.
 
-`PaymentMethod`: `CREDIT_CARD`, `DEBIT_CARD`, `BANK_TRANSFER`, `E_WALLET`, `COD`.
+`PaymentMethod`: `CREDIT_CARD`, `DEBIT_CARD`, `BANK_TRANSFER`, `E_WALLET`, `COD`,
+`VIETQR`.
 
 #### VNPay
 
@@ -471,6 +475,21 @@ order.
   `?payment=success|failed|invalid`.
 - Settlement compares the provider amount in minor units with the payment
   amount.
+
+#### VietQR
+
+- `POST /api/v1/payments/vietqr/{orderId}` returns a `PaymentVietQrResponse`
+  with an `img.vietqr.io` image URL, bank ID, account number, account name,
+  amount, and transfer description (`addInfo` = order business ID).
+- Requires a `VIETQR` payment, a `PENDING` payment, and a `PENDING` order.
+  Accepting the order first (`CONFIRMED`) makes the QR endpoint unavailable,
+  matching VNPay's order-status rule; staff must confirm payment first.
+- Staff call `POST /api/v1/staff/orders/{orderId}/payment/confirm` (requires
+  `order:update`) after verifying the transfer. It delegates to
+  `PaymentSettlementService`, so confirmation is idempotent and follows the
+  same `CONFIRMED` / `REFUND_REQUIRED` rules as VNPay/MoMo.
+- Missing `VIETQR_BANK_ID`, `VIETQR_ACCOUNT_NO`, or `VIETQR_ACCOUNT_NAME`
+  returns 503 (`VietQrNotConfiguredException`); the app still starts.
 
 #### MoMo
 
@@ -570,6 +589,7 @@ Migrations live in `src/main/resources/db/migration/`:
 | `V28` | Lookup indexes |
 | `V29` | Admin user management: admin phone/address, nullable employee phone, `user:*` permissions |
 | `V30` | RBAC admin role API: four `role:*` permissions granted to the admin role |
+| `V33` | VietQR payment method in `chk_payments_method` |
 
 Also:
 
@@ -672,7 +692,7 @@ local runtime, not a project requirement change.
 | `AccessDeniedException` / locked account / `GoogleLoginNotAllowedException` | 403 |
 | `RateLimitExceededException` | 429 |
 | `CloudinaryException` | 502 |
-| `GoogleLoginNotConfiguredException` | 503 |
+| `GoogleLoginNotConfiguredException`, `VietQrNotConfiguredException` | 503 |
 | anything else | 500 |
 
 Messages are resolved through `MessageSource`. `error.email.exists` and the
@@ -704,7 +724,7 @@ token. Remaining gaps, ordered roughly by impact:
    no `NotificationService`/`NotificationController`.
 2. **Implement shipping (GHTK/GHN).** Clients only return names; no quote,
    create, track, or webhook flow. `SHIPPING` order status is unreachable.
-3. **Implement MoMo payment URL creation** and VietQR.
+3. **Implement MoMo payment URL creation.**
 4. **Statistics/reporting** (revenue, users, orders, inventory) — not started.
 5. **Wishlist persistence** — mentioned in requirements, not implemented.
 6. **Mail** (order confirmation, password reset) and **WebSocket** — dependencies

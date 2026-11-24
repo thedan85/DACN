@@ -8,6 +8,7 @@ public record VariantDetailResponse(
         String sku,
         BigDecimal price,
         Integer stock,
+        Long stockRevision,
         List<VariantAttributeValueResponse> attributes,
         List<MediaResponse> media) {
 }

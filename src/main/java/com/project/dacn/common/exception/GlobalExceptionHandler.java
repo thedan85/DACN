@@ -1,6 +1,7 @@
 package com.project.dacn.common.exception;
 
 import com.project.dacn.common.response.ApiResponse;
+import com.project.dacn.integration.realtime.RealtimeRequestValidationException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
@@ -8,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -49,6 +51,21 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(409, "resource already exists or is still referenced", null));
     }
 
+    @ExceptionHandler(ConcurrencyFailureException.class)
+    public ResponseEntity<ApiResponse<?>> handleConcurrency(ConcurrencyFailureException ex) {
+        log.warn("Concurrent write conflicted: {}", ex.getClass().getSimpleName());
+        return ResponseEntity.status(409)
+                .body(ApiResponse.of(409, "resource is busy; refresh state before trying again", null));
+    }
+
+    @ExceptionHandler(jakarta.persistence.PessimisticLockException.class)
+    public ResponseEntity<ApiResponse<?>> handleJpaLockConflict(
+            jakarta.persistence.PessimisticLockException ex) {
+        log.warn("JPA lock conflict: {}", ex.getClass().getSimpleName());
+        return ResponseEntity.status(409)
+                .body(ApiResponse.of(409, "resource is busy; refresh state before trying again", null));
+    }
+
     @ExceptionHandler(DuplicateResourceException.class)
     public ResponseEntity<ApiResponse<?>> handleDuplicate(DuplicateResourceException ex) {
         return ResponseEntity.status(409)
@@ -83,6 +100,14 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.of(409, message, null));
     }
 
+    @ExceptionHandler(AdminAuthorityException.class)
+    public ResponseEntity<ApiResponse<?>> handleAdminAuthority(AdminAuthorityException ex) {
+        String message = messageSource.getMessage(AdminAuthorityException.MESSAGE_KEY, null,
+                "You don't have permission to assign this role", LocaleContextHolder.getLocale());
+        return ResponseEntity.status(403)
+                .body(ApiResponse.of(403, message, null));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<?>> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult().getFieldErrors().stream()
@@ -94,6 +119,19 @@ public class GlobalExceptionHandler {
         }
         return ResponseEntity.badRequest()
                 .body(ApiResponse.of(400, message, null));
+    }
+
+    @ExceptionHandler(RealtimeRequestValidationException.class)
+    public ResponseEntity<ApiResponse<?>> handleRealtimeValidation(RealtimeRequestValidationException ex) {
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.of(400, "invalid realtime credential request", null));
+    }
+
+    @ExceptionHandler(com.project.dacn.integration.realtime.RealtimeUnavailableException.class)
+    public ResponseEntity<ApiResponse<?>> handleRealtimeUnavailable(
+            com.project.dacn.integration.realtime.RealtimeUnavailableException ex) {
+        return ResponseEntity.status(503)
+                .body(ApiResponse.of(503, "realtime credentials unavailable", null));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -119,6 +157,12 @@ public class GlobalExceptionHandler {
             com.project.dacn.integration.cloudinary.CloudinaryException ex) {
         return ResponseEntity.status(502)
                 .body(ApiResponse.of(502, "UPLOAD_FAILED: " + ex.getMessage(), null));
+    }
+
+    @ExceptionHandler(com.project.dacn.integration.shipping.ShippingException.class)
+    public ResponseEntity<ApiResponse<?>> handleShipping(
+            com.project.dacn.integration.shipping.ShippingException ex) {
+        return ResponseEntity.status(502).body(ApiResponse.of(502, ex.getMessage(), null));
     }
 
     @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
@@ -172,6 +216,22 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(503)
                 .body(ApiResponse.of(503, ex.getMessage(), null));
     }
+
+    @ExceptionHandler(VietQrNotConfiguredException.class)
+    public ResponseEntity<ApiResponse<?>> handleVietQrNotConfigured(
+            VietQrNotConfiguredException ex) {
+        log.error("VietQR requested but configuration is missing: {}", ex.getMessage());
+        return ResponseEntity.status(503)
+                .body(ApiResponse.of(503, ex.getMessage(), null));
+    }
+
+    @ExceptionHandler(ForecastNotAvailableException.class)
+    public ResponseEntity<ApiResponse<?>> handleForecastNotAvailable(
+            ForecastNotAvailableException ex) {
+        return ResponseEntity.status(503)
+                .body(ApiResponse.of(503, ex.getMessage(), null));
+    }
+
 
     @ExceptionHandler(InvalidPasswordException.class)
     public ResponseEntity<ApiResponse<?>> handleInvalidPassword(InvalidPasswordException ex) {

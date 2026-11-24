@@ -69,6 +69,29 @@ UPDATE cart_items SET quantity = 1 WHERE cart_item_id = 'CI_SWAGGER_NEON';
 Checkout consumes the cart. If checkout was tested, restore the cart by adding
 the same variants through `POST /api/v1/cart/items`.
 
+## Demo revenue history
+
+Seed source: `src/main/resources/db/dev/R__swagger_revenue_history.sql`.
+
+Dev-only repeatable migration that adds 36 complete months of synthetic order
+history (`2023-11` through `2026-10`) for the demo customer:
+
+- 780 orders, 1,950 order items, and 780 payments.
+- Mostly `COMPLETED`, with some `CONFIRMED` and about 10% `CANCELLED`.
+- Order totals equal the sum of their item snapshots.
+- IDs use the normal business-ID style:
+  `ORD_DEMO_REV_<YYYYMM>_<NN>` and `PAY_DEMO_REV_<YYYYMM>_<NN>`.
+
+The history exists for the Prophet revenue forecast in
+`ml/revenue-forecast/`. It is synthetic, not real store demand. The migration is
+idempotent; rerunning it inserts no duplicate rows.
+
+Remove all demo history (cascade removes its items and payments):
+
+```sql
+DELETE FROM orders WHERE order_id LIKE 'ORD_DEMO_REV_%';
+```
+
 ## Security
 
 These accounts use a known password and exist only for local/private dev

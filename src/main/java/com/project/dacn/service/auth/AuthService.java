@@ -16,15 +16,11 @@ import com.project.dacn.dto.request.auth.ProfileUpdateRequest;
 import com.project.dacn.dto.response.auth.LoginResponse;
 import com.project.dacn.dto.response.auth.MeResponse;
 import com.project.dacn.dto.response.auth.RefreshResponse;
-import com.project.dacn.dto.response.auth.UserResponse;
 import com.project.dacn.entity.auth.RefreshToken;
 import com.project.dacn.entity.auth.Role;
-import com.project.dacn.entity.auth.RolePermission;
 import com.project.dacn.entity.auth.User;
 import com.project.dacn.entity.identity.Customer;
-import com.project.dacn.mapper.auth.UserMapper;
 import com.project.dacn.repository.auth.RefreshTokenRepository;
-import com.project.dacn.repository.auth.RolePermissionRepository;
 import com.project.dacn.repository.auth.RoleRepository;
 import com.project.dacn.repository.auth.UserRepository;
 import com.project.dacn.repository.identity.CustomerRepository;
@@ -47,6 +43,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -63,81 +60,90 @@ public class AuthService {
     private final RoleRepository roleRepository;
     private final CustomerRepository customerRepository;
     private final RefreshTokenRepository refreshTokenRepository;
-    private final RolePermissionRepository rolePermissionRepository;
-    private final UserMapper userMapper;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
-    public UserResponse register(RegisterRequest request) {
-        // Normalize email to lowercase
+    public LoginResponse register(RegisterRequest request) {
+        return register(request, null, null);
+    }
+
+    /**
+     * Creates the account and its session in one request, so sign-up does not
+     * pay for a second login round trip on the client.
+     */
+    public LoginResponse register(RegisterRequest request, String userAgent, String ip) {
         String normalizedEmail = request.email().toLowerCase(Locale.ROOT);
 
-        // Check if email already exists
-        if (userRepository.existsByEmail(normalizedEmail)) {
-            throw new EmailAlreadyExistsException("email already exists");
-        }
-
         try {
-            // Hash password
             String passwordHash = passwordEncoder.encode(request.password());
-
-            // Get CUSTOMER role
             Role customerRole = roleRepository.findByCodeIgnoreCase("CUSTOMER")
                     .orElseThrow(() -> new IllegalStateException("CUSTOMER role not found"));
 
-            // Create User
-            User user = User.builder()
+            // Set last login at insert time; a fresh account needs no later UPDATE.
+            User user = userRepository.save(User.builder()
                     .email(normalizedEmail)
                     .passwordHash(passwordHash)
                     .role(customerRole)
-                    .build();
-            user = userRepository.save(user);
+                    .lastLogin(Instant.now())
+                    .build());
 
-            // Create Customer profile
-            Customer customer = Customer.builder()
+            customerRepository.save(Customer.builder()
                     .user(user)
                     .name(request.name())
                     .phone(request.phone())
-                    .build();
-            customerRepository.save(customer);
+                    .build());
 
-            return userMapper.toResponse(user);
+            return buildSession(user, user.getUserId(), normalizedEmail,
+                    toMeResponse(user), userAgent, ip);
         } catch (DataIntegrityViolationException ex) {
-            // Race condition: another thread inserted same email between check and insert
+            // Email is unique; the IDENTITY insert fails here, not at commit.
             throw new EmailAlreadyExistsException("email already exists");
         }
     }
 
     public LoginResponse login(LoginRequest request, String userAgent, String ip) {
-        // Normalize email to lowercase
         String normalizedEmail = request.email().toLowerCase(Locale.ROOT);
 
-        // Find user
-        User user = userRepository.findByEmail(normalizedEmail)
-                .orElseThrow(AccountNotFoundException::new);
+        // One joined row set answers credentials, status and profile. A separate
+        // findByEmail plus principal lookup used to cost two remote round trips.
+        List<Object[]> rows = userRepository.findPrincipalRowsByEmail(normalizedEmail);
+        if (rows.isEmpty()) {
+            throw new AccountNotFoundException();
+        }
+        Object[] row = rows.get(0);
+        String passwordHash = (String) row[2];
 
-        // Validate password
-        if (user.getPasswordHash() == null
-                || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        if (passwordHash == null || !passwordEncoder.matches(request.password(), passwordHash)) {
             throw new InvalidPasswordException();
         }
+        ensureLoginAllowed((UserStatus) row[3]);
 
-        ensureLoginAllowed(user);
+        String userId = (String) row[0];
+        String email = (String) row[1];
+        userRepository.updateLastLogin(userId, Instant.now());
 
-        return issueSession(user, userAgent, ip);
+        return buildSession(
+                userRepository.getReferenceById(((Number) row[11]).longValue()),
+                userId, email, toMeResponse(rows), userAgent, ip);
     }
 
     private LoginResponse issueSession(User user, String userAgent, String ip) {
         user.setLastLogin(Instant.now());
         userRepository.save(user);
 
+        return buildSession(user, user.getUserId(), user.getEmail(),
+                toMeResponse(user), userAgent, ip);
+    }
+
+    private LoginResponse buildSession(User userRef, String userId, String email,
+                                       MeResponse me, String userAgent, String ip) {
         String tokenId = UUID.randomUUID().toString();
-        String accessToken = jwtService.generateAccessToken(user.getUserId(), user.getEmail());
-        String refreshToken = jwtService.generateRefreshToken(user.getUserId(), tokenId);
+        String accessToken = jwtService.generateAccessToken(userId, email);
+        String refreshToken = jwtService.generateRefreshToken(userId, tokenId);
 
         RefreshToken token = RefreshToken.builder()
                 .tokenId(tokenId)
-                .user(user)
+                .user(userRef)
                 .expiresAt(Instant.now().plus(
                         jwtService.getRefreshTokenExpirationMs(), ChronoUnit.MILLIS))
                 .userAgent(userAgent)
@@ -147,14 +153,18 @@ public class AuthService {
         refreshTokenRepository.save(token);
 
         return new LoginResponse(accessToken, refreshToken,
-                jwtService.getAccessTokenExpirationSeconds(), "Bearer");
+                jwtService.getAccessTokenExpirationSeconds(), "Bearer", me);
     }
 
     private void ensureLoginAllowed(User user) {
-        if (user.getStatus() == UserStatus.LOCKED) {
+        ensureLoginAllowed(user.getStatus());
+    }
+
+    private void ensureLoginAllowed(UserStatus status) {
+        if (status == UserStatus.LOCKED) {
             throw new UserLockedException();
         }
-        if (user.getStatus() == UserStatus.DELETED) {
+        if (status == UserStatus.DELETED) {
             throw new AccountNotFoundException();
         }
     }
@@ -321,7 +331,8 @@ public class AuthService {
                 jwtService.generateAccessToken(user.getUserId(), user.getEmail()),
                 jwtService.generateRefreshToken(user.getUserId(), token.getTokenId(), token.getExpiresAt()),
                 jwtService.getAccessTokenExpirationSeconds(),
-                "Bearer");
+                "Bearer",
+                toMeResponse(user));
     }
 
     public void logout(RefreshRequest request) {
@@ -349,30 +360,56 @@ public class AuthService {
         User user = userRepository.findByUserId(auth.getName())
                 .orElseThrow(() -> new ResourceNotFoundException("user not found"));
 
-        List<RolePermission> rolePermissions = rolePermissionRepository
-                .findByRole_RoleIdWithPermission(user.getRole().getRoleId());
+        return toMeResponse(user);
+    }
 
-        List<String> permissions = rolePermissions.stream()
-                .map(rp -> rp.getPermission().getCode())
+    /**
+     * Builds the profile from the same single joined row set the JWT filter
+     * uses, so a login/refresh costs one query instead of role, permission and
+     * customer lookups.
+     */
+    private MeResponse toMeResponse(User user) {
+        return toMeResponse(userRepository.findPrincipalRowsByUserId(user.getUserId()));
+    }
+
+    private MeResponse toMeResponse(List<Object[]> rows) {
+        if (rows.isEmpty()) {
+            throw new ResourceNotFoundException("user not found");
+        }
+
+        Object[] row = rows.get(0);
+        String email = (String) row[1];
+        Long customerId = (Long) row[7];
+        List<String> permissions = rows.stream()
+                .map(permissionRow -> (String) permissionRow[6])
+                .filter(Objects::nonNull)
+                .distinct()
                 .toList();
 
-        Customer customer = customerRepository.findByUser_UserId(user.getUserId()).orElse(null);
-
-        String name = customer != null ? customer.getName() : user.getEmail();
-        String phone = customer != null ? customer.getPhone() : null;
-        String address = customer != null ? customer.getAddress() : null;
-
         return new MeResponse(
-                user.getUserId(),
-                user.getEmail(),
-                name,
-                phone,
-                address,
-                user.getRole().getCode(),
-                user.getRole().getName(),
+                (String) row[0],
+                email,
+                customerId != null ? (String) row[8] : email,
+                (String) row[9],
+                (String) row[10],
+                (String) row[4],
+                (String) row[5],
                 permissions,
-                user.getPasswordHash() != null
+                row[2] != null
         );
+    }
+
+    private MeResponse toMeResponse(AuthenticatedUser principal) {
+        return new MeResponse(
+                principal.userId(),
+                principal.email(),
+                principal.name(),
+                principal.phone(),
+                principal.address(),
+                principal.roleCode(),
+                principal.roleName(),
+                principal.permissions(),
+                principal.hasPassword());
     }
 
     public MeResponse updateProfile(ProfileUpdateRequest request) {
@@ -402,19 +439,6 @@ public class AuthService {
                     principal.hasPassword());
         }
         return me();
-    }
-
-    private MeResponse toMeResponse(AuthenticatedUser principal) {
-        return new MeResponse(
-                principal.userId(),
-                principal.email(),
-                principal.name(),
-                principal.phone(),
-                principal.address(),
-                principal.roleCode(),
-                principal.roleName(),
-                principal.permissions(),
-                principal.hasPassword());
     }
 
     public void changePassword(ChangePasswordRequest request, String currentRefreshToken) {

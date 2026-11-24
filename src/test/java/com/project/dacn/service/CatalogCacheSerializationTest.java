@@ -95,12 +95,16 @@ class CatalogCacheSerializationTest {
     @Test
     void variantResponseRoundTrips() {
         VariantResponse response = new VariantResponse("VAR_9", "FISH-9",
-                new BigDecimal("179000.00"), null, "PRD_1", "Ember Tetra", false,
+                new BigDecimal("179000.00"), null, null, "PRD_1", "Ember Tetra", false,
                 Instant.parse("2026-10-25T10:15:30.123456Z"),
                 Instant.parse("2026-10-25T10:16:31.654321Z"));
 
-        assertThat(mapper.readValue(mapper.writeValueAsString(response),
-                new TypeReference<VariantResponse>() { })).isEqualTo(response);
+        String json = mapper.writeValueAsString(response);
+        JsonNode node = mapper.readTree(json);
+        assertThat(node.get("stock").isNull()).isTrue();
+        assertThat(node.get("stockRevision").isNull()).isTrue();
+        assertThat(mapper.readValue(json, new TypeReference<VariantResponse>() { }))
+                .isEqualTo(response);
     }
 
     @Test
@@ -143,7 +147,7 @@ class CatalogCacheSerializationTest {
                 variantRepo, mock(MediaRepository.class),
                 mock(VariantAttributeValueRepository.class), mock(ReviewService.class),
                 new CatalogMapperImpl(),
-                new CatalogCache(inMemoryRedis(), mapper));
+                new CatalogCache(inMemoryRedis().redis(), mapper));
 
         PageResponse<ProductResponse> first = service.search(
                 new ProductFilter(null, ProductStatus.ACTIVE, null), PageRequest.of(0, 20));
@@ -162,7 +166,7 @@ class CatalogCacheSerializationTest {
                 List.of(new ProductAttributeValueResponse(
                         "PAV_1", "PRD_1", "ATTR_1", "Temperature", "AV_1", "25C", null)),
                 List.of(new VariantDetailResponse("VAR_1", "SKU-1",
-                        new BigDecimal("179000.00"), null,
+                        new BigDecimal("179000.00"), null, null,
                         List.of(new VariantAttributeValueResponse(
                                 "VAV_1", "VAR_1", "ATTR_2", "Color", "AV_2", "Red", null)),
                         List.of(new MediaResponse("MED_1", "https://x/v.jpg", null, "VAR_1",
@@ -173,6 +177,52 @@ class CatalogCacheSerializationTest {
 
         assertThat(mapper.readValue(mapper.writeValueAsString(detail),
                 new TypeReference<ProductDetailResponse>() { })).isEqualTo(detail);
+        JsonNode json = mapper.readTree(mapper.writeValueAsString(detail));
+        assertThat(json.get("product").get("stock").isNull()).isTrue();
+        assertThat(json.get("variants").get(0).get("stock").isNull()).isTrue();
+        assertThat(json.get("variants").get(0).get("stockRevision").isNull()).isTrue();
+    }
+
+    @Test
+    void cachedProductSearchCarriesNoStockAndHitOverlaysCurrentStock() {
+        Product product = Product.builder().id(1L).productId("PRD_1").slug("ember-tetra")
+                .name("Ember Tetra").description("d").status(ProductStatus.ACTIVE).build();
+        ProductRepository productRepo = mock(ProductRepository.class);
+        VariantRepository variantRepo = mock(VariantRepository.class);
+        when(productRepo.findAll(any(Specification.class), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(product), PageRequest.of(0, 20), 1));
+        when(variantRepo.findPriceRangesByProductIds(List.of(1L)))
+                .thenReturn(List.of(new ProductPriceRange(1L, new BigDecimal("179000.00"),
+                        new BigDecimal("179000.00"), 4L)));
+        VariantRepository.ProductStockView current = mock(VariantRepository.ProductStockView.class);
+        when(current.getProductId()).thenReturn("PRD_1");
+        when(current.getTotalStock()).thenReturn(6L);
+        when(variantRepo.findStockByProductIdIn(List.of("PRD_1"))).thenReturn(List.of(current));
+
+        CacheHarness harness = inMemoryRedis();
+        ProductService service = new ProductService(productRepo, mock(CategoryRepository.class),
+                variantRepo, mock(MediaRepository.class),
+                mock(VariantAttributeValueRepository.class), mock(ReviewService.class),
+                new CatalogMapperImpl(), new CatalogCache(harness.redis(), mapper));
+
+        PageResponse<ProductResponse> first = service.search(
+                new ProductFilter(null, ProductStatus.ACTIVE, null), PageRequest.of(0, 20));
+
+        String cachedJson = harness.store().entrySet().stream()
+                .filter(entry -> entry.getKey().startsWith("pim:product:search:"))
+                .map(entry -> entry.getValue())
+                .findFirst()
+                .orElseThrow();
+        JsonNode cachedContent = mapper.readTree(cachedJson).get("content");
+        assertThat(cachedContent.get(0).get("stock").isNull()).isTrue();
+
+        PageResponse<ProductResponse> second = service.search(
+                new ProductFilter(null, ProductStatus.ACTIVE, null), PageRequest.of(0, 20));
+
+        assertThat(first.getContent().get(0).stock()).isEqualTo(4);
+        assertThat(second.getContent().get(0).stock()).isEqualTo(6);
+        verify(productRepo, times(1)).findAll(any(Specification.class), any(Pageable.class));
+        verify(variantRepo, times(1)).findStockByProductIdIn(List.of("PRD_1"));
     }
 
     @Test
@@ -188,7 +238,7 @@ class CatalogCacheSerializationTest {
                 new ProductDetailBaseRow("PRD_1", "ember-tetra", "Ember Tetra", "d", null,
                         ProductStatus.ACTIVE, null, null, null, null, null, null,
                         null, null, null, null, null, null,
-                        "ember-tetra-default", "SKU-1", new BigDecimal("179000.00"), 4)));
+                        "ember-tetra-default", "SKU-1", new BigDecimal("179000.00"), 4, 0L)));
         when(variantAttributeRepo.findByVariant_Product_ProductId("PRD_1")).thenReturn(List.of());
         when(mediaRepo.findByProductOrVariantProductId("PRD_1")).thenReturn(List.of());
         when(reviewService.listForProduct("PRD_1", false, PageRequest.of(0, 20)))
@@ -196,22 +246,37 @@ class CatalogCacheSerializationTest {
         VariantRepository.VariantStockView stock = mock(VariantRepository.VariantStockView.class);
         when(stock.getVariantId()).thenReturn("ember-tetra-default");
         when(stock.getStock()).thenReturn(3);
+        when(stock.getStockRevision()).thenReturn(1L);
         when(variantRepo.findStockByVariantIdIn(List.of("ember-tetra-default")))
                 .thenReturn(List.of(stock));
 
+        CacheHarness harness = inMemoryRedis();
         ProductService service = new ProductService(productRepo, mock(CategoryRepository.class),
                 variantRepo, mediaRepo, variantAttributeRepo, reviewService,
-                new CatalogMapperImpl(), new CatalogCache(inMemoryRedis(), mapper));
+                new CatalogMapperImpl(), new CatalogCache(harness.redis(), mapper));
 
         ProductDetailResponse first = service.getDetail("ember-tetra", false, PageRequest.of(0, 20));
+
+        String cachedJson = harness.store().entrySet().stream()
+                .filter(entry -> entry.getKey().startsWith("pim:product:detail:"))
+                .map(entry -> entry.getValue())
+                .findFirst()
+                .orElseThrow();
+        JsonNode cached = mapper.readTree(cachedJson);
+        assertThat(cached.get("product").get("stock").isNull()).isTrue();
+        assertThat(cached.get("variants").get(0).get("stock").isNull()).isTrue();
+        assertThat(cached.get("variants").get(0).get("stockRevision").isNull()).isTrue();
+
         ProductDetailResponse second = service.getDetail("ember-tetra", false, PageRequest.of(0, 20));
 
         verify(productRepo, times(1)).findDetailBaseBySlug("ember-tetra");
         verify(reviewService, times(1)).listForProduct("PRD_1", false, PageRequest.of(0, 20));
         verify(variantRepo, times(1)).findStockByVariantIdIn(List.of("ember-tetra-default"));
         assertThat(first.variants().get(0).stock()).isEqualTo(4);
+        assertThat(first.variants().get(0).stockRevision()).isZero();
         assertThat(first.product().stock()).isEqualTo(4);
         assertThat(second.variants().get(0).stock()).isEqualTo(3);
+        assertThat(second.variants().get(0).stockRevision()).isEqualTo(1L);
         assertThat(second.product().stock()).isEqualTo(3);
     }
 
@@ -223,7 +288,10 @@ class CatalogCacheSerializationTest {
                 Instant.parse("2026-10-25T10:16:31.654321Z"));
     }
 
-    private static StringRedisTemplate inMemoryRedis() {
+    private record CacheHarness(StringRedisTemplate redis, Map<String, String> store) {
+    }
+
+    private static CacheHarness inMemoryRedis() {
         Map<String, String> store = new HashMap<>();
         @SuppressWarnings("unchecked")
         ValueOperations<String, String> values = mock(ValueOperations.class);
@@ -243,6 +311,6 @@ class CatalogCacheSerializationTest {
 
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
         when(redis.opsForValue()).thenReturn(values);
-        return redis;
+        return new CacheHarness(redis, store);
     }
 }

@@ -164,6 +164,65 @@ class AuthServiceTest {
     }
 
     @Test
+    void loginReturnsTheAccountProfileWithTheTokens() {
+        authService.register(registerRequest("profile-login@test.com"));
+
+        LoginResponse login = authService.login(
+                new LoginRequest("profile-login@test.com", "password123"), null, null);
+
+        assertThat(login.user().email()).isEqualTo("profile-login@test.com");
+        assertThat(login.user().name()).isEqualTo("Test User");
+        assertThat(login.user().roleCode()).isEqualTo("CUSTOMER");
+        assertThat(login.user().permissions()).isEmpty();
+    }
+
+    @Test
+    void loginUsesAtMostThreeSqlStatements() {
+        authService.register(registerRequest("stmt-login@test.com"));
+        entityManager.flush();
+        entityManager.clear();
+        Statistics stats = entityManager.getEntityManagerFactory()
+                .unwrap(SessionFactory.class).getStatistics();
+        stats.clear();
+
+        authService.login(
+                new LoginRequest("stmt-login@test.com", "password123"), null, null);
+
+        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(3);
+    }
+
+    @Test
+    void registerIssuesSessionWithoutASecondLogin() {
+        Statistics stats = entityManager.getEntityManagerFactory()
+                .unwrap(SessionFactory.class).getStatistics();
+        stats.clear();
+
+        Object registered = authService.register(
+                registerRequest("auto-login@test.com"));
+
+        assertThat(registered).isInstanceOf(LoginResponse.class);
+        LoginResponse session = (LoginResponse) registered;
+        assertThat(session.accessToken()).isNotBlank();
+        assertThat(session.refreshToken()).isNotBlank();
+        assertThat(session.user().email()).isEqualTo("auto-login@test.com");
+        assertThat(session.user().hasPassword()).isTrue();
+        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(5);
+    }
+
+    @Test
+    void refreshReturnsTheAccountProfileWithTheTokens() {
+        authService.register(registerRequest("profile-refresh@test.com"));
+        LoginResponse login = authService.login(
+                new LoginRequest("profile-refresh@test.com", "password123"), null, null);
+
+        var refreshed = authService.refresh(new RefreshRequest(login.refreshToken()));
+
+        assertThat(refreshed.user().userId()).isEqualTo(login.user().userId());
+        assertThat(refreshed.user().roleCode()).isEqualTo("CUSTOMER");
+        assertThat(refreshed.user().permissions()).isEmpty();
+    }
+
+    @Test
     void refresh_rotation_concurrentTabWithinGraceReusesSuccessor() {
         authService.register(registerRequest("rotate@test.com"));
         LoginResponse login = authService.login(
@@ -424,6 +483,26 @@ class AuthServiceTest {
         assertThat(customer.getName()).isEqualTo("New Name");
         assertThat(customer.getPhone()).isEqualTo("0987654321");
         assertThat(customer.getAddress()).isEqualTo("45 Le Loi");
+    }
+
+    @Test
+    void updateProfile_thenMeWithSameToken_seesNewProfile() throws Exception {
+        authService.register(registerRequest("profile-me@test.com"));
+        LoginResponse login = authService.login(
+                new LoginRequest("profile-me@test.com", "password123"), null, null);
+
+        mockMvc.perform(patch("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + login.accessToken())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Fresh Name\",\"phone\":\"0999999999\",\"address\":\"9 New St\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + login.accessToken()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("Fresh Name"))
+                .andExpect(jsonPath("$.data.phone").value("0999999999"))
+                .andExpect(jsonPath("$.data.address").value("9 New St"));
     }
 
     @Test

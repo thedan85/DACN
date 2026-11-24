@@ -10,19 +10,27 @@ import com.project.dacn.entity.catalog.Variant;
 import com.project.dacn.mapper.catalog.CatalogMapper;
 import com.project.dacn.repository.catalog.ProductRepository;
 import com.project.dacn.repository.catalog.VariantRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.Session;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.type.TypeReference;
 
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @Transactional
@@ -34,10 +42,27 @@ public class VariantService {
     private static final TypeReference<PageResponse<VariantResponse>> VARIANT_PAGE = new TypeReference<>() {
     };
 
+    /**
+     * A cached variant payload has no stock, but re-reading it from the remote
+     * DB on every hit dominated latency. A short-lived process-local snapshot
+     * collapses concurrent reads into one query per variant. Checkout still
+     * re-checks stock with a conditional UPDATE, so no oversell is possible.
+     */
+    private static final Duration STOCK_SNAPSHOT_TTL = Duration.ofSeconds(2);
+    private final ConcurrentHashMap<String, StockSnapshot> stockSnapshots =
+            new ConcurrentHashMap<>();
+
+    private record StockSnapshot(int stock, Long stockRevision, long expiresAtNanos) {
+    }
+
     private final VariantRepository repo;
     private final ProductRepository productRepo;
     private final CatalogMapper mapper;
     private final CatalogCache cache;
+
+    @PersistenceContext
+    private EntityManager entityManager;
+    private volatile Boolean transactionLockBounds;
 
     public PageResponse<VariantResponse> list(Pageable pageable) {
         return list(pageable, false);
@@ -113,14 +138,14 @@ public class VariantService {
         String key = CatalogCacheKeys.variantDetail(generation.getAsLong(), variantId);
         Optional<VariantResponse> cached = cache.get(key, VARIANT_RESPONSE);
         if (cached.isPresent()) {
-            Integer stock = variantStock(variantId);
+            Optional<VariantRepository.VariantStockView> stock = repo.findStockByVariantId(variantId);
             // No stock row means the cached variant is gone: re-read and let the DB decide.
-            if (stock != null) {
-                return withStock(cached.get(), stock);
+            if (stock.isPresent()) {
+                return withStock(cached.get(), stock.get().getStock(), stock.get().getStockRevision());
             }
         }
         VariantResponse response = mapper.toVariantResponse(requireVisible(variantId, false));
-        cache.put(key, withStock(response, null), CatalogCacheKeys.VARIANT_DETAIL_TTL);
+        cache.put(key, withStock(response, null, null), CatalogCacheKeys.VARIANT_DETAIL_TTL);
         return response;
     }
 
@@ -129,15 +154,30 @@ public class VariantService {
         entity.setProduct(productRepo.findByProductId(request.productId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "product not found: " + request.productId())));
-        VariantResponse response = mapper.toVariantResponse(repo.save(entity));
+        repo.saveAndFlush(entity);
+        entityManager.refresh(entity);
+        VariantResponse response = mapper.toVariantResponse(entity);
         cache.bumpAfterCommit(CatalogCacheKeys.VARIANT_SCOPE, CatalogCacheKeys.PRODUCT_SCOPE);
         return response;
     }
 
     public VariantResponse update(String variantId, VariantUpdateRequest request) {
-        Variant entity = require(variantId);
+        if (request.stock() != null) {
+            if (request.expectedStockRevision() == null) {
+                throw new IllegalArgumentException("expectedStockRevision is required when stock is supplied");
+            }
+            if (request.stock() < 0 || request.expectedStockRevision() < 0) {
+                throw new IllegalArgumentException("stock and expectedStockRevision must be non-negative");
+            }
+        }
+        Variant entity = requireLockedFresh(variantId);
+        if (request.stock() != null && request.expectedStockRevision() != entity.getStockRevision()) {
+            throw new ConcurrencyFailureException("stock revision mismatch: " + variantId);
+        }
         mapper.updateVariant(request, entity);
-        VariantResponse response = mapper.toVariantResponse(repo.save(entity));
+        repo.saveAndFlush(entity);
+        entityManager.refresh(entity);
+        VariantResponse response = mapper.toVariantResponse(entity);
         cache.bumpAfterCommit(CatalogCacheKeys.VARIANT_SCOPE, CatalogCacheKeys.PRODUCT_SCOPE);
         return response;
     }
@@ -151,15 +191,33 @@ public class VariantService {
     }
 
     public void delete(String variantId) {
-        Variant entity = require(variantId);
+        Variant entity = requireLockedFresh(variantId);
         entity.setDeleted(true);
-        repo.save(entity);
+        repo.saveAndFlush(entity);
         cache.bumpAfterCommit(CatalogCacheKeys.VARIANT_SCOPE, CatalogCacheKeys.PRODUCT_SCOPE);
     }
 
     private Variant require(String variantId) {
         return repo.findByVariantId(variantId)
                 .orElseThrow(() -> new ResourceNotFoundException("variant not found: " + variantId));
+    }
+
+    private Variant requireLockedFresh(String variantId) {
+        if (transactionLockBounds == null) {
+            transactionLockBounds = "PostgreSQL".equals(entityManager.unwrap(Session.class)
+                    .doReturningWork(connection -> connection.getMetaData().getDatabaseProductName()));
+        }
+        if (transactionLockBounds) {
+            entityManager.createNativeQuery("set local lock_timeout = '2s'").executeUpdate();
+        }
+        Variant entity = repo.findByVariantIdForUpdate(variantId)
+                .orElseThrow(() -> new ResourceNotFoundException("variant not found: " + variantId));
+        // A lock query may return an already managed, stale entity.
+        entityManager.refresh(entity, LockModeType.PESSIMISTIC_WRITE);
+        if (Boolean.TRUE.equals(entity.getDeleted())) {
+            throw new ResourceNotFoundException("variant not found: " + variantId);
+        }
+        return entity;
     }
 
     private Variant requireVisible(String variantId, boolean includeHidden) {
@@ -177,14 +235,43 @@ public class VariantService {
     }
 
     private Integer variantStock(String variantId) {
-        return repo.findStockByVariantId(variantId)
-                .map(VariantRepository.VariantStockView::getStock)
-                .orElse(null);
+        String key = "variant:" + variantId;
+        StockSnapshot snapshot = stockSnapshotEntry(key);
+        if (snapshot != null) {
+            return snapshot.stock();
+        }
+        Optional<VariantRepository.VariantStockView> view = repo.findStockByVariantId(variantId);
+        if (view.isEmpty() || view.get().getStock() == null) {
+            // A missing row means the variant is gone; do not cache that, so the
+            // next call re-reads and lets the DB decide.
+            return null;
+        }
+        rememberStock(key, view.get().getStock(), view.get().getStockRevision());
+        return view.get().getStock();
     }
 
+    /** Returns a live snapshot, or null when absent or expired. */
+    private StockSnapshot stockSnapshotEntry(String key) {
+        StockSnapshot snapshot = stockSnapshots.get(key);
+        if (snapshot == null) {
+            return null;
+        }
+        if (System.nanoTime() - snapshot.expiresAtNanos() >= 0) {
+            stockSnapshots.remove(key, snapshot);
+            return null;
+        }
+        return snapshot;
+    }
+
+    private StockSnapshot rememberStock(String key, int stock, Long stockRevision) {
+        StockSnapshot snapshot = new StockSnapshot(
+                stock, stockRevision, System.nanoTime() + STOCK_SNAPSHOT_TTL.toNanos());
+        stockSnapshots.put(key, snapshot);
+        return snapshot;
+    }
     private PageResponse<VariantResponse> scrubVariantStock(PageResponse<VariantResponse> page) {
         return newPageResponse(page, page.getContent().stream()
-                .map(response -> withStock(response, null))
+                .map(response -> withStock(response, null, null))
                 .toList());
     }
 
@@ -193,14 +280,36 @@ public class VariantService {
                 .map(VariantResponse::variantId)
                 .filter(Objects::nonNull)
                 .toList();
-        Map<String, Integer> stockByVariant = new HashMap<>();
-        if (!variantIds.isEmpty()) {
-            for (VariantRepository.VariantStockView view : repo.findStockByVariantIdIn(variantIds)) {
-                stockByVariant.put(view.getVariantId(), view.getStock());
+        Map<String, StockSnapshot> stockByVariant = new HashMap<>();
+        List<String> missing = new ArrayList<>();
+        for (String variantId : variantIds) {
+            String key = "variant:" + variantId;
+            StockSnapshot snapshot = stockSnapshotEntry(key);
+            if (snapshot == null) {
+                missing.add(variantId);
+            } else {
+                stockByVariant.put(variantId, snapshot);
+            }
+        }
+        if (!missing.isEmpty()) {
+            for (VariantRepository.VariantStockView view : repo.findStockByVariantIdIn(missing)) {
+                int stock = view.getStock() == null ? 0 : view.getStock();
+                stockByVariant.put(view.getVariantId(),
+                        rememberStock("variant:" + view.getVariantId(), stock,
+                                view.getStockRevision()));
+            }
+            for (String variantId : missing) {
+                stockByVariant.putIfAbsent(variantId,
+                        rememberStock("variant:" + variantId, 0, null));
             }
         }
         return newPageResponse(page, page.getContent().stream()
-                .map(response -> withStock(response, stockByVariant.get(response.variantId())))
+                .map(response -> {
+                    StockSnapshot live = stockByVariant.get(response.variantId());
+                    return withStock(response,
+                            live == null ? null : live.stock(),
+                            live == null ? null : live.stockRevision());
+                })
                 .toList());
     }
 
@@ -210,9 +319,9 @@ public class VariantService {
                 page.getTotalElements(), page.getTotalPages());
     }
 
-    private static VariantResponse withStock(VariantResponse response, Integer stock) {
+    private static VariantResponse withStock(VariantResponse response, Integer stock, Long revision) {
         return new VariantResponse(response.variantId(), response.sku(),
-                response.price(), stock, response.productId(), response.productName(),
+                response.price(), stock, revision, response.productId(), response.productName(),
                 response.deleted(), response.createdAt(), response.updatedAt());
     }
 }
