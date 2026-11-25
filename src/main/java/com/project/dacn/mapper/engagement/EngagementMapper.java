@@ -4,6 +4,7 @@ import com.project.dacn.dto.request.engagement.NotificationCreateRequest;
 import com.project.dacn.dto.request.engagement.NotificationUpdateRequest;
 import com.project.dacn.dto.request.engagement.ReviewCreateRequest;
 import com.project.dacn.dto.request.engagement.ReviewUpdateRequest;
+import com.project.dacn.dto.response.engagement.AdminReviewResponse;
 import com.project.dacn.dto.response.engagement.NotificationResponse;
 import com.project.dacn.dto.response.engagement.ReviewResponse;
 import com.project.dacn.entity.engagement.Notification;
@@ -37,6 +38,15 @@ public interface EngagementMapper {
     @Mapping(source = "customer.name", target = "customerName")
     @Mapping(target = "verifiedPurchase", expression = "java(review.getOrderItem() != null)")
     ReviewResponse toStaffReviewResponse(Review review);
+
+    @Mapping(source = "customer.customerId", target = "customerId")
+    @Mapping(source = "customer.name", target = "customerName")
+    @Mapping(source = "variant.variantId", target = "variantId")
+    @Mapping(source = "variant.sku", target = "variantSku")
+    @Mapping(source = "variant.product.productId", target = "productId")
+    @Mapping(source = "variant.product.name", target = "productName")
+    @Mapping(target = "verifiedPurchase", expression = "java(review.getOrderItem() != null)")
+    AdminReviewResponse toAdminReviewResponse(Review review);
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "id", ignore = true)

@@ -34,6 +34,8 @@ public final class Permissions {
     public static final String ROLE_CREATE = "role:create";
     public static final String ROLE_UPDATE = "role:update";
     public static final String ROLE_DELETE = "role:delete";
+    public static final String REVIEW_READ = "review:read";
+    public static final String REVIEW_DELETE = "review:delete";
 
     /**
      * Optional-privilege check: a token holding this permission may see DRAFT

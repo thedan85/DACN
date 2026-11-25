@@ -120,6 +120,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/media/**").hasAuthority(Permissions.MEDIA_UPDATE)
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/media/**").hasAuthority(Permissions.MEDIA_DELETE)
 
+                        .requestMatchers(HttpMethod.GET, "/api/v1/admin/reviews/**")
+                        .hasAuthority(Permissions.REVIEW_READ)
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/admin/reviews/*")
+                        .hasAuthority(Permissions.REVIEW_DELETE)
+
                         .requestMatchers(HttpMethod.GET, "/api/v1/staff/orders/**").hasAuthority(Permissions.ORDER_READ)
                         .requestMatchers(HttpMethod.GET, "/api/v1/admin/dashboard/**")
                         .hasAuthority(Permissions.ORDER_READ)

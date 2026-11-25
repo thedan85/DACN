@@ -7,6 +7,7 @@ import com.project.dacn.common.exception.ResourceNotFoundException;
 import com.project.dacn.common.response.PageResponse;
 import com.project.dacn.dto.request.engagement.ReviewCreateRequest;
 import com.project.dacn.dto.request.engagement.ReviewUpdateRequest;
+import com.project.dacn.dto.response.engagement.AdminReviewResponse;
 import com.project.dacn.dto.response.engagement.ReviewResponse;
 import com.project.dacn.entity.catalog.Product;
 import com.project.dacn.entity.catalog.Variant;
@@ -19,6 +20,8 @@ import com.project.dacn.repository.catalog.VariantRepository;
 import com.project.dacn.repository.engagement.ReviewRepository;
 import com.project.dacn.repository.order.OrderItemRepository;
 import com.project.dacn.repository.order.OrderRepository;
+import com.project.dacn.service.catalog.CatalogCache;
+import com.project.dacn.service.catalog.CatalogCacheKeys;
 import com.project.dacn.service.engagement.ReviewService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -27,10 +30,13 @@ import org.mapstruct.factory.Mappers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 
 import java.math.BigDecimal;
@@ -41,12 +47,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class ReviewServiceTest {
 
     @Mock
@@ -61,12 +68,15 @@ class ReviewServiceTest {
     @Mock
     VariantRepository variantRepository;
 
+    @Mock
+    CatalogCache cache;
+
     ReviewService service;
 
     @BeforeEach
     void setUp() {
         service = new ReviewService(orderRepository, orderItemRepository, reviewRepository,
-                variantRepository, Mappers.getMapper(EngagementMapper.class));
+                variantRepository, Mappers.getMapper(EngagementMapper.class), cache);
     }
 
     @Test
@@ -96,6 +106,7 @@ class ReviewServiceTest {
         verify(reviewRepository).save(captor.capture());
         assertThat(captor.getValue().getOrderItem()).isSameAs(f.item);
         assertThat(captor.getValue().getCustomer()).isSameAs(f.order.getCustomer());
+        verify(cache).bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
     }
 
     @Test
@@ -162,6 +173,7 @@ class ReviewServiceTest {
         assertThat(response.rating()).isEqualTo(5);
         assertThat(response.comment()).isEqualTo("great");
         assertThat(seeded.getOrderItem()).isSameAs(f.item);
+        verify(cache).bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
     }
 
     @Test
@@ -190,6 +202,7 @@ class ReviewServiceTest {
         assertThat(response.comment()).isEqualTo("updated");
         assertThat(review.getRating()).isEqualTo(4);
         assertThat(review.getComment()).isEqualTo("updated");
+        verify(cache).bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
     }
 
     @Test
@@ -212,6 +225,7 @@ class ReviewServiceTest {
         service.delete(42L, "REV_1");
 
         verify(reviewRepository).delete(review);
+        verify(cache).bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
     }
 
     @Test
@@ -313,6 +327,80 @@ class ReviewServiceTest {
 
         assertThat(response.getContent()).hasSize(1);
         assertThat(response.getContent().get(0).customerId()).isEqualTo("CUS_1");
+    }
+
+    @Test
+    void listsAdminReviewsWithDefaultNewestFirst() {
+        Fixture f = fixture(OrderStatus.COMPLETED);
+        Review review = review(f, 5, "great");
+        when(reviewRepository.findForAdmin(isNull(), isNull(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(review), PageRequest.of(0, 20), 1));
+
+        PageResponse<AdminReviewResponse> result =
+                service.listForAdmin("   ", null, PageRequest.of(0, 20));
+
+        assertThat(result.getContent()).hasSize(1);
+        AdminReviewResponse row = result.getContent().get(0);
+        assertThat(row.reviewId()).isEqualTo("REV_1");
+        assertThat(row.customerId()).isEqualTo("CUS_1");
+        assertThat(row.customerName()).isEqualTo("An");
+        assertThat(row.productName()).isEqualTo("P");
+        assertThat(row.variantSku()).isEqualTo("SKU-1");
+        assertThat(row.verifiedPurchase()).isTrue();
+
+        ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(reviewRepository).findForAdmin(isNull(), isNull(), captor.capture());
+        assertThat(captor.getValue().getSort().getOrderFor("createdAt").getDirection())
+                .isEqualTo(Sort.Direction.DESC);
+    }
+
+    @Test
+    void rejectsUnsupportedAdminSort() {
+        assertThatThrownBy(() ->
+                service.listForAdmin(null, null, PageRequest.of(0, 20, Sort.by("rating"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("rating");
+
+        verifyNoInteractions(reviewRepository);
+    }
+
+    @Test
+    void rejectsRatingOutsideOneToFive() {
+        assertThatThrownBy(() ->
+                service.listForAdmin(null, 6, PageRequest.of(0, 20)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("rating");
+
+        verifyNoInteractions(reviewRepository);
+    }
+
+    @Test
+    void deletesReviewAsAdminAndBumpsProductCache() {
+        when(reviewRepository.deleteByReviewId("REV_1")).thenReturn(1);
+
+        service.deleteAsAdmin("REV_1", "USR_ADMIN");
+
+        verify(cache).bumpAfterCommit(CatalogCacheKeys.PRODUCT_SCOPE);
+    }
+
+    @Test
+    void rejectsDeletingUnknownReview() {
+        when(reviewRepository.deleteByReviewId("REV_404")).thenReturn(0);
+
+        assertThatThrownBy(() -> service.deleteAsAdmin("REV_404", "USR_ADMIN"))
+                .isInstanceOf(ResourceNotFoundException.class);
+
+        verifyNoInteractions(cache);
+    }
+
+    @Test
+    void logsAdminReviewDelete(CapturedOutput output) {
+        when(reviewRepository.deleteByReviewId("REV_1")).thenReturn(1);
+
+        service.deleteAsAdmin("REV_1", "USR_ADMIN");
+
+        assertThat(output.getAll()).contains(
+                "actor=USR_ADMIN", "target=REV_1", "action=DELETE");
     }
 
     private Page<Review> pageOf(Fixture f) {

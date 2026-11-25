@@ -28,6 +28,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -124,6 +127,31 @@ class RbacIntegrationTest {
                         .role(adminRole)
                         .permission(completeOrder)
                         .build()));
+
+        // Mirrors V39: review:read/review:delete are granted to ADMIN only.
+        Permission readReview = permissionRepository.findByCode("review:read").orElseGet(() ->
+                permissionRepository.save(Permission.builder()
+                        .code("review:read")
+                        .name("Read Review")
+                        .resource("review")
+                        .action("read")
+                        .build()));
+        Permission deleteReview = permissionRepository.findByCode("review:delete").orElseGet(() ->
+                permissionRepository.save(Permission.builder()
+                        .code("review:delete")
+                        .name("Delete Review")
+                        .resource("review")
+                        .action("delete")
+                        .build()));
+        for (Permission permission : List.of(readReview, deleteReview)) {
+            rolePermissionRepository.findByRole_RoleId(adminRole.getRoleId()).stream()
+                    .filter(rp -> rp.getPermission().getCode().equals(permission.getCode()))
+                    .findFirst()
+                    .orElseGet(() -> rolePermissionRepository.save(RolePermission.builder()
+                            .role(adminRole)
+                            .permission(permission)
+                            .build()));
+        }
     }
 
     @Test
@@ -251,6 +279,43 @@ class RbacIntegrationTest {
         // Authorization passes; the unknown order is then a 404.
         mockMvc.perform(post("/api/v1/admin/orders/ORD_1/complete")
                         .header("Authorization", "Bearer " + login(admin.getEmail())))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void reviewModeration_isAdminOnly() throws Exception {
+        Role employeeRole = roleRepository.findByCodeIgnoreCase("EMPLOYEE").orElseThrow();
+        User employee = userRepository.save(User.builder()
+                .email("review-employee@test.com")
+                .passwordHash(passwordEncoder.encode("password123"))
+                .role(employeeRole)
+                .status(UserStatus.ACTIVE)
+                .build());
+        Role adminRole = roleRepository.findByCodeIgnoreCase("ADMIN").orElseThrow();
+        User admin = userRepository.save(User.builder()
+                .email("review-admin@test.com")
+                .passwordHash(passwordEncoder.encode("password123"))
+                .role(adminRole)
+                .status(UserStatus.ACTIVE)
+                .build());
+
+        String employeeToken = login(employee.getEmail());
+        String adminToken = login(admin.getEmail());
+
+        // EMPLOYEE has neither review permission.
+        mockMvc.perform(get("/api/v1/admin/reviews")
+                        .header("Authorization", "Bearer " + employeeToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/api/v1/admin/reviews/REV_1")
+                        .header("Authorization", "Bearer " + employeeToken))
+                .andExpect(status().isForbidden());
+
+        // ADMIN passes both rules; the empty table lists and the unknown id 404s.
+        mockMvc.perform(get("/api/v1/admin/reviews")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+        mockMvc.perform(delete("/api/v1/admin/reviews/REV_1")
+                        .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isNotFound());
     }
 
