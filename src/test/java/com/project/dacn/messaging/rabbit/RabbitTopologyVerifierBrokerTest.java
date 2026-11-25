@@ -48,7 +48,7 @@ class RabbitTopologyVerifierBrokerTest {
                 System.getenv().getOrDefault("TEST_RABBITMQ_EXPECTED_VERSION", "4.4"));
 
         verifier = new RabbitTopologyVerifier(
-                RabbitTopologyVerifier.buildClient(), properties, Duration.ZERO);
+                RabbitTopologyVerifier.buildClient(), properties, connectionFactory.getVirtualHost(), Duration.ZERO);
     }
 
     @AfterAll

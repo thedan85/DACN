@@ -28,8 +28,6 @@ import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.connection.Connection;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.web.client.RestClient;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -243,7 +241,6 @@ class RabbitRetryBrokerTest {
         channel.basicNack(response.getEnvelope().getDeliveryTag(), false, false);
     }
 
-    @SuppressWarnings("unchecked")
     private static RabbitTopologyVerifier createVerifier(String managementUrl) {
         NotificationRabbitProperties properties = new NotificationRabbitProperties();
         properties.setManagementUrl(managementUrl);
@@ -252,9 +249,7 @@ class RabbitRetryBrokerTest {
         properties.setExpectedVersionPrefix(
                 System.getenv().getOrDefault("TEST_RABBITMQ_EXPECTED_VERSION", "4.4"));
 
-        ObjectProvider<RestClient.Builder> builders = mock(ObjectProvider.class);
-        when(builders.getIfAvailable(any())).thenReturn(RestClient.builder());
-        return new RabbitTopologyVerifier(builders, properties);
+        return new RabbitTopologyVerifier(connectionFactory, properties);
     }
 
     private static void awaitVerified() {

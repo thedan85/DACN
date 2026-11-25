@@ -1,13 +1,12 @@
 package com.project.dacn.messaging.rabbit;
 
-import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriUtils;
 import tools.jackson.core.JacksonException;
@@ -64,26 +63,30 @@ public class RabbitTopologyVerifier {
     private final NotificationRabbitProperties properties;
     private final Duration retryDelay;
     private final Duration totalBudget;
+    private final String virtualHost;
+    private final String encodedVirtualHost;
     private final String baseUrl;
     private final String authorization;
 
     @Autowired
-    public RabbitTopologyVerifier(ObjectProvider<RestClient.Builder> builders,
+    public RabbitTopologyVerifier(ConnectionFactory connectionFactory,
                                   NotificationRabbitProperties properties) {
-        this(buildClient(), properties, RETRY_DELAY, TOTAL_BUDGET);
+        this(buildClient(), properties, connectionFactory.getVirtualHost(), RETRY_DELAY);
     }
 
     RabbitTopologyVerifier(HttpClient client, NotificationRabbitProperties properties,
-                           Duration retryDelay) {
-        this(client, properties, retryDelay, TOTAL_BUDGET);
+                            String virtualHost, Duration retryDelay) {
+        this(client, properties, virtualHost, retryDelay, TOTAL_BUDGET);
     }
 
     RabbitTopologyVerifier(HttpClient client, NotificationRabbitProperties properties,
-                           Duration retryDelay, Duration totalBudget) {
+                            String virtualHost, Duration retryDelay, Duration totalBudget) {
         this.client = client;
         this.properties = properties;
         this.retryDelay = retryDelay;
         this.totalBudget = totalBudget;
+        this.virtualHost = virtualHost;
+        this.encodedVirtualHost = UriUtils.encodePathSegment(virtualHost, StandardCharsets.UTF_8);
         this.baseUrl = requireManagementUrl(properties.getManagementUrl());
         this.authorization = "Basic " + HttpHeaders.encodeBasicAuth(
                 properties.getManagementUsername(), properties.getManagementPassword(),
@@ -91,9 +94,9 @@ public class RabbitTopologyVerifier {
     }
 
     /**
-     * Boot 4 only auto-configures a {@link RestClient.Builder} when its HTTP
-     * client module is on the classpath. Keep the public constructor compatible,
-     * but use one shared JDK transport to cancel incomplete response bodies.
+     * Boot 4 only auto-configures a RestClient builder when its HTTP client
+     * module is on the classpath. Use one shared JDK transport to cancel
+     * incomplete response bodies.
      */
     static HttpClient buildClient() {
         return MANAGEMENT_CLIENT;
@@ -225,7 +228,7 @@ public class RabbitTopologyVerifier {
     private void verifyBindings(long deadline) {
         List<Map<String, Object>> bindings;
         try {
-            bindings = get(deadline, "/api/bindings",
+            bindings = get(deadline, "/api/bindings/" + encodedVirtualHost,
                     new ParameterizedTypeReference<List<Map<String, Object>>>() {
                     });
         } catch (RestClientException e) {
@@ -234,7 +237,7 @@ public class RabbitTopologyVerifier {
                     TopologyVerificationException.Code.BINDING);
         }
         Set<String> actual = bindings == null ? Set.of() : bindings.stream()
-                .filter(binding -> "/".equals(binding.get("vhost")))
+                .filter(binding -> virtualHost.equals(binding.get("vhost")))
                 .map(binding -> bindingKey(
                         String.valueOf(binding.get("source")),
                         String.valueOf(binding.get("destination")),
@@ -288,8 +291,8 @@ public class RabbitTopologyVerifier {
         }
     }
 
-    private static String queuePath(String queue) {
-        return "/api/queues/%2F/"
+    private String queuePath(String queue) {
+        return "/api/queues/" + encodedVirtualHost + "/"
                 + UriUtils.encodePathSegment(queue, StandardCharsets.UTF_8);
     }
 

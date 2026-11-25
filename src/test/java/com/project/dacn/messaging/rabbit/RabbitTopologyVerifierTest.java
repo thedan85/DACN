@@ -3,9 +3,12 @@ package com.project.dacn.messaging.rabbit;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.Declarable;
 import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.boot.health.contributor.Status;
@@ -37,14 +40,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -60,7 +66,7 @@ class RabbitTopologyVerifierTest {
     private static final String PASSWORD = "management-secret";
     private static final String OVERVIEW_URL = MANAGEMENT_URL + "/api/overview";
     private static final String FEATURE_FLAGS_URL = MANAGEMENT_URL + "/api/feature-flags";
-    private static final String BINDINGS_URL = MANAGEMENT_URL + "/api/bindings";
+    private static final String BINDINGS_URL = MANAGEMENT_URL + "/api/bindings/%2F";
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final Collection<Declarable> DECLARATIONS =
@@ -94,7 +100,7 @@ class RabbitTopologyVerifierTest {
             when(response.body()).thenReturn(result.getBody());
             return CompletableFuture.completedFuture(response);
         });
-        verifier = new RabbitTopologyVerifier(client, properties, Duration.ZERO);
+        verifier = new RabbitTopologyVerifier(client, properties, "/", Duration.ZERO);
         api = new ManagementApi();
     }
 
@@ -211,6 +217,72 @@ class RabbitTopologyVerifierTest {
         server.verify();
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void verifiesEncodedManagementPathsAndRequiresBindingsInTheActiveVhost(boolean bindingsInVhost)
+            throws IOException {
+        String vhost = "course/dev %";
+        ConnectionFactory factory = mock(ConnectionFactory.class);
+        when(factory.getVirtualHost()).thenReturn(vhost);
+        List<String> paths = new CopyOnWriteArrayList<>();
+        HttpServer local = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        local.createContext("/api/", exchange -> {
+            try (exchange) {
+                String path = exchange.getRequestURI().getRawPath();
+                paths.add(path);
+                Object payload;
+                if (path.equals("/api/overview")) {
+                    payload = Map.of("rabbitmq_version", "4.4.2");
+                } else if (path.equals("/api/feature-flags")) {
+                    payload = List.of(Map.of("name", "stream_queue", "state", "enabled"));
+                } else if (path.startsWith("/api/bindings")) {
+                    payload = bindingPayload(bindingsInVhost ? vhost : "/");
+                } else {
+                    payload = DECLARED_QUEUES.stream()
+                            .filter(queue -> path.endsWith("/" + queue.getName()))
+                            .findFirst().map(RabbitTopologyVerifierTest::queuePayload).orElseThrow();
+                }
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                byte[] body = JSON.writeValueAsBytes(payload);
+                exchange.sendResponseHeaders(200, body.length);
+                exchange.getResponseBody().write(body);
+            }
+        });
+        local.start();
+        try {
+            NotificationRabbitProperties properties = properties();
+            properties.setManagementUrl("http://127.0.0.1:" + local.getAddress().getPort());
+            new ApplicationContextRunner()
+                    .withPropertyValues("app.notifications.delivery-enabled=true")
+                    .withBean(ConnectionFactory.class, () -> factory)
+                    .withBean(NotificationRabbitProperties.class, () -> properties)
+                    .withUserConfiguration(RabbitTopologyVerifier.class)
+                    .run(context -> {
+                        assertThat(context).hasSingleBean(RabbitTopologyVerifier.class);
+                        var failure = catchThrowableOfType(
+                                context.getBean(RabbitTopologyVerifier.class)::verify,
+                                TopologyVerificationException.class);
+                        assertSoftly(softly -> {
+                            softly.assertThat(paths).filteredOn(path -> path.startsWith("/api/queues/"))
+                                    .containsExactlyInAnyOrderElementsOf(DECLARED_QUEUES.stream()
+                                            .map(queue -> "/api/queues/course%2Fdev%20%25/" + queue.getName())
+                                            .toList());
+                            softly.assertThat(paths).filteredOn(path -> path.startsWith("/api/bindings"))
+                                    .containsExactly("/api/bindings/course%2Fdev%20%25");
+                            if (bindingsInVhost) {
+                                softly.assertThat(failure).isNull();
+                            } else {
+                                softly.assertThat(failure == null ? null : failure.code())
+                                        .isEqualTo(TopologyVerificationException.Code.BINDING);
+                            }
+                        });
+                        verify(factory, never()).createConnection();
+                    });
+        } finally {
+            local.stop(0);
+        }
+    }
+
     @Test
     void acceptsPolicySuppliedDeadLetterArguments() {
         api.mutateQueue(RabbitTopology.INAPP_QUEUE, payload -> {
@@ -249,7 +321,7 @@ class RabbitTopologyVerifierTest {
     void runnerRetriesTheWholeVerificationSixTimesBeforeFailing() {
         AtomicInteger attempts = new AtomicInteger();
         RabbitTopologyVerifier runner = new RabbitTopologyVerifier(
-                RabbitTopologyVerifier.buildClient(), properties(), Duration.ZERO) {
+                RabbitTopologyVerifier.buildClient(), properties(), "/", Duration.ZERO) {
             @Override
             void verify(long deadline) {
                 attempts.incrementAndGet();
@@ -268,7 +340,7 @@ class RabbitTopologyVerifierTest {
     @Test
     void failsWithVerificationTimeoutWhenTheBudgetIsAlreadyExhausted() {
         RabbitTopologyVerifier expired = new RabbitTopologyVerifier(
-                RabbitTopologyVerifier.buildClient(), properties(), Duration.ZERO, Duration.ZERO);
+                RabbitTopologyVerifier.buildClient(), properties(), "/", Duration.ZERO, Duration.ZERO);
 
         TopologyVerificationException failure = catchThrowableOfType(
                 expired::verify, TopologyVerificationException.class);
@@ -317,9 +389,9 @@ class RabbitTopologyVerifierTest {
                     payload = Map.of("rabbitmq_version", "4.4.2");
                 } else if (path.equals("/api/feature-flags")) {
                     payload = List.of(Map.of("name", "stream_queue", "state", "enabled"));
-                } else if (path.equals("/api/bindings")) {
+                } else if (path.equals("/api/bindings/%2F")) {
                     finalResponseStarted.set(System.nanoTime() < deadline);
-                    payload = bindingPayload();
+                    payload = bindingPayload("/");
                 } else {
                     payload = DECLARED_QUEUES.stream()
                             .filter(queue -> path.equals("/api/queues/%2F/" + queue.getName()))
@@ -328,7 +400,7 @@ class RabbitTopologyVerifierTest {
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
                 exchange.sendResponseHeaders(200, 0);
                 byte[] body = JSON.writeValueAsBytes(payload);
-                if (path.equals("/api/bindings")) {
+                if (path.equals("/api/bindings/%2F")) {
                     exchange.getResponseBody().write(body, 0, 1);
                     exchange.getResponseBody().flush();
                     while (System.nanoTime() < deadline + Duration.ofSeconds(1).toNanos()) {
@@ -351,7 +423,7 @@ class RabbitTopologyVerifierTest {
             properties.setManagementUrl("http://127.0.0.1:" + local.getAddress().getPort());
             RabbitTopologyVerifier bounded = new RabbitTopologyVerifier(
                     RabbitTopologyVerifier.buildClient(),
-                    properties, Duration.ZERO);
+                    properties, "/", Duration.ZERO);
 
             TopologyVerificationException failure = catchThrowableOfType(
                     () -> bounded.verify(deadline), TopologyVerificationException.class);
@@ -382,7 +454,7 @@ class RabbitTopologyVerifierTest {
     void runnerStopsRetryingOnceTheBudgetIsExhausted() {
         AtomicInteger attempts = new AtomicInteger();
         RabbitTopologyVerifier runner = new RabbitTopologyVerifier(
-                RabbitTopologyVerifier.buildClient(), properties(), Duration.ZERO, Duration.ZERO) {
+                RabbitTopologyVerifier.buildClient(), properties(), "/", Duration.ZERO, Duration.ZERO) {
             @Override
             void verify(long deadline) {
                 attempts.incrementAndGet();
@@ -453,9 +525,12 @@ class RabbitTopologyVerifierTest {
     @Test
     void deliveryEnabledRegistersTheVerifierBean() {
         NotificationRabbitProperties properties = properties();
+        ConnectionFactory factory = mock(ConnectionFactory.class);
+        when(factory.getVirtualHost()).thenReturn("/");
 
         new ApplicationContextRunner()
                 .withPropertyValues("app.notifications.delivery-enabled=true")
+                .withBean(ConnectionFactory.class, () -> factory)
                 .withBean(NotificationRabbitProperties.class, () -> properties)
                 .withUserConfiguration(RabbitTopologyVerifier.class,
                         RabbitTopologyHealthIndicator.class)
@@ -528,7 +603,7 @@ class RabbitTopologyVerifierTest {
         return payload;
     }
 
-    private static List<Map<String, Object>> bindingPayload() {
+    private static List<Map<String, Object>> bindingPayload(String vhost) {
         return DECLARATIONS.stream()
                 .filter(Binding.class::isInstance)
                 .map(Binding.class::cast)
@@ -537,7 +612,7 @@ class RabbitTopologyVerifierTest {
                         "destination", binding.getDestination(),
                         "destination_type", "queue",
                         "routing_key", binding.getRoutingKey(),
-                        "vhost", "/"))
+                        "vhost", vhost))
                 .toList();
     }
 
@@ -603,7 +678,7 @@ class RabbitTopologyVerifierTest {
                         .andRespond(withSuccess(json(payload), MediaType.APPLICATION_JSON));
             }
 
-            List<Map<String, Object>> bindings = bindingPayload().stream()
+            List<Map<String, Object>> bindings = bindingPayload("/").stream()
                     .filter(binding -> !droppedBindings.contains(bindingKey(
                             (String) binding.get("source"),
                             (String) binding.get("destination"),

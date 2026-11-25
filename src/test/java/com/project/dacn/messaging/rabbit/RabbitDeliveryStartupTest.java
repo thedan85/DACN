@@ -26,11 +26,14 @@ import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.boot.amqp.autoconfigure.RabbitAutoConfiguration;
+import org.springframework.boot.amqp.autoconfigure.RabbitProperties;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.env.YamlPropertySourceLoader;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.io.ClassPathResource;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -42,6 +45,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -163,17 +167,7 @@ class RabbitDeliveryStartupTest {
     @ParameterizedTest
     @ValueSource(strings = {"simple", "direct"})
     void productionListenerFactoriesDoNotAutoStart(String type) {
-        new ApplicationContextRunner()
-                .withInitializer(context -> {
-                    try {
-                        for (var source : new YamlPropertySourceLoader().load("application",
-                                new ClassPathResource("application.yml"))) {
-                            context.getEnvironment().getPropertySources().addLast(source);
-                        }
-                    } catch (Exception e) {
-                        throw new IllegalStateException(e);
-                    }
-                })
+        withProductionYaml()
                 .withConfiguration(AutoConfigurations.of(RabbitAutoConfiguration.class))
                 .withPropertyValues("spring.rabbitmq.listener.type=" + type)
                 .withBean(ConnectionFactory.class, () -> mock(ConnectionFactory.class))
@@ -184,5 +178,48 @@ class RabbitDeliveryStartupTest {
                     assertThat(factory.createListenerContainer(null).isAutoStartup()).isFalse();
                     verify(context.getBean(ConnectionFactory.class), never()).createConnection();
                 });
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void productionYamlBindsRabbitVhostAndTlsWithoutConnectingWhenDeliveryIsDisabled(boolean override) {
+        ConnectionFactory factory = mock(ConnectionFactory.class);
+        var runner = withProductionYaml()
+                .withInitializer(context -> {
+                    var sources = context.getEnvironment().getPropertySources();
+                    sources.remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+                    sources.remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
+                })
+                .withConfiguration(AutoConfigurations.of(RabbitAutoConfiguration.class))
+                .withUserConfiguration(RabbitTopologyConfig.class, RabbitTopologyVerifier.class)
+                .withBean(ConnectionFactory.class, () -> factory);
+        if (override) {
+            runner = runner.withPropertyValues("RABBITMQ_VHOST=course/dev %", "RABBITMQ_SSL_ENABLED=true");
+        }
+
+        runner.run(context -> {
+            assertThat(context).doesNotHaveBean(RabbitDeliveryStartup.class)
+                    .doesNotHaveBean(RabbitTopologyVerifier.class)
+                    .doesNotHaveBean(AmqpAdmin.class);
+            verify(factory, never()).createConnection();
+            RabbitProperties properties = context.getBean(RabbitProperties.class);
+            assertSoftly(softly -> {
+                softly.assertThat(properties.getVirtualHost()).isEqualTo(override ? "course/dev %" : "/");
+                softly.assertThat(properties.getSsl().getEnabled()).isEqualTo(override);
+            });
+        });
+    }
+
+    private static ApplicationContextRunner withProductionYaml() {
+        return new ApplicationContextRunner().withInitializer(context -> {
+            try {
+                for (var source : new YamlPropertySourceLoader().load("application",
+                        new ClassPathResource("application.yml"))) {
+                    context.getEnvironment().getPropertySources().addLast(source);
+                }
+            } catch (IOException e) {
+                throw new IllegalStateException(e);
+            }
+        });
     }
 }
