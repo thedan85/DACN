@@ -1,8 +1,8 @@
 # RabbitMQ notification topology runbook
 
 This runbook documents the broker topology declared by
-`RabbitTopology` and `RabbitTopologyConfig`. It is an operator reference, not a
-migration plan.
+`RabbitTopology` and `RabbitTopologyConfig`. It includes the procedure for a
+[future CloudAMQP cutover and rollback](#10-cloudamqp-cutover-and-rollback).
 
 Delivery is disabled by default: `app.notifications.delivery-enabled` reads
 `NOTIFICATIONS_DELIVERY_ENABLED` and defaults to `false`. While it is false,
@@ -327,21 +327,27 @@ while publishes become unroutable.
 
 ### 6.3 Feature flags
 
-Record the HTTP status with `mgmt_status /api/feature-flags`. If it returns
-200, require `stream_queue=enabled`:
+Record the HTTP status with `mgmt_status /api/feature-flags`. On 200, record
+the states of `stream_queue` and `rabbitmq_4.3.0`; note any absent flag.
+The `rabbitmq_4.3.0` flag is evidence only, not a readiness requirement or the
+broker version. Require `stream_queue=enabled`:
 
 ```bash
-mgmt /api/feature-flags \
-  | jq -er '.[] | select(.name == "stream_queue" and .state == "enabled") | "\(.name)=\(.state)"'
+flags="$(mgmt /api/feature-flags \
+  | jq -er '.[] | select(.name == "stream_queue" or .name == "rabbitmq_4.3.0") | "\(.name)=\(.state)"')" || exit 1
+printf '%s\n' "$flags"
+grep -Fxq 'stream_queue=enabled' <<<"$flags" || exit 1
 ```
 
 A 403 is eligible for an exception only in Little Lemur mode with the exact
-`feature-flags` allowlist entry. A 401, 404, 500, timeout, malformed response, or
-disabled or missing flag is not an exception. After an approved skip, capture
-the application's warning from startup logs in the preflight record:
+`feature-flags` allowlist entry. Record an approved 403 as a skipped check,
+not a failure or proof that either flag is enabled. A 401, 404, 500, timeout,
+malformed response, or disabled or missing `stream_queue` is not an exception.
+After an approved skip, capture the application's startup warning:
 `Skipping RabbitMQ management check /api/feature-flags: HTTP 403 (Little Lemur allowlist)`.
-The app logs it once per verifier instance. Record the broker version and
-endpoint/status with the warning; do not capture response bodies or credentials.
+The app logs it once per verifier instance. Record the broker version,
+endpoint/status, and exact allowlist entry with the warning. Do not capture
+response bodies or credentials.
 
 ### 6.4 Queues and effective arguments
 
@@ -524,7 +530,70 @@ unpublished outbox rows, retry work, DLQ work, and event identity throughout.
 Topology declarations are scoped to `dacn.*`. Do not delete or modify unrelated
 pre-existing broker data.
 
-## 10. Sources
+## 10. CloudAMQP cutover and rollback
+
+The future target is **DACN RabbitMQ Preflight**. Leave the existing CloudAMQP
+**DACN** instance untouched. Keep the local broker running and leave the six
+messages in its email DLQ in place.
+
+### Cutover
+
+1. Get operator approval after [management checks](#6-management-api-verification)
+   and [live readiness proof](#7-readiness) pass on the target. Use the intended
+   broker settings with synthetic events, an isolated test database, and a
+   safe mail sink.
+   Recheck plan quotas. Measure fewer than 20 total cloud connections at peak
+   across intended runtimes and probes under representative traffic.
+2. Quiesce order-event production at its source. Keep local delivery enabled
+   to drain: `NOTIFICATIONS_DELIVERY_ENABLED=false` stops both the relay and
+   consumers, not source writes. Use the
+   [outbox checks](notification-delivery-operations.md#2-outbox-stalled) and
+   [queue API](#64-queues-and-effective-arguments). Record pending, leased,
+   and quarantined outbox counts. For each queue, record `messages_ready`
+   and `messages_unacknowledged`. Require zero pending and leased outbox
+   counts, and zero ready and unacknowledged counts on both main queues and
+   all retry queues. Account for quarantined and DLQ work separately. Stop
+   if the drain cannot be verified.
+3. Stop the local delivery runtime, not the broker. Confirm its relay and
+   listeners are stopped. Save the local settings for rollback. Change only
+   the notification RabbitMQ connection, TLS, vhost, management, and verifier
+   settings from [section 6](#6-management-api-verification). Start one
+   delivery-enabled runtime on the target. Never run live cloud and local
+   mail consumers in parallel.
+4. Require `rabbitTopology` UP with delivery enabled and both in-app and email
+   consumers attached. Use an approved controlled event to confirm outbox
+   publication, both delivery outcomes, and normal queue and outbox progress
+   before resuming production.
+
+### Rollback
+
+[`OrderEventRelay.java:92`](../../src/main/java/com/project/dacn/messaging/outbox/OrderEventRelay.java#L92)
+marks publication, not delivery. Switching endpoints does not replay rows
+with `published_at` set. Never rewrite publication timestamps or blindly
+replay cloud-accepted work.
+
+- **Cloud can drain:** Quiesce producers at the source and keep cloud delivery
+  enabled for the drain. Repeat the cutover outbox and queue checks, including
+  zero ready and unacknowledged messages on both main queues and all retries.
+  Retain cloud DLQs for separate reconciliation before
+  [idle expiry](#4-expected-policies-and-effective-arguments) can delete them.
+  Stop the cloud runtime and confirm its relay and listeners are stopped.
+  Restore the saved local RabbitMQ settings and start only the local delivery
+  runtime. Repeat cutover verification before resuming production.
+- **Cloud is unavailable or cannot drain:** Do not declare a safe rollback.
+  Quiesce producers and [pause notification delivery](#8-stop-rules-for-backlog-and-storage-growth).
+  Preserve the cloud broker, queues, outbox rows, and available evidence.
+  Before any targeted transfer or replay, require explicit operator
+  reconciliation of affected event IDs against delivery records and available
+  broker state. Keep delivery paused until operators authorize recovery.
+  Do not discard work or set or clear `published_at`.
+
+For any approved targeted transfer or replay, follow the
+[DLQ replay guidance](notification-delivery-operations.md#6-dlq-replay).
+Preserve event identity, establish prior email delivery state, and require a
+confirmed transfer before removing source work.
+
+## 11. Sources
 
 - `src/main/java/com/project/dacn/messaging/rabbit/RabbitTopology.java`
 - `src/main/java/com/project/dacn/messaging/rabbit/RabbitTopologyConfig.java`
