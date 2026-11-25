@@ -180,6 +180,9 @@ app:
       management-username: ${RABBITMQ_MANAGEMENT_USERNAME:guest}
       management-password: ${RABBITMQ_MANAGEMENT_PASSWORD:guest}
       expected-version-prefix: ${RABBITMQ_EXPECTED_VERSION:4.4}
+      cloudamqp-little-lemur: ${RABBITMQ_CLOUDAMQP_LITTLE_LEMUR:false}
+      cloud-allow-forbidden-checks: ${RABBITMQ_CLOUD_ALLOW_FORBIDDEN_CHECKS:}
+      expected-queue-idle-expiry: ${RABBITMQ_EXPECTED_QUEUE_IDLE_EXPIRY:}
       confirm-timeout: 5s
   realtime:
     enabled: ${REALTIME_ENABLED:false}

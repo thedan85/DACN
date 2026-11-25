@@ -1,17 +1,22 @@
 package com.project.dacn.messaging.rabbit;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriUtils;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -28,13 +33,16 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
  * Proves the broker's effective topology through the RabbitMQ management API.
- * Declarations alone are not proof: queues, bindings, policies, and feature
- * flags are read back from the running broker.
+ * Declarations alone are not proof: queues, effective policies, bindings, and
+ * accessible feature flags are read back from the running broker.
  */
+@Slf4j
 @Component
 @ConditionalOnProperty(name = "app.notifications.delivery-enabled", havingValue = "true")
 public class RabbitTopologyVerifier {
@@ -45,11 +53,17 @@ public class RabbitTopologyVerifier {
     private static final Duration RETRY_DELAY = Duration.ofSeconds(1);
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(1);
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(2);
+    private static final Pattern LITTLE_LEMUR_VERSION = Pattern.compile("^4\\.(3|4)\\.\\d+$");
+    private static final String FEATURE_FLAGS_CHECK = "feature-flags";
+    private static final String FEATURE_FLAGS_PATH = "/api/" + FEATURE_FLAGS_CHECK;
     private static final HttpClient MANAGEMENT_CLIENT = HttpClient.newBuilder()
             .connectTimeout(CONNECT_TIMEOUT)
             .executor(ForkJoinPool.commonPool())
             .build();
-    private static final JsonMapper JSON = JsonMapper.builder().build();
+    // A double can round a fractional queue expiry to the configured millisecond.
+    private static final JsonMapper JSON = JsonMapper.builder()
+            .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+            .build();
     private static final List<String> MAIN_QUEUES =
             List.of(RabbitTopology.INAPP_QUEUE, RabbitTopology.EMAIL_QUEUE);
     private static final List<RetryTtl> RETRY_TTLS = List.of(
@@ -67,6 +81,7 @@ public class RabbitTopologyVerifier {
     private final String encodedVirtualHost;
     private final String baseUrl;
     private final String authorization;
+    private final AtomicBoolean featureFlagsSkipLogged = new AtomicBoolean();
 
     @Autowired
     public RabbitTopologyVerifier(ConnectionFactory connectionFactory,
@@ -175,12 +190,16 @@ public class RabbitTopologyVerifier {
             throw new TopologyVerificationException(
                     TopologyVerificationException.Code.BROKER_VERSION);
         }
+        boolean cloudMode = properties.isCloudamqpLittleLemur();
         String expectedPrefix = properties.getExpectedVersionPrefix();
-        if (expectedPrefix == null || expectedPrefix.isBlank()) {
+        if (!cloudMode && (expectedPrefix == null || expectedPrefix.isBlank())) {
             return;
         }
         Object version = overview == null ? null : overview.get("rabbitmq_version");
-        if (version == null || !version.toString().startsWith(expectedPrefix)) {
+        boolean matches = cloudMode
+                ? version instanceof String text && LITTLE_LEMUR_VERSION.matcher(text.trim()).matches()
+                : version != null && version.toString().startsWith(expectedPrefix);
+        if (!matches) {
             throw new TopologyVerificationException(
                     TopologyVerificationException.Code.BROKER_VERSION);
         }
@@ -189,17 +208,34 @@ public class RabbitTopologyVerifier {
     private void verifyStreamQueueFeature(long deadline) {
         List<Map<String, Object>> flags;
         try {
-            flags = get(deadline, "/api/feature-flags",
+            flags = get(deadline, FEATURE_FLAGS_PATH,
                     new ParameterizedTypeReference<List<Map<String, Object>>>() {
                     });
         } catch (RestClientException e) {
             checkDeadline(deadline);
+            if (e instanceof RestClientResponseException response
+                    && response.getStatusCode().value() == HttpStatus.FORBIDDEN.value()
+                    && properties.isCloudamqpLittleLemur()
+                    && properties.getCloudAllowForbiddenChecks().contains(FEATURE_FLAGS_CHECK)) {
+                if (featureFlagsSkipLogged.compareAndSet(false, true)) {
+                    log.warn("Skipping RabbitMQ management check {}: HTTP {} (Little Lemur allowlist)",
+                            FEATURE_FLAGS_PATH, response.getStatusCode().value());
+                }
+                return;
+            }
             throw new TopologyVerificationException(
                     TopologyVerificationException.Code.FEATURE_FLAG);
         }
-        boolean enabled = flags != null && flags.stream().anyMatch(flag ->
-                "stream_queue".equals(flag.get("name"))
-                        && "enabled".equals(flag.get("state")));
+        boolean enabled = false;
+        if (flags != null) {
+            for (Map<String, Object> flag : flags) {
+                if (flag == null || !(flag.get("name") instanceof String name)
+                        || !(flag.get("state") instanceof String state)) {
+                    throw new TopologyVerificationException(TopologyVerificationException.Code.FEATURE_FLAG);
+                }
+                enabled |= "stream_queue".equals(name) && "enabled".equals(state);
+            }
+        }
         if (!enabled) {
             throw new TopologyVerificationException(
                     TopologyVerificationException.Code.FEATURE_FLAG);
@@ -269,8 +305,10 @@ public class RabbitTopologyVerifier {
             HttpResponse<byte[]> received = response.get(
                     requestDeadline - System.nanoTime(), TimeUnit.NANOSECONDS);
             checkDeadline(deadline);
-            if (received.statusCode() >= 400) {
-                throw new RestClientException("Management request failed");
+            int status = received.statusCode();
+            if (status < 200 || status >= 300) {
+                throw new RestClientResponseException("Management request failed", status,
+                        "", null, null, null);
             }
             T body = JSON.readValue(received.body(), JSON.constructType(type.getType()));
             checkDeadline(deadline);
@@ -296,8 +334,7 @@ public class RabbitTopologyVerifier {
                 + UriUtils.encodePathSegment(queue, StandardCharsets.UTF_8);
     }
 
-    private static boolean matches(Map<String, Object> payload,
-                                   QueueExpectation expectation) {
+    private boolean matches(Map<String, Object> payload, QueueExpectation expectation) {
         if (payload == null) {
             return false;
         }
@@ -312,7 +349,8 @@ public class RabbitTopologyVerifier {
         }
 
         Map<String, Object> arguments = effectiveArguments(payload);
-        if (arguments.containsKey("expires")) {
+        if (arguments.containsKey("expires") && !matchesExpiry(arguments.get("expires"),
+                properties.getExpectedQueueIdleExpiry())) {
             return false;
         }
         if (expectation.messageTtlMs() == null) {
@@ -342,6 +380,17 @@ public class RabbitTopologyVerifier {
         return !expectation.requiresDeliveryLimit()
                 || matchesLong(arguments.get("delivery-limit"),
                 RabbitTopologyConfig.DELIVERY_LIMIT);
+    }
+
+    private static boolean matchesExpiry(Object value, Duration expected) {
+        if (expected == null || !(value instanceof Number number)) {
+            return false;
+        }
+        try {
+            return Duration.ofMillis(new BigDecimal(number.toString()).longValueExact()).equals(expected);
+        } catch (ArithmeticException e) {
+            return false;
+        }
     }
 
     /**

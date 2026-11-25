@@ -10,7 +10,10 @@ the relay, listeners, topology declarations, and startup verifier are absent,
 and `spring.rabbitmq.dynamic` is also false. Business writes continue to append
 `event_outbox` rows.
 
-All names below are in vhost `/`. The startup verifier reads only vhost `/`.
+The default vhost is `/`. The application declares the topology in the active
+AMQP vhost, and the startup verifier reads the same vhost from the connection
+factory.
+
 A single broker node is **not** highly available. Quorum queues on one node
 provide quorum queue semantics and at-least-once dead-lettering, not broker
 failover.
@@ -90,9 +93,10 @@ There is no `x-expires` and no `x-delivery-limit` on a retry queue.
 | `dacn.notifications.inapp.dlq` | quorum | Terminal in-app quarantine |
 | `dacn.notifications.email.dlq` | quorum | Terminal email quarantine |
 
-DLQs are durable quorum queues with no TTL, no expiration, no dead-letter
-exchange, and no dead-letter routing key. The application has no automatic
-consumer for a DLQ. DLQ work is retained until an approved operator action.
+DLQs are durable quorum queues declared with no TTL, expiration, dead-letter
+exchange, or dead-letter routing key. The application has no automatic DLQ
+consumer. An operator must preserve unresolved DLQ work, including when a
+managed idle-expiry policy applies (section 4).
 
 ## 3. Routing pattern, bindings, and feature flags
 
@@ -126,11 +130,9 @@ The retry exchange serves two directions:
 
 `RabbitTopologyVerifier` checks the broker feature flag `stream_queue` and
 requires state `enabled`. The queues themselves remain quorum queues; this is
-not a stream queue deployment. The verifier also reads
-`app.notifications.rabbit.expected-version-prefix` (`RABBITMQ_EXPECTED_VERSION`,
-default `4.4`) and compares it with the prefix of `rabbitmq_version` from
-`GET /api/overview`. A blank prefix skips the version comparison, so keep it set
-in deployed environments.
+not a stream queue deployment. The only exception is an explicitly allowlisted
+HTTP 403 from `GET /api/feature-flags` in Little Lemur mode (section 6.3). RabbitMQ
+4.3.6 declares `stream_queue` a hard-required feature flag.
 
 Do not enable or disable broker feature flags on a live cluster without
 approval. RabbitMQ feature flags can be irreversible.
@@ -148,18 +150,28 @@ Expected effective policy state:
   `dacn.order.events.retry`, `dacn.order.events.dlx`, or any
   `dacn.notifications.*` queue.
 - A platform policy is acceptable only if it preserves every effective value
-  in section 2. A policy that changes `dead-letter-strategy` to `at-most-once`,
-  changes `overflow` to `drop-head`, adds `expires`, or changes a TTL fails the
-  verifier or violates the delivery contract.
+  in section 2, except for the explicit idle-expiry allowance below. A policy
+  that changes `dead-letter-strategy` to `at-most-once`, changes `overflow` to
+  `drop-head`, or changes a message TTL fails the verifier or violates the
+  delivery contract.
 - Main queues and DLQs must have no `message-ttl`.
 - Retry queues must have exactly `10000`, `30000`, or `120000` ms
   `message-ttl`, matched to their queue name.
-- `expires` must be absent on every notification queue.
+- By default, `expires` must be absent on every notification queue. Use
+  `RABBITMQ_EXPECTED_QUEUE_IDLE_EXPIRY=28d` only to accept the Little Lemur
+  platform policy. Effective `expires` may be absent or exactly `2419200000` ms
+  (28 days). A different, fractional, or malformed value fails verification.
+  The opt-in does not declare `x-expires` or change any message TTL. Queue
+  expiration deletes an unused queue, not just individual messages; do not
+  rely on quorum queue redeclaration to renew the lease. Plan for retry and DLQ
+  retention before enabling delivery.
 
 The verifier failure code is `QUEUE_POLICY` with the queue name when an
-effective value differs. `BINDING` means at least one of the twelve bindings is
-missing. `FEATURE_FLAG` means `stream_queue` is not enabled.
-`BROKER_VERSION` means the version prefix does not match.
+effective value differs or the queue response is unavailable. `BINDING` means
+the bindings response is unavailable or at least one required binding is missing.
+`FEATURE_FLAG` means the check did not prove `stream_queue` is enabled and no
+exception applied. `BROKER_VERSION` means the overview could not be read or
+the version check failed.
 `VERIFICATION_TIMEOUT` means the 20-second startup budget expired.
 
 ## 5. Delivery and dead-letter flow
@@ -190,7 +202,8 @@ design; do not purge it.
 6. A main queue message that reaches `x-delivery-limit=4` is dead-lettered by
    the broker through the same DLX route. This is a broker safety net; it is
    not the application retry count.
-7. A DLQ has no automatic expiry and no consumer. Retain it.
+7. The application declares no DLQ expiry and provides no DLQ consumer.
+   Preserve DLQ work if a managed idle-expiry policy applies.
 
 `at-least-once` dead-lettering means the source quorum queue retains an
 expired or dead-lettered message until the destination queues confirm
@@ -215,6 +228,27 @@ Use the configured values from `application.yml`:
   (`RABBITMQ_MANAGEMENT_PASSWORD`)
 - `app.notifications.rabbit.expected-version-prefix`
   (`RABBITMQ_EXPECTED_VERSION`, default `4.4`)
+- `app.notifications.rabbit.cloudamqp-little-lemur`
+  (`RABBITMQ_CLOUDAMQP_LITTLE_LEMUR`, default `false`)
+- `app.notifications.rabbit.cloud-allow-forbidden-checks`
+  (`RABBITMQ_CLOUD_ALLOW_FORBIDDEN_CHECKS`, comma-separated, empty by default).
+  The only names are `feature-flags`, `policies`, and `operator-policies`.
+  Unknown names fail configuration binding; the allowlist cannot skip checks
+  outside Little Lemur mode.
+- `app.notifications.rabbit.expected-queue-idle-expiry`
+  (`RABBITMQ_EXPECTED_QUEUE_IDLE_EXPIRY`, unset by default)
+
+For a future deployment on the free Little Lemur plan, set `RABBITMQ_HOST`
+and `RABBITMQ_PORT` from the provider's AMQPS settings. Set
+`RABBITMQ_SSL_ENABLED=true` and put the assigned, unencoded vhost in
+`RABBITMQ_VHOST`. An address URI can override `RABBITMQ_VHOST`; use
+the separate host, TLS, and vhost inputs without a `spring.rabbitmq.addresses`
+override (`SPRING_RABBITMQ_ADDRESSES`). Set the provider's HTTPS management URL
+separately. Turn on `RABBITMQ_CLOUDAMQP_LITTLE_LEMUR` for the version range.
+Set `RABBITMQ_EXPECTED_QUEUE_IDLE_EXPIRY=28d` if the platform policy applies.
+Add only the individual allowlist entries whose HTTP 403 responses preflight
+confirms. Local defaults remain non-TLS, vhost `/`, strict checks, and no
+expiry.
 
 Run these from an approved admin host. Do not use `set -x`, do not use
 `curl --verbose` with credentials, and never paste the password or an
@@ -223,25 +257,47 @@ local `curl` process arguments; if that is not acceptable on the host, use the
 approved credential helper instead.
 
 ```bash
+set -o pipefail
 MGMT="${RABBITMQ_MANAGEMENT_URL%/}"
+VHOST="${RABBITMQ_VHOST:-/}" # Use the effective AMQP vhost if an address URI overrides it.
+VHOST_PATH="$(jq -nr --arg value "$VHOST" '$value | @uri')"
 
 mgmt() {
   curl --silent --show-error --fail \
     --user "$RABBITMQ_MANAGEMENT_USERNAME:$RABBITMQ_MANAGEMENT_PASSWORD" \
     "$MGMT$1"
 }
+
+mgmt_status() {
+  curl --silent --show-error --output /dev/null --write-out '%{http_code}\n' \
+    --user "$RABBITMQ_MANAGEMENT_USERNAME:$RABBITMQ_MANAGEMENT_PASSWORD" \
+    "$MGMT$1"
+}
 ```
 
-### 6.1 Version prefix
+`VHOST_PATH` encodes one URL path segment. For the default `/`, it is `%2F`.
+The overview and feature-flag paths are not vhost scoped.
+
+### 6.1 Broker version
 
 ```bash
-version="$(mgmt /api/overview | jq -r '.rabbitmq_version')"
-prefix="${RABBITMQ_EXPECTED_VERSION:-4.4}"
-case "$version" in
-  "$prefix"*) printf 'broker version ok: %s\n' "$version" ;;
-  *) printf 'broker version mismatch: %s (expected prefix %s)\n' "$version" "$prefix" >&2; exit 1 ;;
-esac
+version="$(mgmt /api/overview | jq -er '.rabbitmq_version | strings')" || exit 1
+if [[ "${RABBITMQ_CLOUDAMQP_LITTLE_LEMUR:-false}" == true ]]; then
+  version="$(printf '%s' "$version" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  [[ "$version" =~ ^4\.(3|4)\.[0-9]+$ ]] || { printf 'Unsupported broker version\n' >&2; exit 1; }
+else
+  prefix="${RABBITMQ_EXPECTED_VERSION:-4.4}"
+  [[ "$version" == "$prefix"* ]] || { printf 'Broker version prefix mismatch\n' >&2; exit 1; }
+fi
+printf 'broker version ok: %s\n' "$version"
 ```
+
+Little Lemur mode requires a readable `rabbitmq_version` and accepts stable
+`4.3.x`–`4.4.x` after trimming, with no prerelease suffix. The verifier tests
+cover `4.3.6` as the reference patch, not a pin or proof of live compatibility.
+Outside Little Lemur mode, the configured prefix still applies. A blank local
+prefix skips the application's version comparison; keep it set in deployed
+environments.
 
 `GET /api/nodes` shows `disk_free_alarm` and `mem_alarm`; `GET /api/overview`
 shows listener state. Those fields are safe to print; credentials are not in
@@ -254,7 +310,7 @@ not exchange properties. Check all three exchanges explicitly:
 
 ```bash
 while read -r exchange type; do
-  mgmt "/api/exchanges/%2F/$exchange" \
+  mgmt "/api/exchanges/$VHOST_PATH/$exchange" \
     | jq -e --arg t "$type" \
         '.type == $t and .durable == true and .auto_delete == false' \
     >/dev/null \
@@ -271,12 +327,21 @@ while publishes become unroutable.
 
 ### 6.3 Feature flags
 
+Record the HTTP status with `mgmt_status /api/feature-flags`. If it returns
+200, require `stream_queue=enabled`:
+
 ```bash
 mgmt /api/feature-flags \
-  | jq -r '.[] | select(.name == "stream_queue") | "\(.name)=\(.state)"'
+  | jq -er '.[] | select(.name == "stream_queue" and .state == "enabled") | "\(.name)=\(.state)"'
 ```
 
-Expected output: `stream_queue=enabled`.
+A 403 is eligible for an exception only in Little Lemur mode with the exact
+`feature-flags` allowlist entry. A 401, 404, 500, timeout, malformed response, or
+disabled or missing flag is not an exception. After an approved skip, capture
+the application's warning from startup logs in the preflight record:
+`Skipping RabbitMQ management check /api/feature-flags: HTTP 403 (Little Lemur allowlist)`.
+The app logs it once per verifier instance. Record the broker version and
+endpoint/status with the warning; do not capture response bodies or credentials.
 
 ### 6.4 Queues and effective arguments
 
@@ -296,22 +361,22 @@ queues=(
 
 for q in "${queues[@]}"; do
   printf '%s\n' "--- $q"
-  mgmt "/api/queues/%2F/$q" \
+  mgmt "/api/queues/$VHOST_PATH/$q" \
     | jq '{name, type, durable, auto_delete, exclusive, arguments, effective_policy_definition}'
 done
 ```
 
 For every queue, require `type` equal to `quorum`, `durable` true,
 `auto_delete` false, and `exclusive` false. Then compare `arguments` and
-`effective_policy_definition` with section 2. Remember that management API
-queue arguments include the `x-` prefix while policy definitions usually omit
-it.
+`effective_policy_definition` with sections 2 and 4. Management API queue
+arguments include `x-` while policy definitions usually omit it. Every queue
+response remains mandatory even if a policy-list endpoint is forbidden.
 
 A compact type/durability check:
 
 ```bash
 for q in "${queues[@]}"; do
-  mgmt "/api/queues/%2F/$q" \
+  mgmt "/api/queues/$VHOST_PATH/$q" \
     | jq -e '.type == "quorum" and .durable == true and .auto_delete == false and .exclusive == false' \
     >/dev/null \
     || { printf 'queue contract failed: %s\n' "$q" >&2; exit 1; }
@@ -321,9 +386,9 @@ done
 ### 6.5 Bindings
 
 ```bash
-mgmt /api/bindings \
-  | jq -r '.[]
-      | select(.vhost == "/" and (.source | startswith("dacn.")))
+mgmt "/api/bindings/$VHOST_PATH" \
+  | jq -r --arg vhost "$VHOST" '.[]
+      | select(.vhost == $vhost and (.source | startswith("dacn.")))
       | [.source, .destination, .routing_key]
       | @tsv' \
   | sort
@@ -352,28 +417,35 @@ missing, the message can still route to the other queue and be acknowledged.
 
 ### 6.6 Policies
 
+Check both policy lists independently. The application does not request
+either list; these are operator preflight checks.
+
 ```bash
-mgmt /api/policies \
-  | jq -r '.[]
-      | select(.vhost == "/")
-      | [.name, .pattern, (.definition | tostring)]
-      | @tsv'
+mgmt_status "/api/policies/$VHOST_PATH"
+mgmt_status "/api/operator-policies/$VHOST_PATH"
 ```
 
-Expected: no application-owned notification policy. If a policy exists, inspect
-its `pattern`, `priority`, and effective values. A policy with a higher
-priority can override the queue arguments the verifier reads.
+For each 200, use `mgmt` on that same path and inspect the returned policies.
+Expect no application-owned notification policy. For any platform policy,
+inspect its `pattern`, `priority`, and effective arguments against section 4.
+For a 403, allow a manual skip only in Little Lemur mode and only when the
+exact entry is approved: `policies` for the first path, `operator-policies`
+for the second. Record each skipped path and status separately. One entry
+does not cover the other, and neither covers feature flags. Any other failure
+blocks preflight. A skipped policy list never replaces the per-queue
+effective-argument checks. Overview, queues, and bindings cannot be skipped.
 
 ### 6.7 `rabbitmqctl` alternatives
 
 Run on the broker host, read-only:
 
 ```bash
-rabbitmqctl list_exchanges -p / name type durable auto_delete
-rabbitmqctl list_queues -p / name type durable auto_delete exclusive arguments \
+rabbitmqctl list_exchanges -p "$VHOST" name type durable auto_delete
+rabbitmqctl list_queues -p "$VHOST" name type durable auto_delete exclusive arguments \
   messages_ready messages_unacknowledged consumers
-rabbitmqctl list_bindings -p / source_name destination_name routing_key
-rabbitmqctl list_policies -p /
+rabbitmqctl list_bindings -p "$VHOST" source_name destination_name routing_key
+rabbitmqctl list_policies -p "$VHOST"
+rabbitmqctl list_operator_policies -p "$VHOST"
 rabbitmqctl list_feature_flags
 rabbitmqctl version
 rabbitmq-diagnostics -q ping
@@ -382,10 +454,10 @@ rabbitmq-diagnostics -q ping
 Check quorum membership for each queue:
 
 ```bash
-rabbitmq-queues quorum_status dacn.notifications.inapp
-rabbitmq-queues quorum_status dacn.notifications.email
-rabbitmq-queues quorum_status dacn.notifications.inapp.dlq
-rabbitmq-queues quorum_status dacn.notifications.email.dlq
+rabbitmq-queues quorum_status --vhost "$VHOST" dacn.notifications.inapp
+rabbitmq-queues quorum_status --vhost "$VHOST" dacn.notifications.email
+rabbitmq-queues quorum_status --vhost "$VHOST" dacn.notifications.inapp.dlq
+rabbitmq-queues quorum_status --vhost "$VHOST" dacn.notifications.email.dlq
 ```
 
 Repeat for the retry queues. On a single node there is one member; that is
@@ -407,6 +479,16 @@ exposes health details.
 Do not disable or bypass the verifier to get a pod ready. Fix the broker
 topology or leave delivery disabled.
 
+The version range is a startup compatibility check, not a cutover approval.
+Avoid RabbitMQ `4.3.0` for cutover: the
+[4.3.1 release notes](https://github.com/rabbitmq/rabbitmq-server/releases/tag/v4.3.1)
+document a fix for at-least-once quorum dead-letter commands reaching the
+wrong replica. Use an approved patched broker. Before cutover, verify on the
+actual broker: confirmed publish and routing to both channels, manual
+acknowledgement after confirmed transfer, all three retry delays, and
+at-least-once terminal dead-letter delivery. Record the actual broker version,
+the effective topology, and any approved 403 skips.
+
 ## 8. Stop rules for backlog and storage growth
 
 Stop the producers or delivery path first, then investigate. Never delete
@@ -426,7 +508,7 @@ unresolved work.
    Free disk space or expand the approved volume.
 6. Treat as stop conditions: sustained ready or unacknowledged growth while
    consumers are down; `disk_free_alarm=true`; `mem_alarm=true`; a queue whose
-   type or effective arguments differ from section 2; repeated consumer
+   type or effective arguments differ from sections 2 and 4; repeated consumer
    crashes; DLQ growth with no drain plan.
 7. If backlog age approaches 30 days, stop replay plans. The age guard
    quarantines at `occurredAt + 30 days`; it does not authorize discarding the
@@ -451,3 +533,7 @@ pre-existing broker data.
 - `src/main/java/com/project/dacn/messaging/rabbit/NotificationRabbitProperties.java`
 - `src/main/resources/application.yml`
 - `src/test/java/com/project/dacn/messaging/rabbit/RabbitTopologyTest.java`
+- [RabbitMQ 4.3 quorum queues and dead-lettering](https://www.rabbitmq.com/docs/4.3/quorum-queues)
+- [RabbitMQ 4.3 TTL](https://www.rabbitmq.com/docs/4.3/ttl)
+- [RabbitMQ 4.3 publisher confirms and acknowledgements](https://www.rabbitmq.com/docs/4.3/confirms)
+- [RabbitMQ 4.3.6 required feature-flag definition](https://github.com/rabbitmq/rabbitmq-server/blob/v4.3.6/deps/rabbit/src/rabbit_core_ff.erl)
