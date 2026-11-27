@@ -279,6 +279,13 @@ class CatalogPersistenceTest {
         entityManager.flush();
         entityManager.clear();
 
+        Statistics stats = statistics();
+        stats.clear();
+        var measured = mediaRepository.findStaffVisible(PageRequest.of(0, 3, Sort.by("id")));
+        assertThat(measured.map(mapper::toMediaResponse).getContent()).hasSize(3);
+        assertThat(measured.getTotalElements()).isEqualTo(4);
+        assertThat(stats.getPrepareStatementCount()).isLessThanOrEqualTo(2);
+
         org.springframework.data.domain.Page<Media> page = mediaRepository
                 .findStaffVisible(org.springframework.data.domain.Pageable.unpaged());
         // Mapping must not throw: owners of kept rows are entity-loadable.
@@ -301,6 +308,38 @@ class CatalogPersistenceTest {
         assertThat(first.getTotalPages()).isEqualTo(2);
         assertThat(first.getContent()).hasSize(3);
         assertThat(second.getContent()).hasSize(1);
+    }
+
+    @Test
+    void staffMediaRetainsVisibleOwnerWhenOtherLegacyOwnerIsDeleted() {
+        Product active = productRepository.save(Product.builder().name("Legacy Active").description("d").build());
+        Product deleted = productRepository.save(Product.builder().name("Legacy Deleted").description("d").build());
+        Variant liveVariant = variantRepository.save(Variant.builder().product(active)
+                .sku("LEGACY-LIVE").price(BigDecimal.ONE).stock(1).build());
+        Variant deletedVariant = variantRepository.save(Variant.builder().product(active)
+                .sku("LEGACY-DELETED").price(BigDecimal.ONE).stock(1).build());
+        Media productOwned = mediaRepository.save(Media.builder().url("legacy-product")
+                .product(active).variant(deletedVariant).build());
+        Media variantOwned = mediaRepository.save(Media.builder().url("legacy-variant")
+                .product(deleted).variant(liveVariant).build());
+        deleted.setStatus(ProductStatus.DELETED);
+        deletedVariant.setDeleted(true);
+        entityManager.flush();
+        entityManager.clear();
+
+        var rows = mediaRepository.findStaffVisible(PageRequest.of(0, 20, Sort.by("id")))
+                .map(mapper::toMediaResponse).getContent();
+        assertThat(rows).hasSize(2);
+        assertThat(rows).filteredOn(row -> row.mediaId().equals(productOwned.getMediaId()))
+                .singleElement().satisfies(row -> {
+                    assertThat(row.productId()).isEqualTo(active.getProductId());
+                    assertThat(row.variantId()).isNull();
+                });
+        assertThat(rows).filteredOn(row -> row.mediaId().equals(variantOwned.getMediaId()))
+                .singleElement().satisfies(row -> {
+                    assertThat(row.productId()).isNull();
+                    assertThat(row.variantId()).isEqualTo(liveVariant.getVariantId());
+                });
     }
 
     @Test

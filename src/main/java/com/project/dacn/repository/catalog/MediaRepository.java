@@ -76,6 +76,7 @@ public interface MediaRepository extends JpaRepository<Media, Long> {
      * included. Rows whose owner is missing or entity-invisible are excluded
      * in SQL so count and page content stay consistent.
      */
+    @EntityGraph(attributePaths = {"product", "variant"})
     @Query("""
             select m from Media m
             left join m.product p

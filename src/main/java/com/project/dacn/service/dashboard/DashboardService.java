@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -47,8 +48,8 @@ public class DashboardService {
     private final ProductRepository productRepository;
 
     /**
-     * Builds the whole dashboard in five reads: current orders, the previous
-     * order window, active product count, the low-stock total, and the
+     * Builds the whole dashboard in four reads: both adjacent order windows,
+     * active product count, the low-stock total, and the
      * low-stock products.
      *
      * <p>The order rows are lightweight — status, total and creation time —
@@ -70,10 +71,16 @@ public class DashboardService {
         Instant end = today.plusDays(1).atStartOfDay(STORE_ZONE).toInstant();
         Instant previousStart = from.minusDays(days).atStartOfDay(STORE_ZONE).toInstant();
 
-        List<OrderRepository.DashboardOrderRow> current =
-                orderRepository.findDashboardRows(start, end);
-        List<OrderRepository.DashboardOrderRow> previous =
-                orderRepository.findDashboardRows(previousStart, start);
+        List<OrderRepository.DashboardOrderRow> current = new ArrayList<>();
+        List<OrderRepository.DashboardOrderRow> previous = new ArrayList<>();
+        for (OrderRepository.DashboardOrderRow row :
+                orderRepository.findDashboardRows(previousStart, end)) {
+            if (row.getCreatedAt().isBefore(start)) {
+                previous.add(row);
+            } else {
+                current.add(row);
+            }
+        }
 
         BigDecimal revenue = revenueOf(current);
         BigDecimal previousRevenue = revenueOf(previous);

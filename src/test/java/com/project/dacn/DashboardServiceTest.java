@@ -28,6 +28,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class DashboardServiceTest {
@@ -56,8 +58,7 @@ class DashboardServiceTest {
                 .thenReturn(List.of(
                         row(OrderStatus.COMPLETED, "100.00", at(today.minusDays(2))),
                         row(OrderStatus.CANCELLED, "50.00", at(today.minusDays(1))),
-                        row(OrderStatus.PENDING, "20.00", at(today))))
-                .thenReturn(List.of(
+                        row(OrderStatus.PENDING, "20.00", at(today)),
                         row(OrderStatus.COMPLETED, "60.00", at(today.minusDays(9)))));
         when(productRepository.countLowStockProducts(ProductStatus.ACTIVE, 10)).thenReturn(6L);
         when(productRepository.findLowStockProducts(
@@ -104,8 +105,7 @@ class DashboardServiceTest {
     @Test
     void omitsChangePercentWhenPreviousWindowIsEmpty() {
         when(orderRepository.findDashboardRows(any(Instant.class), any(Instant.class)))
-                .thenReturn(List.of(row(OrderStatus.COMPLETED, "10.00", at(today))))
-                .thenReturn(List.of());
+                .thenReturn(List.of(row(OrderStatus.COMPLETED, "10.00", at(today))));
         when(productRepository.countLowStockProducts(ProductStatus.ACTIVE, 10)).thenReturn(0L);
         when(productRepository.findLowStockProducts(
                 ProductStatus.ACTIVE, 10, PageRequest.of(0, 5))).thenReturn(List.of());
@@ -125,8 +125,7 @@ class DashboardServiceTest {
                 .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
         Instant nearMidnight = orderDate.atTime(0, 30).atZone(STORE_ZONE).toInstant();
         when(orderRepository.findDashboardRows(any(Instant.class), any(Instant.class)))
-                .thenReturn(List.of(row(OrderStatus.COMPLETED, "10.00", nearMidnight)))
-                .thenReturn(List.of());
+                .thenReturn(List.of(row(OrderStatus.COMPLETED, "10.00", nearMidnight)));
         when(productRepository.countLowStockProducts(ProductStatus.ACTIVE, 10)).thenReturn(0L);
         when(productRepository.findLowStockProducts(
                 ProductStatus.ACTIVE, 10, PageRequest.of(0, 5))).thenReturn(List.of());
@@ -175,6 +174,28 @@ class DashboardServiceTest {
                     assertThat(point.revenue()).isEqualByComparingTo("0");
                     assertThat(point.orders()).isZero();
                 });
+    }
+
+    @Test
+    void readsAdjacentWindowsOnceAndKeepsSplitInstantInCurrentWindow() {
+        Instant split = today.minusDays(6).atStartOfDay(STORE_ZONE).toInstant();
+        Instant previousStart = today.minusDays(13).atStartOfDay(STORE_ZONE).toInstant();
+        Instant end = today.plusDays(1).atStartOfDay(STORE_ZONE).toInstant();
+        when(orderRepository.findDashboardRows(any(), any())).thenReturn(List.of(
+                row(OrderStatus.COMPLETED, "25.00", split),
+                row(OrderStatus.PENDING, "10.00", split.minusNanos(1)),
+                row(OrderStatus.CANCELLED, "99.00", split.plusSeconds(1))));
+        when(productRepository.findLowStockProducts(ProductStatus.ACTIVE, 10, PageRequest.of(0, 5)))
+                .thenReturn(List.of());
+
+        DashboardSummaryResponse summary = service.summary(7);
+
+        assertThat(summary.orders().value()).isEqualTo(2);
+        assertThat(summary.orders().previous()).isEqualTo(1);
+        assertThat(summary.revenue().value()).isEqualByComparingTo("25.00");
+        assertThat(summary.revenue().previous()).isEqualByComparingTo("10.00");
+        assertThat(summary.revenueSeries().getFirst().orders()).isEqualTo(2);
+        verify(orderRepository, times(1)).findDashboardRows(previousStart, end);
     }
 
     @Test

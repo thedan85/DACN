@@ -119,6 +119,26 @@ class DashboardPersistenceTest {
     }
 
     @Test
+    void summaryPartitionsOrdersAtStoreMidnight() {
+        LocalDate today = LocalDate.now(STORE_ZONE);
+        Instant split = today.minusDays(6).atStartOfDay(STORE_ZONE).toInstant();
+        Order current = order(OrderStatus.COMPLETED, "25.00");
+        Order previous = order(OrderStatus.PENDING, "10.00");
+        Order excluded = order(OrderStatus.COMPLETED, "999.00");
+        setCreatedAt(current, split);
+        setCreatedAt(previous, split.minusSeconds(1));
+        setCreatedAt(excluded, today.plusDays(1).atStartOfDay(STORE_ZONE).toInstant());
+
+        DashboardSummaryResponse summary = service.summary(7);
+
+        assertThat(summary.orders().value()).isEqualTo(1);
+        assertThat(summary.orders().previous()).isEqualTo(1);
+        assertThat(summary.revenue().value()).isEqualByComparingTo("25.00");
+        assertThat(summary.revenue().previous()).isEqualByComparingTo("10.00");
+        assertThat(summary.revenueSeries().getFirst().orders()).isEqualTo(1);
+    }
+
+    @Test
     void summaryReadsRevenueStatusesAndPreviousWindow() {
         Order completed = order(OrderStatus.COMPLETED, "100.00");
         Order cancelled = order(OrderStatus.CANCELLED, "50.00");
