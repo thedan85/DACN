@@ -30,14 +30,15 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
     @EntityGraph(attributePaths = {"customer", "variant"})
     Page<Review> findByOrderItem_Order_OrderIdOrderByCreatedAtDesc(String orderId, Pageable pageable);
 
+    // PostgreSQL needs a text cast here when Hibernate binds a missing keyword as binary.
     @EntityGraph(attributePaths = {"customer", "variant", "variant.product"})
     @Query("""
             select r from Review r
             where (:rating is null or r.rating = :rating)
-              and (:keyword is null
-                   or lower(r.comment) like lower(concat('%', :keyword, '%'))
-                   or lower(r.customer.name) like lower(concat('%', :keyword, '%'))
-                   or lower(r.variant.product.name) like lower(concat('%', :keyword, '%')))
+              and (cast(:keyword as String) is null
+                   or lower(r.comment) like lower(concat('%', cast(:keyword as String), '%'))
+                   or lower(r.customer.name) like lower(concat('%', cast(:keyword as String), '%'))
+                   or lower(r.variant.product.name) like lower(concat('%', cast(:keyword as String), '%')))
             """)
     Page<Review> findForAdmin(@Param("keyword") String keyword,
             @Param("rating") Integer rating,
